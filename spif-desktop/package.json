@@ -1,0 +1,16 @@
+{
+  "name": "sif-desktop",
+  "version": "0.1.0",
+  "description": "Brainex SIF Explorer",
+  "scripts": {
+    "tauri": "tauri",
+    "dev": "tauri dev",
+    "build": "tauri build"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^1.6.0"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^1.6.0"
+  }
+}

@@ -1,0 +1,47 @@
+{
+  "model_a": "claude-sonnet-4-6",
+  "model_b": "claude-haiku-4-5-20251001",
+  "timestamp_ms": 1775155524015,
+  "results": [
+    {
+      "problem_id": "logic_chain",
+      "n_trace_steps": 1,
+      "sif_size_bytes": 6526,
+      "direct_score": 1.0,
+      "sif_score": 1.0,
+      "json_score": 1.0,
+      "cold_score": 0.0,
+      "sif_vs_json": 0.0,
+      "sif_vs_cold": 1.0
+    },
+    {
+      "problem_id": "multi_step_math",
+      "n_trace_steps": 1,
+      "sif_size_bytes": 2294,
+      "direct_score": 1.0,
+      "sif_score": 1.0,
+      "json_score": 1.0,
+      "cold_score": 1.0,
+      "sif_vs_json": 0.0,
+      "sif_vs_cold": 0.0
+    },
+    {
+      "problem_id": "causal_reasoning",
+      "n_trace_steps": 1,
+      "sif_size_bytes": 4778,
+      "direct_score": 0.75,
+      "sif_score": 0.75,
+      "json_score": 0.5,
+      "cold_score": 0.75,
+      "sif_vs_json": 0.25,
+      "sif_vs_cold": 0.0
+    }
+  ],
+  "summary": {
+    "avg_sif_score": 0.9166666666666666,
+    "avg_json_score": 0.8333333333333334,
+    "avg_cold_score": 0.5833333333333334,
+    "sif_advantage_over_json": 0.08333333333333326,
+    "sif_advantage_over_cold": 0.33333333333333326
+  }
+}

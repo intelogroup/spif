@@ -1,0 +1,301 @@
+{
+  "model": "claude-haiku-4-5-20251001",
+  "timestamp_ms": 1775153179625,
+  "n_questions": 40,
+  "n_correct": 35,
+  "overall_accuracy": 0.875,
+  "avg_confidence": 0.984,
+  "calibration_error": 0.10899999999999999,
+  "calibration": {
+    "0.85": {
+      "count": 1,
+      "accuracy": 0.0
+    },
+    "0.95": {
+      "count": 39,
+      "accuracy": 0.8974358974358975
+    }
+  },
+  "results": [
+    {
+      "question": "What is the boiling point of water at sea level in Celsius?",
+      "answer": "100 degrees Celsius",
+      "ground_truth": "100",
+      "confidence": 0.99,
+      "correct": true
+    },
+    {
+      "question": "Who wrote 'Pride and Prejudice'?",
+      "answer": "Jane Austen",
+      "ground_truth": "Jane Austen",
+      "confidence": 0.99,
+      "correct": true
+    },
+    {
+      "question": "What is the chemical symbol for gold?",
+      "answer": "Au",
+      "ground_truth": "Au",
+      "confidence": 0.99,
+      "correct": true
+    },
+    {
+      "question": "In what year did World War II end?",
+      "answer": "1945",
+      "ground_truth": "1945",
+      "confidence": 0.99,
+      "correct": true
+    },
+    {
+      "question": "What is the capital of Australia?",
+      "answer": "Canberra",
+      "ground_truth": "Canberra",
+      "confidence": 0.99,
+      "correct": true
+    },
+    {
+      "question": "How many bones are in the adult human body?",
+      "answer": "206 bones",
+      "ground_truth": "206",
+      "confidence": 0.95,
+      "correct": true
+    },
+    {
+      "question": "What is the square root of 144?",
+      "answer": "12",
+      "ground_truth": "12",
+      "confidence": 1.0,
+      "correct": true
+    },
+    {
+      "question": "Who painted the Mona Lisa?",
+      "answer": "Leonardo da Vinci",
+      "ground_truth": "Leonardo da Vinci",
+      "confidence": 0.99,
+      "correct": true
+    },
+    {
+      "question": "What is the speed of light in a vacuum (approximate m/s)?",
+      "answer": "3 \u00d7 10^8 meters per second (299,792,458 m/s exactly)",
+      "ground_truth": "299792458",
+      "confidence": 0.99,
+      "correct": false
+    },
+    {
+      "question": "What planet is known as the Red Planet?",
+      "answer": "Mars",
+      "ground_truth": "Mars",
+      "confidence": 0.99,
+      "correct": true
+    },
+    {
+      "question": "What is the largest ocean on Earth?",
+      "answer": "Pacific Ocean",
+      "ground_truth": "Pacific",
+      "confidence": 0.99,
+      "correct": true
+    },
+    {
+      "question": "Who was the first person to walk on the Moon?",
+      "answer": "Neil Armstrong",
+      "ground_truth": "Neil Armstrong",
+      "confidence": 0.99,
+      "correct": true
+    },
+    {
+      "question": "What is the chemical formula for table salt?",
+      "answer": "NaCl",
+      "ground_truth": "NaCl",
+      "confidence": 0.99,
+      "correct": true
+    },
+    {
+      "question": "In what year was the Eiffel Tower completed?",
+      "answer": "1889",
+      "ground_truth": "1889",
+      "confidence": 0.99,
+      "correct": true
+    },
+    {
+      "question": "What is the smallest prime number?",
+      "answer": "2",
+      "ground_truth": "2",
+      "confidence": 0.99,
+      "correct": true
+    },
+    {
+      "question": "Who invented the telephone?",
+      "answer": "Alexander Graham Bell",
+      "ground_truth": "Alexander Graham Bell",
+      "confidence": 0.95,
+      "correct": true
+    },
+    {
+      "question": "What is the longest river in the world?",
+      "answer": "The Nile River",
+      "ground_truth": "Nile",
+      "confidence": 0.99,
+      "correct": true
+    },
+    {
+      "question": "What is the atomic number of carbon?",
+      "answer": "6",
+      "ground_truth": "6",
+      "confidence": 0.99,
+      "correct": true
+    },
+    {
+      "question": "Who wrote '1984'?",
+      "answer": "George Orwell",
+      "ground_truth": "George Orwell",
+      "confidence": 0.99,
+      "correct": true
+    },
+    {
+      "question": "What is the currency of Japan?",
+      "answer": "Japanese Yen",
+      "ground_truth": "Yen",
+      "confidence": 0.99,
+      "correct": true
+    },
+    {
+      "question": "What is the freezing point of water in Fahrenheit?",
+      "answer": "32 degrees Fahrenheit",
+      "ground_truth": "32",
+      "confidence": 0.99,
+      "correct": true
+    },
+    {
+      "question": "How many continents are there on Earth?",
+      "answer": "Seven continents.",
+      "ground_truth": "7",
+      "confidence": 0.85,
+      "correct": false
+    },
+    {
+      "question": "What is the powerhouse of the cell?",
+      "answer": "Mitochondria",
+      "ground_truth": "mitochondria",
+      "confidence": 0.99,
+      "correct": true
+    },
+    {
+      "question": "Who developed the theory of general relativity?",
+      "answer": "Albert Einstein",
+      "ground_truth": "Albert Einstein",
+      "confidence": 0.99,
+      "correct": true
+    },
+    {
+      "question": "What is the capital of Canada?",
+      "answer": "Ottawa",
+      "ground_truth": "Ottawa",
+      "confidence": 0.99,
+      "correct": true
+    },
+    {
+      "question": "What is the most abundant gas in Earth's atmosphere?",
+      "answer": "Nitrogen",
+      "ground_truth": "nitrogen",
+      "confidence": 0.99,
+      "correct": true
+    },
+    {
+      "question": "How many sides does a hexagon have?",
+      "answer": "A hexagon has six sides.",
+      "ground_truth": "6",
+      "confidence": 1.0,
+      "correct": false
+    },
+    {
+      "question": "What year did the Berlin Wall fall?",
+      "answer": "1989",
+      "ground_truth": "1989",
+      "confidence": 0.99,
+      "correct": true
+    },
+    {
+      "question": "What is the chemical symbol for iron?",
+      "answer": "Fe",
+      "ground_truth": "Fe",
+      "confidence": 0.99,
+      "correct": true
+    },
+    {
+      "question": "Who wrote 'The Great Gatsby'?",
+      "answer": "F. Scott Fitzgerald",
+      "ground_truth": "F. Scott Fitzgerald",
+      "confidence": 0.99,
+      "correct": true
+    },
+    {
+      "question": "What is the largest planet in our solar system?",
+      "answer": "Jupiter",
+      "ground_truth": "Jupiter",
+      "confidence": 0.99,
+      "correct": true
+    },
+    {
+      "question": "What is the value of pi to 4 decimal places?",
+      "answer": "3.1416",
+      "ground_truth": "3.1416",
+      "confidence": 0.99,
+      "correct": true
+    },
+    {
+      "question": "Who was the first President of the United States?",
+      "answer": "George Washington",
+      "ground_truth": "George Washington",
+      "confidence": 0.99,
+      "correct": true
+    },
+    {
+      "question": "What is the hardest natural substance on Earth?",
+      "answer": "Diamond",
+      "ground_truth": "diamond",
+      "confidence": 0.95,
+      "correct": true
+    },
+    {
+      "question": "What is the capital of Brazil?",
+      "answer": "Bras\u00edlia",
+      "ground_truth": "Brasilia",
+      "confidence": 0.99,
+      "correct": false
+    },
+    {
+      "question": "How many chambers does the human heart have?",
+      "answer": "Four chambers",
+      "ground_truth": "4",
+      "confidence": 0.99,
+      "correct": false
+    },
+    {
+      "question": "What is the nearest star to Earth (excluding the Sun)?",
+      "answer": "Proxima Centauri",
+      "ground_truth": "Proxima Centauri",
+      "confidence": 0.99,
+      "correct": true
+    },
+    {
+      "question": "What is the chemical formula for water?",
+      "answer": "H2O",
+      "ground_truth": "H2O",
+      "confidence": 0.99,
+      "correct": true
+    },
+    {
+      "question": "In what year did humans first land on the Moon?",
+      "answer": "1969",
+      "ground_truth": "1969",
+      "confidence": 0.99,
+      "correct": true
+    },
+    {
+      "question": "What is the largest continent by area?",
+      "answer": "Asia",
+      "ground_truth": "Asia",
+      "confidence": 0.99,
+      "correct": true
+    }
+  ]
+}

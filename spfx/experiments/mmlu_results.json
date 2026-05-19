@@ -1,0 +1,538 @@
+{
+  "model": "claude-haiku-4-5-20251001",
+  "timestamp_ms": 1775155479631,
+  "n_total": 55,
+  "accuracy": 0.09090909090909091,
+  "avg_confidence": 0.5449090909090909,
+  "ece": 0.46054545454545454,
+  "overconfidence": 0.45399999999999996,
+  "group_stats": {
+    "STEM": {
+      "n": 55,
+      "accuracy": 0.09090909090909091,
+      "avg_confidence": 0.5449090909090909,
+      "ece": 0.46054545454545454
+    }
+  },
+  "subject_stats": {
+    "high_school_mathematics": {
+      "n": 5,
+      "accuracy": 0.0,
+      "avg_confidence": 0.5,
+      "ece": 0.5,
+      "overconfidence": 0.5
+    },
+    "high_school_physics": {
+      "n": 5,
+      "accuracy": 0.0,
+      "avg_confidence": 0.5,
+      "ece": 0.5,
+      "overconfidence": 0.5
+    },
+    "high_school_chemistry": {
+      "n": 5,
+      "accuracy": 0.2,
+      "avg_confidence": 0.5980000000000001,
+      "ece": 0.402,
+      "overconfidence": 0.3980000000000001
+    },
+    "high_school_biology": {
+      "n": 5,
+      "accuracy": 0.2,
+      "avg_confidence": 0.596,
+      "ece": 0.404,
+      "overconfidence": 0.39599999999999996
+    },
+    "college_mathematics": {
+      "n": 5,
+      "accuracy": 0.0,
+      "avg_confidence": 0.5,
+      "ece": 0.5,
+      "overconfidence": 0.5
+    },
+    "college_physics": {
+      "n": 5,
+      "accuracy": 0.0,
+      "avg_confidence": 0.5,
+      "ece": 0.5,
+      "overconfidence": 0.5
+    },
+    "college_chemistry": {
+      "n": 5,
+      "accuracy": 0.0,
+      "avg_confidence": 0.5,
+      "ece": 0.5,
+      "overconfidence": 0.5
+    },
+    "college_biology": {
+      "n": 5,
+      "accuracy": 0.2,
+      "avg_confidence": 0.5900000000000001,
+      "ece": 0.41000000000000003,
+      "overconfidence": 0.39000000000000007
+    },
+    "electrical_engineering": {
+      "n": 5,
+      "accuracy": 0.0,
+      "avg_confidence": 0.5,
+      "ece": 0.5,
+      "overconfidence": 0.5
+    },
+    "computer_security": {
+      "n": 5,
+      "accuracy": 0.2,
+      "avg_confidence": 0.62,
+      "ece": 0.44,
+      "overconfidence": 0.42
+    },
+    "machine_learning": {
+      "n": 5,
+      "accuracy": 0.2,
+      "avg_confidence": 0.5900000000000001,
+      "ece": 0.41000000000000003,
+      "overconfidence": 0.39000000000000007
+    }
+  },
+  "results": [
+    {
+      "id": "high_school_mathematics_0",
+      "subject": "high_school_mathematics",
+      "question": "If a pentagon P with vertices at (\u2013 2, \u2013 4), (\u2013 4, 1), (\u20131, 4), (2, 4), and (3, ",
+      "answer": "",
+      "correct": false,
+      "confidence": 0.5
+    },
+    {
+      "id": "high_school_mathematics_1",
+      "subject": "high_school_mathematics",
+      "question": "The length of a rectangle is twice its width. Given the length of the diagonal i",
+      "answer": "",
+      "correct": false,
+      "confidence": 0.5
+    },
+    {
+      "id": "high_school_mathematics_2",
+      "subject": "high_school_mathematics",
+      "question": "A positive integer n is called \u201cpowerful\u201d if, for every prime factor p of n, p^2",
+      "answer": "",
+      "correct": false,
+      "confidence": 0.5
+    },
+    {
+      "id": "high_school_mathematics_3",
+      "subject": "high_school_mathematics",
+      "question": "At breakfast, lunch, and dinner, Joe randomly chooses with equal probabilities e",
+      "answer": "",
+      "correct": false,
+      "confidence": 0.5
+    },
+    {
+      "id": "high_school_mathematics_4",
+      "subject": "high_school_mathematics",
+      "question": "Suppose $f(x)$ is a function that has this property: For all real numbers $a$ an",
+      "answer": "",
+      "correct": false,
+      "confidence": 0.5
+    },
+    {
+      "id": "high_school_physics_0",
+      "subject": "high_school_physics",
+      "question": "The plates of a capacitor are charged to a potential difference of 5 V. If the c",
+      "answer": "",
+      "correct": false,
+      "confidence": 0.5
+    },
+    {
+      "id": "high_school_physics_1",
+      "subject": "high_school_physics",
+      "question": "Which of these quantities decreases as the inverse square of distance for distan",
+      "answer": "",
+      "correct": false,
+      "confidence": 0.5
+    },
+    {
+      "id": "high_school_physics_2",
+      "subject": "high_school_physics",
+      "question": "A solid, metal object is isolated from other charges and has charge distributed ",
+      "answer": "",
+      "correct": false,
+      "confidence": 0.5
+    },
+    {
+      "id": "high_school_physics_3",
+      "subject": "high_school_physics",
+      "question": "Standing waves are produced by a 100-Hz generator in a string of fixed length. T",
+      "answer": "",
+      "correct": false,
+      "confidence": 0.5
+    },
+    {
+      "id": "high_school_physics_4",
+      "subject": "high_school_physics",
+      "question": "Two identical capacitors are hooked in parallel to an external circuit. Which of",
+      "answer": "",
+      "correct": false,
+      "confidence": 0.5
+    },
+    {
+      "id": "high_school_chemistry_0",
+      "subject": "high_school_chemistry",
+      "question": "London dispersion forces are caused by",
+      "answer": "",
+      "correct": false,
+      "confidence": 0.5
+    },
+    {
+      "id": "high_school_chemistry_1",
+      "subject": "high_school_chemistry",
+      "question": "Carbon has an atomic radius of 77 pm and a first ionization energy of 1086 kJ/mo",
+      "answer": "",
+      "correct": false,
+      "confidence": 0.5
+    },
+    {
+      "id": "high_school_chemistry_2",
+      "subject": "high_school_chemistry",
+      "question": "An unknown substance is found to have a high melting point. In addition, it is a",
+      "answer": "",
+      "correct": false,
+      "confidence": 0.5
+    },
+    {
+      "id": "high_school_chemistry_3",
+      "subject": "high_school_chemistry",
+      "question": "The net ionic equation expected when solutions of NH4Br and AgNO3 are mixed toge",
+      "answer": "",
+      "correct": false,
+      "confidence": 0.5
+    },
+    {
+      "id": "high_school_chemistry_4",
+      "subject": "high_school_chemistry",
+      "question": "The symbol for antimony is",
+      "answer": "B",
+      "correct": true,
+      "confidence": 0.99
+    },
+    {
+      "id": "high_school_biology_0",
+      "subject": "high_school_biology",
+      "question": "In a population of giraffes, an environmental change occurs that favors individu",
+      "answer": "A",
+      "correct": true,
+      "confidence": 0.98
+    },
+    {
+      "id": "high_school_biology_1",
+      "subject": "high_school_biology",
+      "question": "Which of the changes below following the start codon in an mRNA would most likel",
+      "answer": "",
+      "correct": false,
+      "confidence": 0.5
+    },
+    {
+      "id": "high_school_biology_2",
+      "subject": "high_school_biology",
+      "question": "The energy given up by electrons as they move through the electron transport cha",
+      "answer": "",
+      "correct": false,
+      "confidence": 0.5
+    },
+    {
+      "id": "high_school_biology_3",
+      "subject": "high_school_biology",
+      "question": "During the period when life is believed to have begun, the atmosphere on primiti",
+      "answer": "",
+      "correct": false,
+      "confidence": 0.5
+    },
+    {
+      "id": "high_school_biology_4",
+      "subject": "high_school_biology",
+      "question": "Convergent evolution is best exemplified by which of the following?",
+      "answer": "",
+      "correct": false,
+      "confidence": 0.5
+    },
+    {
+      "id": "college_mathematics_0",
+      "subject": "college_mathematics",
+      "question": "Let k be the number of real solutions of the equation e^x + x - 2 = 0 in the int",
+      "answer": "",
+      "correct": false,
+      "confidence": 0.5
+    },
+    {
+      "id": "college_mathematics_1",
+      "subject": "college_mathematics",
+      "question": "Up to isomorphism, how many additive abelian groups G of order 16 have the prope",
+      "answer": "",
+      "correct": false,
+      "confidence": 0.5
+    },
+    {
+      "id": "college_mathematics_2",
+      "subject": "college_mathematics",
+      "question": "Suppose P is the set of polynomials with coefficients in Z_5 and degree less tha",
+      "answer": "",
+      "correct": false,
+      "confidence": 0.5
+    },
+    {
+      "id": "college_mathematics_3",
+      "subject": "college_mathematics",
+      "question": "The shortest distance from the curve xy = 8 to the origin is",
+      "answer": "",
+      "correct": false,
+      "confidence": 0.5
+    },
+    {
+      "id": "college_mathematics_4",
+      "subject": "college_mathematics",
+      "question": "There are 25 suitcases, 5 of which are damaged. Three suitcases are selected at ",
+      "answer": "",
+      "correct": false,
+      "confidence": 0.5
+    },
+    {
+      "id": "college_physics_0",
+      "subject": "college_physics",
+      "question": "The quantum efficiency of a photon detector is 0.1. If 100 photons are sent into",
+      "answer": "",
+      "correct": false,
+      "confidence": 0.5
+    },
+    {
+      "id": "college_physics_1",
+      "subject": "college_physics",
+      "question": "White light is normally incident on a puddle of water (index of refraction 1.33)",
+      "answer": "",
+      "correct": false,
+      "confidence": 0.5
+    },
+    {
+      "id": "college_physics_2",
+      "subject": "college_physics",
+      "question": "Which of the following is true about any system that undergoes a reversible ther",
+      "answer": "",
+      "correct": false,
+      "confidence": 0.5
+    },
+    {
+      "id": "college_physics_3",
+      "subject": "college_physics",
+      "question": "The best type of laser with which to do spectroscopy over a range of visible wav",
+      "answer": "",
+      "correct": false,
+      "confidence": 0.5
+    },
+    {
+      "id": "college_physics_4",
+      "subject": "college_physics",
+      "question": "Excited states of the helium atom can be characterized as para- (antiparallel el",
+      "answer": "",
+      "correct": false,
+      "confidence": 0.5
+    },
+    {
+      "id": "college_chemistry_0",
+      "subject": "college_chemistry",
+      "question": "The rate, r, of a zero-order chemical reaction A \u2192 B can be expressed as which o",
+      "answer": "",
+      "correct": false,
+      "confidence": 0.5
+    },
+    {
+      "id": "college_chemistry_1",
+      "subject": "college_chemistry",
+      "question": "Infrared (IR) spectroscopy is useful for determining certain aspects of the stru",
+      "answer": "",
+      "correct": false,
+      "confidence": 0.5
+    },
+    {
+      "id": "college_chemistry_2",
+      "subject": "college_chemistry",
+      "question": "What is the maximum number of phases that can be at equilibrium with each other ",
+      "answer": "",
+      "correct": false,
+      "confidence": 0.5
+    },
+    {
+      "id": "college_chemistry_3",
+      "subject": "college_chemistry",
+      "question": "When the following equation is balanced, which of the following is true?\n__ MnO4",
+      "answer": "",
+      "correct": false,
+      "confidence": 0.5
+    },
+    {
+      "id": "college_chemistry_4",
+      "subject": "college_chemistry",
+      "question": "The equation \u0394H = \u0394U + P\u0394V is applicable",
+      "answer": "",
+      "correct": false,
+      "confidence": 0.5
+    },
+    {
+      "id": "college_biology_0",
+      "subject": "college_biology",
+      "question": "Based on the characteristic population curves that result from plotting populati",
+      "answer": "",
+      "correct": false,
+      "confidence": 0.5
+    },
+    {
+      "id": "college_biology_1",
+      "subject": "college_biology",
+      "question": "A frameshift mutation is created when",
+      "answer": "",
+      "correct": false,
+      "confidence": 0.5
+    },
+    {
+      "id": "college_biology_2",
+      "subject": "college_biology",
+      "question": "To prevent desiccation and injury, the embryos of terrestrial vertebrates are en",
+      "answer": "A",
+      "correct": true,
+      "confidence": 0.95
+    },
+    {
+      "id": "college_biology_3",
+      "subject": "college_biology",
+      "question": "Which of the following is a second messenger that stimulates release of calcium ",
+      "answer": "",
+      "correct": false,
+      "confidence": 0.5
+    },
+    {
+      "id": "college_biology_4",
+      "subject": "college_biology",
+      "question": "Synthesis of an RNA/DNA hybrid from a single-stranded RNA template requires",
+      "answer": "",
+      "correct": false,
+      "confidence": 0.5
+    },
+    {
+      "id": "electrical_engineering_0",
+      "subject": "electrical_engineering",
+      "question": "The Barkhausen criterion for an oscillator",
+      "answer": "",
+      "correct": false,
+      "confidence": 0.5
+    },
+    {
+      "id": "electrical_engineering_1",
+      "subject": "electrical_engineering",
+      "question": "Potentiometer method of DC voltage measurement is more accurate than direct meas",
+      "answer": "",
+      "correct": false,
+      "confidence": 0.5
+    },
+    {
+      "id": "electrical_engineering_2",
+      "subject": "electrical_engineering",
+      "question": "Which of these sets of logic gates are designated as universal gates?",
+      "answer": "",
+      "correct": false,
+      "confidence": 0.5
+    },
+    {
+      "id": "electrical_engineering_3",
+      "subject": "electrical_engineering",
+      "question": "A single phase one pulse controlled circuit has a resistance R and counter emf E",
+      "answer": "",
+      "correct": false,
+      "confidence": 0.5
+    },
+    {
+      "id": "electrical_engineering_4",
+      "subject": "electrical_engineering",
+      "question": "A box which tells the effect of inputs on control sub system is known as",
+      "answer": "",
+      "correct": false,
+      "confidence": 0.5
+    },
+    {
+      "id": "computer_security_0",
+      "subject": "computer_security",
+      "question": "Which of the following styles of fuzzer is more likely to explore paths covering",
+      "answer": "",
+      "correct": false,
+      "confidence": 0.5
+    },
+    {
+      "id": "computer_security_1",
+      "subject": "computer_security",
+      "question": "Assume that a TLS connection has been established successfully between a client ",
+      "answer": "",
+      "correct": false,
+      "confidence": 0.5
+    },
+    {
+      "id": "computer_security_2",
+      "subject": "computer_security",
+      "question": "MIT\u2019s Kerberos KDC server has a maximum ticket lifetime of 24 hours (for most us",
+      "answer": "",
+      "correct": false,
+      "confidence": 0.5
+    },
+    {
+      "id": "computer_security_3",
+      "subject": "computer_security",
+      "question": "In Message Condentiality, the transmitted message must make sense to only intend",
+      "answer": "A",
+      "correct": true,
+      "confidence": 0.95
+    },
+    {
+      "id": "computer_security_4",
+      "subject": "computer_security",
+      "question": "Which of the following is a remote Trojan?",
+      "answer": "C",
+      "correct": false,
+      "confidence": 0.65
+    },
+    {
+      "id": "machine_learning_0",
+      "subject": "machine_learning",
+      "question": "Statement 1| Linear regression estimator has the smallest variance among all unb",
+      "answer": "",
+      "correct": false,
+      "confidence": 0.5
+    },
+    {
+      "id": "machine_learning_1",
+      "subject": "machine_learning",
+      "question": "Statement 1| RoBERTa pretrains on a corpus that is approximate 10x larger than t",
+      "answer": "",
+      "correct": false,
+      "confidence": 0.5
+    },
+    {
+      "id": "machine_learning_2",
+      "subject": "machine_learning",
+      "question": "Statement 1| Support vector machines, like logistic regression models, give a pr",
+      "answer": "",
+      "correct": false,
+      "confidence": 0.5
+    },
+    {
+      "id": "machine_learning_3",
+      "subject": "machine_learning",
+      "question": "A machine learning problem involves four attributes plus a class. The attributes",
+      "answer": "",
+      "correct": false,
+      "confidence": 0.5
+    },
+    {
+      "id": "machine_learning_4",
+      "subject": "machine_learning",
+      "question": "As of 2020, which architecture is best for classifying high-resolution images?",
+      "answer": "A",
+      "correct": true,
+      "confidence": 0.95
+    }
+  ]
+}
