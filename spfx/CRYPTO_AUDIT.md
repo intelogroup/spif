@@ -1,7 +1,7 @@
 # SPIF Cryptographic Implementation Audit
 
 **Status**: Ready for production  
-**Audited**: April 5, 2026  
+**Audited**: April 5, 2026 — Updated May 19, 2026  
 **Test Coverage**: 32 security/signature tests, 2 real-world acceptance tests
 
 ---
@@ -15,7 +15,7 @@ The SPIF cryptographic layer is **production-ready**. All critical security prop
 - ✅ **Constant-time comparisons** for checksums via `hmac.compare_digest()`
 - ✅ **Replay protection** via timestamp coverage in CBOR encoding
 - ✅ **Tamper detection** for both accidental (checksum) and intentional (signature) corruption
-- ✅ **Key derivation** uses PBKDF2-HMAC-SHA512 with 100k iterations (OWASP-grade)
+- ✅ **Key derivation** uses PBKDF2-HMAC-SHA512 with 600k iterations (OWASP 2026 compliant)
 - ✅ **No timing attacks** on signature verification
 - ✅ **No known weaknesses** in CBOR canonical encoding
 
@@ -101,13 +101,18 @@ This is correct and prevents timing attacks against checksum verification.
 **Comparison to Standards**:
 | Standard | Min Iterations | SPIF |
 |----------|---|---|
-| OWASP 2023 | 120,000–600,000 | 100,000 ⚠️ |
-| NIST SP 800-63B-3 | 10,000+ | 100,000 ✅ |
-| Argon2i preset | N/A (adaptive) | Plain PBKDF2 ⚠️ |
+| OWASP 2026 | 600,000 | 600,000 ✅ |
+| NIST SP 800-63B-4 | 10,000+ | 600,000 ✅ |
+| Argon2id preset | N/A (adaptive) | Plain PBKDF2 ⚠️ |
 
 **Assessment**:
+- Meets OWASP 2026 minimum (600,000 iterations) for PBKDF2-HMAC-SHA512
 - Adequate for passphrase-based key derivation when a strong passphrase is supplied
 - If mnemonics are truly random (BIP39), iteration count matters less
+
+**⚠️ Breaking change (v1.0.1)**: The iteration count was raised from 100,000 to
+600,000. Existing keys derived with 100,000 iterations will produce different bytes.
+Affected callers must re-derive their keys and rotate via `rotate_key()`.
 
 **⚠️ Empty passphrase risk**: The salt is `b"sif-key-v1:" + passphrase`. When
 `passphrase=""` (the default), the salt is the static string `b"sif-key-v1:"`.
@@ -125,7 +130,7 @@ when `passphrase=""` is used.
 
 **Code Quality**: Excellent. Uses `hashlib.pbkdf2_hmac` (stdlib, stable).
 
-**Recommendation**: Adequate for strong mnemonics with a non-empty passphrase. Empty passphrase is risky — `UserWarning` added. Defer Argon2 upgrade to v1.1.
+**Recommendation**: Meets OWASP 2026. Empty passphrase `UserWarning` is in place. Defer Argon2id upgrade to v1.1.
 
 ---
 
@@ -263,8 +268,8 @@ print('✓ Canonical encoding is deterministic')
 ### 8. Dependency Security
 
 **Direct Cryptographic Dependencies**:
-- `cryptography>=42` — ✅ Maintained by Python Cryptographic Authority (PyCA)
-- `cbor2>=5.6` — ✅ Well-maintained, RFC 8949 compliant
+- `cryptography>=46.0.6` — ✅ Maintained by Python Cryptographic Authority (PyCA); CVE-2026-34073 and CVE-2026-26007 fixed
+- `cbor2>=5.9.0` — ✅ Well-maintained, RFC 8949 compliant; CVE-2026-26209 and CVE-2025-68131 fixed
 - `hashlib` (stdlib) — ✅ Uses OpenSSL
 
 **Known Issues**: None.
@@ -293,11 +298,12 @@ Execution time: ~0.3s (all pass)
 |------|--------|--------|
 | ed25519 signatures | ✅ Production-ready | No changes |
 | SHA-256 checksums | ✅ Production-ready | No changes |
-| PBKDF2 key derivation | ⚠️ Adequate with passphrase | Empty passphrase = static salt; UserWarning added; defer Argon2 to v1.1 |
+| PBKDF2 key derivation | ✅ OWASP 2026 compliant | 600k iterations; empty passphrase = static salt; UserWarning; defer Argon2 to v1.1 |
 | Canonical CBOR | ✅ Production-ready | No changes |
 | Revocation mechanism | ✅ Production-ready | No changes |
 | Two-pass signing | ✅ Production-ready | No changes |
 | Timing-safe comparisons | ✅ Production-ready | No changes |
+| Dependency pins | ✅ CVE-safe | cryptography>=46.0.6, cbor2>=5.9.0 |
 
 ---
 
