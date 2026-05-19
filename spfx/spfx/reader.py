@@ -175,6 +175,55 @@ def _validate_trace_dag(steps: list[TraceStep]) -> None:
         )
 
 
+def _validate_payload_dag(nodes: list[Node]) -> None:
+    """Topological sort over Node.refs to detect cycles and dangling references.
+
+    Node.refs (``NodeRef`` objects) form a directed graph over payload node IDs.
+    A cycle (e.g. A → B → A) would prevent safe traversal of the payload DAG
+    and indicates a malformed or adversarially crafted document.
+    """
+    # Duplicate ID check
+    seen: set[str] = set()
+    for n in nodes:
+        if n.id in seen:
+            raise SPIFFormatError(f"Duplicate Node id: '{n.id}'")
+        seen.add(n.id)
+
+    ids = {n.id for n in nodes}
+
+    # Dangling reference check
+    for n in nodes:
+        for ref in (n.refs or []):
+            if ref.node_id not in ids:
+                raise SPIFFormatError(
+                    f"Node '{n.id}' references unknown node_id '{ref.node_id}'"
+                )
+
+    # Kahn's algorithm for cycle detection
+    in_degree: dict[str, int] = {n.id: 0 for n in nodes}
+    dependents: dict[str, list[str]] = {n.id: [] for n in nodes}
+    for n in nodes:
+        for ref in (n.refs or []):
+            in_degree[n.id] += 1
+            dependents[ref.node_id].append(n.id)
+
+    queue: deque[str] = deque(nid for nid, deg in in_degree.items() if deg == 0)
+    visited = 0
+    while queue:
+        nid = queue.popleft()
+        visited += 1
+        for child in dependents[nid]:
+            in_degree[child] -= 1
+            if in_degree[child] == 0:
+                queue.append(child)
+
+    if visited != len(nodes):
+        cycle_members = [nid for nid, deg in in_degree.items() if deg > 0]
+        raise SPIFFormatError(
+            f"Cycle detected in payload Node refs involving nodes: {cycle_members}"
+        )
+
+
 # ---------------------------------------------------------------------------
 # Safe CBOR loader
 # ---------------------------------------------------------------------------
@@ -385,6 +434,7 @@ class SPIFReader:
         payload = [_decode_node(n) for n in raw_payload]
         if not payload:
             raise SPIFFormatError("PAYLOAD must contain at least one node")
+        _validate_payload_dag(payload)
 
         # 6. PROVENANCE — never compressed
         provenance = None

@@ -65,7 +65,7 @@ step_strategy = st.builds(
 
 doc_strategy = st.builds(
     SPIFDocument,
-    payload=st.lists(node_strategy, min_size=1, max_size=5),
+    payload=st.lists(node_strategy, min_size=1, max_size=5, unique_by=lambda n: n.id),
     # unique_by ensures no duplicate step IDs (DAG validator rejects duplicates)
     trace=st.lists(step_strategy, max_size=4, unique_by=lambda s: s.id),
 )

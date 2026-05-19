@@ -21,6 +21,21 @@ blob = to_msgpack(doc)
 restored = from_msgpack(blob)
 PY`
 
+Streaming quick start
+- `python - <<'PY'
+from spfx import SPIFDocument, Node
+from spfx.streaming import SPIFStreamWriter, SPIFStreamReader
+
+sw = SPIFStreamWriter()
+buf  = sw.open()
+buf += sw.partial_text("Hello ", seq=0)
+buf += sw.partial_text("world!", seq=1)
+buf += sw.commit(SPIFDocument(payload=[Node(id="n1", type="text", value="Hello world!")]))
+
+for event in SPIFStreamReader().feed(buf):
+    print(type(event).__name__, event)
+PY`
+
 Demos
 - Streaming examples in `examples/`
 - Signed/streaming fixtures in `compat/`
