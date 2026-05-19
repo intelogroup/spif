@@ -27,11 +27,16 @@ def derive_key_from_mnemonic(mnemonic: str, passphrase: str = "") -> Ed25519Priv
     """
     Derive a deterministic ed25519 private key from a BIP39-style mnemonic phrase.
 
-    Uses PBKDF2-HMAC-SHA512 with 100,000 iterations to produce a 32-byte seed,
-    then constructs an Ed25519PrivateKey from that seed.
+    Uses PBKDF2-HMAC-SHA512 with 600,000 iterations (OWASP 2026 minimum) to
+    produce a 32-byte seed, then constructs an Ed25519PrivateKey from that seed.
 
     The same mnemonic + passphrase always produces the same key — callers are
     responsible for keeping mnemonics secret.
+
+    .. warning::
+        The iteration count was raised from 100,000 to 600,000 in v1.0.1 to
+        meet OWASP 2026 guidance. Keys derived before this change will produce
+        different bytes. Rotate via ``rotate_key()`` after re-deriving.
 
     **Empty passphrase warning**: The PBKDF2 salt is `b"sif-key-v1:" + passphrase`.
     When passphrase is empty (the default), the salt is the static string
@@ -45,7 +50,8 @@ def derive_key_from_mnemonic(mnemonic: str, passphrase: str = "") -> Ed25519Priv
             "derive_key_from_mnemonic called with empty passphrase. "
             "The PBKDF2 salt reduces to the static prefix b'sif-key-v1:'. "
             "An attacker with a precomputed table of common mnemonics and this salt "
-            "can recover keys without GPU resistance. "
+            "can recover keys without GPU resistance (PBKDF2 at 600k iterations is "
+            "CPU-bound only — use Argon2id for highest security). "
             "Always supply a passphrase for high-value signing keys.",
             UserWarning,
             stacklevel=2,
@@ -55,7 +61,7 @@ def derive_key_from_mnemonic(mnemonic: str, passphrase: str = "") -> Ed25519Priv
         hash_name="sha512",
         password=mnemonic.encode("utf-8"),
         salt=salt,
-        iterations=100_000,
+        iterations=600_000,
         dklen=32,
     )
     return Ed25519PrivateKey.from_private_bytes(seed)
