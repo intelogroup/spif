@@ -1,0 +1,38 @@
+# Build artifacts
+dist/
+build/
+*.egg-info/
+*.egg
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+.env
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.hypothesis/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Generated benchmark data
+experiments/hard_bench_synthetic/
+experiments/**/*.sif
+experiments/**/*.spif
+
+# Private keys — never commit these
+*.pem
+*.key
+
+# OS
+.DS_Store

@@ -1,0 +1,73 @@
+#!/usr/bin/env bash
+# Cross-implementation compatibility test.
+# Generates deterministic SPIF fixtures with Python, reads each with the
+# TypeScript reader, and compares key fields against Python-generated refs.
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+TMPDIR="$(mktemp -d)"
+PASS=0
+FAIL=0
+
+cleanup() { rm -rf "$TMPDIR"; }
+trap cleanup EXIT
+
+echo "Cross-implementation compatibility test"
+echo "Python → Deno SPIF reader"
+echo "=================================="
+
+# Generate reference files using Python
+python3 "$SCRIPT_DIR/generate_compat_fixtures.py" "$TMPDIR"
+
+# Check Deno is available
+if ! command -v deno &>/dev/null; then
+  echo "SKIP: Deno not installed. Install with: brew install deno"
+  echo "      Then re-run this script."
+  exit 0
+fi
+
+# Read each file with both Python and Deno, compare key fields
+for spif_file in "$TMPDIR"/*.spif; do
+  name="$(basename "$spif_file" .spif)"
+  ref_json="$TMPDIR/${name}.ref.json"
+
+  if [[ ! -f "$ref_json" ]]; then
+    echo "SKIP $name (no reference JSON)"
+    continue
+  fi
+
+  # Read with Deno TS reader
+  ts_json="$TMPDIR/${name}.ts.json"
+  if deno run --allow-read "$SCRIPT_DIR/sif_reader.ts" "$spif_file" > "$ts_json" 2>/dev/null; then
+    # Compare payload_count and trace_count
+    ref_payload=$(python3 -c "import json; d=json.load(open('$ref_json')); print(d['payload_count'])")
+    ts_payload=$(python3 -c "import json; d=json.load(open('$ts_json')); print(d['payload_count'])")
+
+    ref_trace=$(python3 -c "import json; d=json.load(open('$ref_json')); print(d['trace_count'])")
+    ts_trace=$(python3 -c "import json; d=json.load(open('$ts_json')); print(d['trace_count'])")
+
+    ref_model=$(python3 -c "import json; d=json.load(open('$ref_json')); p=d.get('provenance'); print(p['source_model'] if p else 'null')")
+    ts_model=$(python3 -c "import json; d=json.load(open('$ts_json')); p=d.get('provenance'); print(p['source_model'] if p else 'null')")
+
+    if [[ "$ref_payload" == "$ts_payload" ]] && \
+       [[ "$ref_trace" == "$ts_trace" ]] && \
+       [[ "$ref_model" == "$ts_model" ]]; then
+      echo "PASS $name  (payload=$ts_payload, trace=$ts_trace, model=$ts_model)"
+      PASS=$((PASS + 1))
+    else
+      echo "FAIL $name"
+      echo "  payload: expected=$ref_payload got=$ts_payload"
+      echo "  trace:   expected=$ref_trace   got=$ts_trace"
+      echo "  model:   expected=$ref_model   got=$ts_model"
+      FAIL=$((FAIL + 1))
+    fi
+  else
+    echo "FAIL $name (Deno reader errored)"
+    FAIL=$((FAIL + 1))
+  fi
+done
+
+echo "=================================="
+echo "Results: $PASS passed, $FAIL failed"
+[[ "$FAIL" -eq 0 ]]
