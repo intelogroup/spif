@@ -177,6 +177,8 @@ fn test_writer_emits_compressed_chunks_and_flags2() -> Result<()> {
             input_hash: String::new(),
             context_ref: String::new(),
             model_version: String::new(),
+            attempt: 0,
+            task_id: String::new(),
         }),
         semantic: None,
         trace: vec![],
@@ -185,6 +187,7 @@ fn test_writer_emits_compressed_chunks_and_flags2() -> Result<()> {
         delta: None,
         signature: None,
         signatures: vec![],
+        task_info: None,
     };
 
     let plain = SPIFWriter::new().encode(&doc)?;

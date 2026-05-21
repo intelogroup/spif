@@ -33,6 +33,7 @@ fn minimal_doc() -> SPIFDocument {
         delta: None,
         signature: None,
         signatures: vec![],
+        task_info: None,
     }
 }
 
@@ -395,6 +396,7 @@ fn test_many_tokens_fidelity() {
         delta: None,
         signature: None,
         signatures: vec![],
+        task_info: None,
     };
     let token_refs: Vec<&str> = words.iter().map(|s| s.as_str()).collect();
     let data = stream_doc(&doc, &token_refs);

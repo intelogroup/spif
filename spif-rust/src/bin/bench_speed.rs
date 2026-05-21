@@ -89,6 +89,7 @@ fn doc_minimal() -> SPIFDocument {
         delta: None,
         signature: None,
         signatures: vec![],
+        task_info: None,
     }
 }
 
@@ -142,6 +143,8 @@ fn doc_full() -> SPIFDocument {
             input_hash: "b".repeat(64),
             context_ref: "".to_string(),
             model_version: "".to_string(),
+            attempt: 0,
+            task_id: "".to_string(),
         }),
         semantic: Some(SemanticLayer {
             embedding: (0..128).map(|i| (i as f32) / 100.0).collect(),
@@ -163,6 +166,7 @@ fn doc_full() -> SPIFDocument {
         delta: None,
         signature: None,
         signatures: vec![],
+        task_info: None,
     }
 }
 

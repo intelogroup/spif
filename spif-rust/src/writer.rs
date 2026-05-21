@@ -52,6 +52,9 @@ impl SPIFWriter {
         if self.compress {
             flags2 |= FLAG_COMPRESSED;
         }
+        if doc.task_info.is_some() {
+            flags2 |= FLAG_HAS_TASK;
+        }
 
         // Pre-allocate a single buffer sized for the typical document to avoid reallocations.
         let capacity = 512
@@ -80,6 +83,11 @@ impl SPIFWriter {
         };
         header_data.insert("created_ms", Value::Integer(timestamp_ms.into()));
         Self::write_chunk(&mut buf, CHUNK_HEADER, &header_data, false)?;
+
+        // TASK chunk
+        if let Some(ref t) = doc.task_info {
+            Self::write_chunk(&mut buf, CHUNK_TASK, t, false)?;
+        }
 
         // PROVENANCE chunk
         if let Some(ref p) = doc.provenance {

@@ -32,6 +32,7 @@ fn minimal_doc() -> SPIFDocument {
         delta: None,
         signature: None,
         signatures: vec![],
+        task_info: None,
     }
 }
 
@@ -133,6 +134,7 @@ fn test_cyclic_trace_rejected() {
         delta: None,
         signature: None,
         signatures: vec![],
+        task_info: None,
     };
 
     // Writer has no validation; encoding a cyclic doc succeeds.
@@ -165,6 +167,7 @@ fn test_dangling_dep_rejected() {
         delta: None,
         signature: None,
         signatures: vec![],
+        task_info: None,
     };
 
     let bytes = SPIFWriter::new().encode(&doc).unwrap();
@@ -206,6 +209,7 @@ fn test_duplicate_trace_step_id_rejected() {
         delta: None,
         signature: None,
         signatures: vec![],
+        task_info: None,
     };
 
     let bytes = SPIFWriter::new().encode(&doc).unwrap();
@@ -305,8 +309,10 @@ fn test_refs_cbor_noderef_tag_accepted() {
     }
 
     // Wrap in the root node from minimal doc (id="a") + the patched "b" node.
+    let mut root_node = minimal_node();
+    root_node.id = "a".to_string();
     let root_node_val: ciborium::value::Value =
-        ciborium::value::Value::serialized(&minimal_node()).unwrap();
+        ciborium::value::Value::serialized(&root_node).unwrap();
     let payload_val = ciborium::value::Value::Array(vec![root_node_val, node_val]);
 
     let mut payload_cbor = Vec::new();
@@ -489,6 +495,8 @@ fn test_renderer_extreme_timestamp_no_panic() {
             input_hash: String::new(),
             context_ref: String::new(),
             model_version: String::new(),
+            attempt: 0,
+            task_id: String::new(),
         }),
         ..minimal_doc()
     };
@@ -524,6 +532,8 @@ fn test_full_roundtrip_all_fields() {
             input_hash: "a".repeat(64),
             context_ref: "b".repeat(64),
             model_version: "20241022".into(),
+            attempt: 0,
+            task_id: String::new(),
         }),
         semantic: Some(SemanticLayer {
             embedding: vec![0.1, 0.2, 0.3],
@@ -553,6 +563,7 @@ fn test_full_roundtrip_all_fields() {
         delta: None,
         signature: None,
         signatures: vec![],
+        task_info: None,
     };
 
     let bytes = SPIFWriter::new().encode(&doc).unwrap();
@@ -659,3 +670,80 @@ fn test_vulnerability_strict_reader_accepts_invalid_signature() {
         "Expected signature verification failure error, got: {err}"
     );
 }
+
+/// A document with duplicate Node IDs must be rejected.
+#[test]
+fn test_duplicate_node_id_rejected() {
+    let doc = SPIFDocument {
+        payload: vec![
+            Node {
+                id: "n1".into(),
+                node_type: "fact".into(),
+                value: Value::Text("node 1".into()),
+                confidence: Distribution::certain("epistemic"),
+                refs: vec![],
+            },
+            Node {
+                id: "n1".into(), // Duplicate ID
+                node_type: "fact".into(),
+                value: Value::Text("node 2".into()),
+                confidence: Distribution::certain("epistemic"),
+                refs: vec![],
+            },
+        ],
+        provenance: None,
+        semantic: None,
+        trace: vec![],
+        trace_method: "post-hoc".into(),
+        alternatives: vec![],
+        delta: None,
+        signature: None,
+        signatures: vec![],
+        task_info: None,
+    };
+    let bytes = SPIFWriter::new().encode(&doc).unwrap();
+    let err = SPIFReader::new().read(&bytes).unwrap_err();
+    assert!(
+        err.to_string().to_lowercase().contains("duplicate node id"),
+        "expected duplicate Node ID error, got: {err}"
+    );
+}
+
+/// A document with a cyclic payload reference (n1 → n2 → n1) must be rejected.
+#[test]
+fn test_cyclic_payload_rejected() {
+    let doc = SPIFDocument {
+        payload: vec![
+            Node {
+                id: "n1".into(),
+                node_type: "fact".into(),
+                value: Value::Text("node 1".into()),
+                confidence: Distribution::certain("epistemic"),
+                refs: vec!["n2".into()], // Cyclic reference to n2
+            },
+            Node {
+                id: "n2".into(),
+                node_type: "fact".into(),
+                value: Value::Text("node 2".into()),
+                confidence: Distribution::certain("epistemic"),
+                refs: vec!["n1".into()], // Cyclic reference to n1
+            },
+        ],
+        provenance: None,
+        semantic: None,
+        trace: vec![],
+        trace_method: "post-hoc".into(),
+        alternatives: vec![],
+        delta: None,
+        signature: None,
+        signatures: vec![],
+        task_info: None,
+    };
+    let bytes = SPIFWriter::new().encode(&doc).unwrap();
+    let err = SPIFReader::new().read(&bytes).unwrap_err();
+    assert!(
+        err.to_string().to_lowercase().contains("cycle detected"),
+        "expected cycle detected error, got: {err}"
+    );
+}
+

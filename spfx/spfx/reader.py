@@ -1,6 +1,7 @@
 """SPIFReader — deserialize bytes or a file into a SPIFDocument."""
 
 from __future__ import annotations
+from functools import lru_cache
 import hashlib
 import hmac
 import os
@@ -142,6 +143,10 @@ def _validate_trace_dag(steps: list[TraceStep]) -> None:
             raise SPIFFormatError(f"Duplicate TraceStep id: '{s.id}'")
         seen.add(s.id)
 
+    # Fast-path: if no steps have any dependencies, there can be no cycles or dangling deps!
+    if not any(s.deps for s in steps):
+        return
+
     ids = {s.id for s in steps}
     for s in steps:
         for dep in s.deps:
@@ -188,6 +193,10 @@ def _validate_payload_dag(nodes: list[Node]) -> None:
         if n.id in seen:
             raise SPIFFormatError(f"Duplicate Node id: '{n.id}'")
         seen.add(n.id)
+
+    # Fast-path: if no nodes have references, there can be no cycles or dangling refs!
+    if not any(n.refs for n in nodes):
+        return
 
     ids = {n.id for n in nodes}
 
@@ -318,6 +327,14 @@ def _find_first_auth_chunk_offset(data: bytes) -> int | None:
 # ---------------------------------------------------------------------------
 # Main reader
 # ---------------------------------------------------------------------------
+
+@lru_cache(maxsize=256)
+def _get_pub_key(signer_b64: str):
+    import base64
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+    pub_bytes = base64.b64decode(signer_b64)
+    return Ed25519PublicKey.from_public_bytes(pub_bytes)
+
 
 class SPIFReader:
     """
@@ -665,8 +682,7 @@ class SPIFReader:
                     "only ed25519 is supported"
                 )
             try:
-                pub_bytes = base64.b64decode(sig_obj.signer)
-                pub_key = Ed25519PublicKey.from_public_bytes(pub_bytes)
+                pub_key = _get_pub_key(sig_obj.signer)
                 pub_key.verify(sig_obj.signature, body_to_sign)
             except InvalidSignature as e:
                 raise SPIFSignatureError(

@@ -16,11 +16,14 @@ pub const CHUNK_ALTS: u8 = 0x05;
 pub const CHUNK_DELTA: u8 = 0x06;
 pub const CHUNK_SIGNATURE: u8 = 0x07;
 pub const CHUNK_MULTISIG: u8 = 0x08;
+pub const CHUNK_TASK: u8 = 0x09;
 pub const CHUNK_CHECKSUM: u8 = 0xFF;
 
 // Flags bitmask
 /// Extended flags byte 2 (in HEADER chunk): chunk payloads are zlib-compressed.
 pub const FLAG_COMPRESSED: u8 = 0b00000001;
+pub const FLAG_ZSTD: u8 = 0b00000010;
+pub const FLAG_HAS_TASK: u8 = 0b00000100;
 
 pub const FLAG_PROVENANCE: u8 = 0b00000001;
 pub const FLAG_SEMANTIC: u8 = 0b00000010;
@@ -146,6 +149,29 @@ pub struct Provenance {
     pub context_ref: String,
     #[serde(default)]
     pub model_version: String,
+    #[serde(default)]
+    pub attempt: u32,
+    #[serde(default)]
+    pub task_id: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub struct TaskInfo {
+    pub task_id: String,
+    #[serde(default)]
+    pub attempt: u32,
+    #[serde(default = "default_task_status")]
+    pub status: String,
+    #[serde(default)]
+    pub total_ms: u64,
+    #[serde(default)]
+    pub tool_count: u32,
+    #[serde(default)]
+    pub error_count: u32,
+}
+
+fn default_task_status() -> String {
+    "ok".to_string()
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
@@ -203,6 +229,8 @@ pub struct SPIFDocument {
     pub signature: Option<Signature>,
     #[serde(default)]
     pub signatures: Vec<Signature>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub task_info: Option<TaskInfo>,
 }
 
 fn default_trace_method() -> String {

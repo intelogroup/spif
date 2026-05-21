@@ -30,6 +30,8 @@ mod tests {
                 input_hash: "".to_string(),
                 context_ref: "".to_string(),
                 model_version: "".to_string(),
+                attempt: 0,
+                task_id: "".to_string(),
             }),
             semantic: None,
             trace: vec![],
@@ -38,6 +40,7 @@ mod tests {
             delta: None,
             signature: None,
             signatures: vec![],
+            task_info: None,
         };
 
         let writer = SPIFWriter::new();

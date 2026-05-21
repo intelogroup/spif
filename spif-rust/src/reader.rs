@@ -76,6 +76,7 @@ impl SPIFReader {
             delta: None,
             signature: None,
             signatures: Vec::new(),
+            task_info: None,
         };
 
         let mut checksum_seen = false;
@@ -177,6 +178,9 @@ impl SPIFReader {
                 CHUNK_MULTISIG => {
                     document_data.signatures = from_reader(payload)?;
                 }
+                CHUNK_TASK => {
+                    document_data.task_info = Some(from_reader(payload)?);
+                }
                 CHUNK_CHECKSUM => {
                     let expected_checksum = payload;
                     let body = &data[0..current_pos];
@@ -224,7 +228,8 @@ impl SPIFReader {
                 .map_err(|e| anyhow!("TraceStep '{}': {}", step.id, e))?;
         }
 
-        // 7. Trace DAG cycle/dangling-dep validation
+        // 7. DAG cycle/dangling-dep validation
+        validate_payload_dag(&document_data.payload)?;
         if !document_data.trace.is_empty() {
             validate_trace_dag(&document_data.trace)?;
         }
@@ -359,6 +364,11 @@ fn validate_trace_dag(steps: &[TraceStep]) -> Result<()> {
         }
     }
 
+    // Fast-path: if no steps have any dependencies, return early
+    if !steps.iter().any(|s| !s.deps.is_empty()) {
+        return Ok(());
+    }
+
     // Check for dangling deps
     let ids: HashSet<&str> = steps.iter().map(|s| s.id.as_str()).collect();
     for s in steps {
@@ -415,6 +425,85 @@ fn validate_trace_dag(steps: &[TraceStep]) -> Result<()> {
             .collect();
         return Err(anyhow!(
             "Cycle detected in trace DAG involving steps: {:?}",
+            cycle_members
+        ));
+    }
+
+    Ok(())
+}
+
+/// Validates the payload DAG references using Kahn's topological sort algorithm.
+/// Rejects duplicate node IDs, dangling references, and cycles.
+fn validate_payload_dag(nodes: &[Node]) -> Result<()> {
+    // Check for duplicate IDs
+    let mut seen: HashSet<&str> = HashSet::new();
+    for n in nodes {
+        if !seen.insert(n.id.as_str()) {
+            return Err(anyhow!("Duplicate Node id: '{}'", n.id));
+        }
+    }
+
+    // Fast-path: if no nodes have references, return early
+    if !nodes.iter().any(|n| !n.refs.is_empty()) {
+        return Ok(());
+    }
+
+    // Check for dangling refs
+    let ids: HashSet<&str> = nodes.iter().map(|n| n.id.as_str()).collect();
+    for n in nodes {
+        for ref_id in &n.refs {
+            if !ids.contains(ref_id.as_str()) {
+                return Err(anyhow!(
+                    "Node '{}' references unknown node_id '{}'",
+                    n.id,
+                    ref_id
+                ));
+            }
+        }
+    }
+
+    // Kahn's algorithm — cycle detection
+    let mut in_degree: HashMap<&str, usize> =
+        nodes.iter().map(|n| (n.id.as_str(), 0usize)).collect();
+    let mut dependents: HashMap<&str, Vec<&str>> =
+        nodes.iter().map(|n| (n.id.as_str(), vec![])).collect();
+
+    for n in nodes {
+        for ref_id in &n.refs {
+            *in_degree.get_mut(n.id.as_str()).unwrap() += 1;
+            dependents
+                .get_mut(ref_id.as_str())
+                .unwrap()
+                .push(n.id.as_str());
+        }
+    }
+
+    let mut queue: VecDeque<&str> = in_degree
+        .iter()
+        .filter(|(_, &deg)| deg == 0)
+        .map(|(&id, _)| id)
+        .collect();
+
+    let mut visited = 0usize;
+    while let Some(node) = queue.pop_front() {
+        visited += 1;
+        for &child in dependents.get(node).map(Vec::as_slice).unwrap_or(&[]) {
+            let deg = in_degree.get_mut(child).unwrap();
+            *deg -= 1;
+            if *deg == 0 {
+                queue.push_back(child);
+            }
+        }
+    }
+
+    if visited != nodes.len() {
+        let cycle_members: Vec<&str> = in_degree
+            .iter()
+            .filter(|(_, &deg)| deg > 0)
+            .map(|(&id, _)| id)
+            .collect();
+        return Err(anyhow!(
+            "Cycle detected in payload Node refs involving nodes: {:?}",
             cycle_members
         ));
     }

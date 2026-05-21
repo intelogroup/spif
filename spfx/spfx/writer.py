@@ -77,7 +77,7 @@ def _encode_step(s: TraceStep) -> dict:
     }
 
 
-def _compress_bytes(data: bytes, *, method: str) -> bytes:
+def _compress_bytes(data: bytes, *, method: str, level: int | None = None) -> bytes:
     """Compress bytes using the specified method ('zlib' or 'zstd')."""
     if method == "zstd":
         try:
@@ -86,15 +86,17 @@ def _compress_bytes(data: bytes, *, method: str) -> bytes:
             raise ImportError(
                 "zstandard package is required for zstd compression: pip install zstandard"
             ) from exc
-        return zstd.ZstdCompressor(level=10).compress(data)
-    return zlib.compress(data, level=9)
+        comp_level = level if level is not None else 3
+        return zstd.ZstdCompressor(level=comp_level).compress(data)
+    comp_level = level if level is not None else 6
+    return zlib.compress(data, level=comp_level)
 
 
 def _chunk(chunk_type: int, data: object, *, fast: bool = False,
-           compress: bool = False, compression: str = "zlib") -> bytes:
+           compress: bool = False, compression: str = "zlib", compression_level: int | None = None) -> bytes:
     payload = _cbor_fast(data) if fast else _cbor(data)
     if compress:
-        payload = _compress_bytes(payload, method=compression)
+        payload = _compress_bytes(payload, method=compression, level=compression_level)
     header = _CHUNK_STRUCT.pack(chunk_type, len(payload))
     return header + payload
 
@@ -148,11 +150,12 @@ class SPIFWriter:
         HEADER chunk's ``flags2`` field.
     """
 
-    def __init__(self, *, compress: bool = False, compression: str = "zlib") -> None:
+    def __init__(self, *, compress: bool = False, compression: str = "zlib", compression_level: int | None = None) -> None:
         if compression not in ("zlib", "zstd"):
             raise ValueError(f"compression must be 'zlib' or 'zstd', got {compression!r}")
         self._compress = compress
         self._compression = compression
+        self._compression_level = compression_level
 
     def encode(self, doc: SPIFDocument) -> bytes:
         flags = 0
@@ -233,18 +236,18 @@ class SPIFWriter:
                 "dim":             s.dim,
                 "embedding":       _encode_embedding(s.embedding),
                 "covariance":      s.covariance,
-            }, fast=fast, compress=compress, compression=compression))
+            }, fast=fast, compress=compress, compression=compression, compression_level=self._compression_level))
 
         # TRACE chunk — compressed (thinking traces can be large)
         if doc.trace:
             parts.append(_chunk(CHUNK_TRACE, {
                 "method": doc.trace_method,
                 "steps":  [_encode_step(st) for st in doc.trace],
-            }, fast=fast, compress=compress, compression=compression))
+            }, fast=fast, compress=compress, compression=compression, compression_level=self._compression_level))
 
         # PAYLOAD chunk (required) — compressed
         parts.append(_chunk(CHUNK_PAYLOAD, [_encode_node(n) for n in doc.payload],
-                            fast=fast, compress=compress, compression=compression))
+                            fast=fast, compress=compress, compression=compression, compression_level=self._compression_level))
 
         # ALTS chunk — compressed
         if doc.alternatives:
@@ -261,14 +264,14 @@ class SPIFWriter:
                     {"weight": a.weight, "nodes": [_encode_node(n) for n in a.nodes]}
                     for a in doc.alternatives
                 ],
-            }, fast=fast, compress=compress, compression=compression))
+            }, fast=fast, compress=compress, compression=compression, compression_level=self._compression_level))
 
         # DELTA chunk — compressed
         if doc.delta:
             parts.append(_chunk(CHUNK_DELTA, {
                 "base_hash": doc.delta.base_hash,
                 "changes":   doc.delta.changes,
-            }, fast=fast, compress=compress, compression=compression))
+            }, fast=fast, compress=compress, compression=compression, compression_level=self._compression_level))
 
         # SIGNATURE chunk — never compressed (always canonical, integrity-critical)
         if doc.signature:
