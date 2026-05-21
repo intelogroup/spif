@@ -7,7 +7,7 @@ edition = "2021"
 tauri = { version = "1.6", features = ["api-all"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-sif-rust = { path = "../../sif-rust" }
+spif-rust = { path = "../../spif-rust" }
 anyhow = "1.0"
 
 [build-dependencies]

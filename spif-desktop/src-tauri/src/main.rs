@@ -3,13 +3,13 @@
     windows_subsystem = "windows"
 )]
 
-use sif_rust::{SIFReader, SIFDocument};
+use spif_rust::{SPIFReader, SPIFDocument};
 use std::fs;
 
 #[tauri::command]
-fn open_sif_file(path: String) -> Result<SIFDocument, String> {
+fn open_sif_file(path: String) -> Result<SPIFDocument, String> {
     let data = fs::read(&path).map_err(|e| format!("Failed to read file: {}", e))?;
-    let reader = SIFReader::new();
+    let reader = SPIFReader::new();
     let doc = reader.read(&data).map_err(|e| format!("Failed to parse SIF: {}", e))?;
     Ok(doc)
 }
