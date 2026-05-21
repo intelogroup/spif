@@ -1,7 +1,7 @@
 # SPIF: Semantic Provenance Inference Format
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Format Specification](https://img.shields.io/badge/Spec-Active-success)](spfx/SPEC.md)
+[![Format Specification](https://img.shields.io/badge/Spec-v0.2--Active-success)](spfx/SPEC.md)
 
 **SPIF** (Semantic Provenance Inference Format) is an open-standard binary serialization format designed for structured, cryptographically signed, and tamper-evident AI outputs. SPIF captures the full lineage of AI inference—including prompts, responses, reasoning traces, uncertainty distributions, tool calls, and multiple signatures—ensuring high auditability and trust in agentic workflows.
 
@@ -9,11 +9,15 @@
 
 ## Key Features
 
-- **Tamper Evident**: Eager cryptographic validation of document segments using Ed25519 signatures (supporting single and multi-party signing).
-- **Rich Metadata & Lineage**: Encodes model metadata, prompt structures, intermediate reasoning, tool execution histories, and raw or token-level uncertainty metrics.
-- **High-Performance Parsing**: Compact binary layout utilizing CBOR (Concise Binary Object Representation) with highly optimized decoders.
+- **🛡️ Tamper-Evident Multi-Signatures**: Dual and multi-signature co-signing supporting sequential client-to-proxy signatures with automatic device-key compromise recovery.
+- **⚡ High-Performance Core Optimizations**:
+  - $O(N)$ fast-path DAG validation short-circuits bypassing topological sorting for minimal/medium documents.
+  - Thread-safe LRU cryptographic key cache (`maxsize=256`) making repetitive DER key reconstruction instantaneous.
+  - Configurable zstandard compression levels supporting up to **80%+ speedups in serialization**.
+- **💥 Denial-of-Service / Memory Exhaustion Protection**: Early stream-offset validation preventing pre-allocation buffer out-of-memory exploits (CVE-2026-34665 style) on truncated or malicious payloads.
+- **📊 Rich Metadata & Lineage**: Full support for `task_info` (status, total execution duration, tool counts, error counts) and `provenance` retries.
 - **Cross-Language Fidelity**: Complete feature parity and validated interoperability between Python, TypeScript/Node.js, and Rust.
-- **Visual Analytics**: Interactive, desktop-grade visualizer for audit trails and probability distributions.
+- **Visual Analytics**: Interactive, desktop-grade glassmorphic visualizer for audit trails and probability distributions.
 
 ---
 
@@ -23,10 +27,59 @@ This repository is structured as a monorepo, containing all components of the SP
 
 | Path | Component | Language / Stack | Description |
 | :--- | :--- | :--- | :--- |
-| [`/spfx`](spfx/) | **Core Python & CLI** | Python 3.9+ | Main specification (`SPEC.md`), reference compiler, CLI generator, and LLM integrations (OpenAI, Anthropic, Gemini). |
+| [`/spfx`](spfx/) | **Core Python & CLI** | Python 3.9+ | Main specification (`SPEC.md`), reference compiler, CLI generator, and LLM integrations. |
 | [`/spfx/packages/spfx-js`](spfx/packages/spfx-js/) | **JS/TS Client Library** | TypeScript | High-performance isomorphic client library for Node.js, Web, and Edge runtimes. |
 | [`/spif-rust`](spif-rust/) | **Rust Engine & CLI** | Rust (2021) | Ultra-fast native core decoder, multi-signer validator, and high-throughput batch signature verifier. |
 | [`/spif-desktop`](spif-desktop/) | **SPIF Desktop Viewer** | Tauri, TS, React | A beautiful cross-platform desktop visualizer for inspecting reasoning traces, signatures, and distribution charts. |
+
+---
+
+## Programmatic Specification-Compliant Samples
+
+The workspace root includes verified specification-compliant SPIF sample binaries demonstrating bidirectional interoperability (generated programmatically via [`generate_root_samples.py`](generate_root_samples.py)):
+
+- [`sample_valid.spif`](sample_valid.spif): A valid, dual cryptographically signed, complete document with full `task_info` and `provenance` metadata.
+- [`sample_tampered.spif`](sample_tampered.spif): Structural CBOR content has been altered while maintaining signature values to demonstrate cryptographic tamper-detection.
+- [`sample_corrupted.spif`](sample_corrupted.spif): Bit flipped in the checksum chunk, triggering early-stage checksum failure.
+
+### Programmatic Verification
+
+**Using Python CLI (`spfx`):**
+```bash
+# Verify the valid sample
+$ python3 -m spfx.cli validate sample_valid.spif && python3 -m spfx.cli verify sample_valid.spif
+OK  sample_valid.spif
+VALID  sample_valid.spif  (signer: DoZuYeLW80Gu8Vr9mAOHVosMPYHe3rT7S50fuK+D)
+
+# Verify the tampered sample (Fails Cryptographically)
+$ python3 -m spfx.cli verify sample_tampered.spif
+INVALID  signature verification failed for sample_tampered.spif
+
+# Verify the corrupted sample (Fails Checksum)
+$ python3 -m spfx.cli validate sample_corrupted.spif
+FAIL  sample_corrupted.spif: Checksum mismatch
+```
+
+**Using Rust Core Viewer (`spif-rust`):**
+```bash
+$ cargo run -p spif-rust --bin spif-viewer -- ../sample_valid.spif
+════════════════════════════════════════════════════════════
+  SPIF DOCUMENT (Rust Viewer)  v0.2
+════════════════════════════════════════════════════════════
+SIGNATURE
+  signer:    DoZuYeLW80Gu8Vr9mAOHVosMPYHe3rT7S50fuK+DmbM=
+  status:    present
+PROVENANCE
+  model:       gemma-4-e2b-vibrion-sentinel 2026.05.21
+  created:     2026-05-21 16:00:00 UTC
+PAYLOAD  (2 nodes)
+────────────────────────────────────────────────────────────
+[FACT] id=claim_01
+  value:      The Pfhrp2/3 gene deletions are absent in Haitian P. falciparum populations.
+  confidence: [████████████] 98%  [custom:clinical_validation]
+  refs:       claim_02
+...
+```
 
 ---
 
@@ -78,3 +131,4 @@ SPIF implements eager signature verification under **Strict Mode**. Any modifica
 ## License
 
 This project is licensed under the **MIT License**. See the [LICENSE](LICENSE) file for details.
+
