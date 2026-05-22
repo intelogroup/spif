@@ -252,8 +252,9 @@ print('✓ Canonical encoding is deterministic')
 **Scenario 4: Replayed Old Document**
 - Attacker tries to pass off a 2024 document as 2026
 - **Detection**: Timestamp is part of CBOR, covered by checksum and signature ✅
-- **Validation**: Caller's responsibility (verify `provenance.timestamp_ms` in application logic)
-- **Scope**: SPIF detects tampering; age validation is out of scope
+- **Validation**: `SPIFReader` natively supports time-bounded checks via the opt-in `max_signature_age_seconds` parameter.
+- **Code flow**: Inside `decode()` and `verify_signature()`, if `max_signature_age_seconds` is active, the reader compares the system clock against `doc.provenance.timestamp_ms` and raises a `SPIFSignatureError` if the difference exceeds the limit.
+- **Scope**: Natively supported in the core reader. Left disabled/permissive by default to allow compatibility with remote, disconnected tablets experiencing clock drift.
 
 **Scenario 5: Key Rotation**
 - Signer rotates to a new key and revokes the old one

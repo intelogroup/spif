@@ -60,6 +60,8 @@ SPIFWriter().write(doc, "response.spfx")
 from spif.crypto import derive_key_from_mnemonic
 from spif.writer import SPIFWriter
 
+# Always supply a non-empty passphrase for production-grade keys.
+# Leaving passphrase empty ("") works but triggers a UserWarning about PBKDF2 precomputation risk.
 key = derive_key_from_mnemonic("your twelve word mnemonic phrase here", passphrase="strong-passphrase")
 SPIFWriter(sign_key=key, signer_id="https://yourorg.com/keys/signing-key-1").write(doc, "signed.spfx")
 ```
@@ -87,7 +89,14 @@ doc = SPIFReader(require_signature=True).decode(data)
 # Verify against a known signer
 doc = SPIFReader().decode(data, verify_signer="https://yourorg.com/keys/v1")
 
-print(doc.provenance.source_model)    # "claude-sonnet-4-6"
+# Time-bounded verification: reject replay attacks if document is older than allowed age limit
+reader = SPIFReader(require_signature=True, max_signature_age_seconds=60)
+doc = reader.decode(data)
+
+# You can also pass max_signature_age_seconds directly to verify_signature
+is_valid = reader.verify_signature(data, max_signature_age_seconds=60)
+
+print(doc.provenance.source_model)    # "claude-sonnet-4-6" (or server-resolved dynamic snapshot, e.g. "gpt-4o-2024-05-13")
 print(doc.provenance.timestamp_ms)    # Unix epoch ms
 print(doc.provenance.input_hash)      # SHA-256 of the prompt
 print(doc.provenance.context_ref)     # content_id of prior doc in chain

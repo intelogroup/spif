@@ -69,7 +69,7 @@ None. Existing v0.2 documents will remain valid indefinitely.
 
 2. **Revocation is out-of-band**: Signer revocation lists are not stored in SPIF documents. Verifiers must fetch and validate revocation status from a separate source (e.g., a URL or file)
 
-3. **Timestamp validation is the caller's responsibility**: SPIF covers timestamps in its integrity checks, but does not validate whether a timestamp is "current" — application logic must enforce age constraints
+3. **Timestamp validation (Opt-In)**: SPIF natively supports replay protection and time-bounded signature validation. Callers can enable this by passing `max_signature_age_seconds` to `SPIFReader` or `verify_signature()`, which compares the system clock against `timestamp_ms` to reject expired documents. This is disabled by default to maintain backward compatibility with offline devices with clock drift.
 
 4. **No perfect forward secrecy**: Old signing keys compromise old signatures. Use key rotation (`rotate_key()`) to document transitions
 

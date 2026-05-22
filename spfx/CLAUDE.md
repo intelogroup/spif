@@ -17,7 +17,7 @@ pytest tests/
 pytest tests/ --cov=spif --cov-report=html
 ```
 
-Key test files: `test_roundtrip.py`, `test_security.py`, `test_fuzz.py`, `test_edge_cases.py`.
+Key test files: `test_roundtrip.py`, `test_security.py`, `test_fuzz.py`, `test_edge_cases.py`, `test_hardening.py`.
 
 ## Lint
 

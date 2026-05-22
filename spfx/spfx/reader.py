@@ -361,6 +361,7 @@ class SPIFReader:
         *,
         require_signature: bool = False,
         revocation_list_path: str | Path | None = None,
+        max_signature_age_seconds: int | None = None,
     ) -> None:
         env_strict = os.environ.get("SPIF_REQUIRE_SIGNATURE", "").strip() in ("1", "true", "yes")
         self._require_signature = require_signature or env_strict
@@ -368,6 +369,7 @@ class SPIFReader:
         if revocation_list_path is not None:
             from .crypto import load_revocation_list
             self._revocation_list = load_revocation_list(revocation_list_path)
+        self._max_signature_age_seconds = max_signature_age_seconds
 
     @classmethod
     def strict(cls) -> "SPIFReader":
@@ -645,6 +647,21 @@ class SPIFReader:
             # otherwise pass decode() silently.
             self._verify_sig_inner(doc, data, self._revocation_list)
 
+        # Time-bounded signature age limit check
+        if self._max_signature_age_seconds is not None:
+            import time
+            if doc.provenance is None:
+                raise SPIFSignatureError(
+                    "Provenance chunk is missing, cannot verify signature age limit"
+                )
+            current_ms = int(time.time() * 1000)
+            age_ms = current_ms - doc.provenance.timestamp_ms
+            if age_ms > self._max_signature_age_seconds * 1000:
+                raise SPIFSignatureError(
+                    f"Signature expired: age is {age_ms / 1000:.1f} seconds, "
+                    f"maximum allowed is {self._max_signature_age_seconds} seconds"
+                )
+
         return doc
 
     def read(self, path: str | Path) -> SPIFDocument:
@@ -719,6 +736,7 @@ class SPIFReader:
         self,
         data: bytes,
         revocation_list_path: str | Path | None = None,
+        max_signature_age_seconds: int | None = None,
     ) -> bool:
         """
         Verify the ed25519 signature(s) in a SPIF document.
@@ -748,4 +766,25 @@ class SPIFReader:
             from .crypto import load_revocation_list
             revocation_list = load_revocation_list(revocation_list_path)
 
-        return self._verify_sig_inner(doc, data, revocation_list)
+        # Crytographically verify signatures first
+        has_sigs = self._verify_sig_inner(doc, data, revocation_list)
+        if not has_sigs:
+            return False
+
+        # Time-bounded signature age limit check
+        limit_sec = max_signature_age_seconds if max_signature_age_seconds is not None else self._max_signature_age_seconds
+        if limit_sec is not None:
+            if doc.provenance is None:
+                raise SPIFSignatureError(
+                    "Provenance chunk is missing, cannot verify signature age limit"
+                )
+            import time
+            current_ms = int(time.time() * 1000)
+            age_ms = current_ms - doc.provenance.timestamp_ms
+            if age_ms > limit_sec * 1000:
+                raise SPIFSignatureError(
+                    f"Signature expired: age is {age_ms / 1000:.1f} seconds, "
+                    f"maximum allowed is {limit_sec} seconds"
+                )
+
+        return True
