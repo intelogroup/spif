@@ -179,6 +179,8 @@ fn test_writer_emits_compressed_chunks_and_flags2() -> Result<()> {
             model_version: String::new(),
             attempt: 0,
             task_id: String::new(),
+            model_card: String::new(),
+            risk_tier: String::new(),
         }),
         semantic: None,
         trace: vec![],

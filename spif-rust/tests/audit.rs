@@ -497,6 +497,8 @@ fn test_renderer_extreme_timestamp_no_panic() {
             model_version: String::new(),
             attempt: 0,
             task_id: String::new(),
+            model_card: String::new(),
+            risk_tier: String::new(),
         }),
         ..minimal_doc()
     };
@@ -534,6 +536,8 @@ fn test_full_roundtrip_all_fields() {
             model_version: "20241022".into(),
             attempt: 0,
             task_id: String::new(),
+            model_card: String::new(),
+            risk_tier: String::new(),
         }),
         semantic: Some(SemanticLayer {
             embedding: vec![0.1, 0.2, 0.3],

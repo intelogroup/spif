@@ -33,6 +33,8 @@ mod tests {
                 model_version: "".to_string(),
                 attempt: 0,
                 task_id: "".to_string(),
+                model_card: "".to_string(),
+                risk_tier: "".to_string(),
             }),
             semantic: None,
             trace: vec![],
