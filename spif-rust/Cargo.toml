@@ -38,8 +38,13 @@ bson = "2.13"
 quick-xml = { version = "0.41", features = ["serialize"] }
 serde_yaml = "0.9"
 toml = "0.8"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 tiny_http = "0.12.0"
 ureq = { version = "2.9", features = ["json"] }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = "0.2"
 
 [[bin]]
 name = "spif-viewer"
