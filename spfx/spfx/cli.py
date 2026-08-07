@@ -91,6 +91,7 @@ def validate(
 def inspect(
     path: Path = typer.Argument(..., help="Path to a .spfx file"),
     layer: str = typer.Option("all", help="Layer: all | payload | trace | provenance | semantic | alts | signature"),
+    json_output: bool = typer.Option(False, "--json", help="Emit machine-readable JSON (EU AI Act Art. 50 fields)"),
 ):
     """Show a specific layer of a SPIF file."""
     try:
@@ -98,6 +99,23 @@ def inspect(
     except SPIFError as e:
         typer.echo(f"ERROR: {e}", err=True)
         raise typer.Exit(1)
+
+    if json_output:
+        import json as _json
+        p = doc.provenance
+        typer.echo(_json.dumps({
+            "producer": p.source_model if p else None,
+            "model_version": p.model_version if p else None,
+            "timestamp_ms": p.timestamp_ms if p else None,
+            "human_oversight": p.human_oversight if p else None,
+            "risk_tier": p.risk_tier if p else None,
+            "model_card": p.model_card if p else None,
+            "training_data_hash": p.training_data_hash if p else None,
+            "energy_wh": p.energy_wh if p else None,
+            "signed": doc.signature is not None,
+            "signer": doc.signature.signer if doc.signature else None,
+        }, indent=2))
+        return
 
     if layer == "all":
         size = path.stat().st_size
@@ -284,6 +302,33 @@ def verify(
         raise typer.Exit(1)
     except Exception as e:
         typer.echo(f"ERROR  {e}", err=True)
+        raise typer.Exit(1)
+
+
+@app.command()
+def sidecar(
+    port: int = typer.Option(8000, "--port", "-p", help="Port to run the sidecar HTTP server on"),
+    upstream: str = typer.Option(None, "--upstream", "-u", help="Optional upstream LLM provider URL for reverse proxy mode"),
+    policy: Path = typer.Option(None, "--policy", help="Path to JSON policy file"),
+    keystore: Path = typer.Option(None, "--keystore", help="Path to SPIFKeyStore directory"),
+    crl_url: str = typer.Option(None, "--crl-url", help="Optional URL to fetch CRL from (overrides policy crl_check.endpoint)"),
+):
+    """Start the SPIF policy enforcement and key revocation HTTP sidecar."""
+    import logging
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+
+    from .sidecar import start_sidecar
+    typer.echo(f"Starting SPIF Sidecar on port {port}...")
+    try:
+        start_sidecar(
+            port=port,
+            upstream_url=upstream,
+            policy_path=policy,
+            keystore_dir=keystore,
+            crl_url=crl_url,
+        )
+    except Exception as e:
+        typer.echo(f"ERROR: {e}", err=True)
         raise typer.Exit(1)
 
 

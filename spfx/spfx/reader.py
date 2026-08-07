@@ -27,6 +27,7 @@ from .types import (
 )
 
 SUPPORTED_VERSIONS = {0x01, 0x02}
+MAX_DECOMPRESSED_SIZE = 10 * 1024 * 1024  # 10MB safety limit
 
 _CHUNK_STRUCT = struct.Struct(">BI")
 
@@ -134,6 +135,15 @@ def _decode_step(d: dict) -> TraceStep:
 # DAG validation
 # ---------------------------------------------------------------------------
 
+def _summarize_ids(ids: list[str], limit: int = 20) -> str:
+    """Truncate long ID lists in error messages — a cycle over N nodes would
+    otherwise dump all N IDs into the exception string/logs."""
+    if len(ids) <= limit:
+        return repr(ids)
+    shown = ", ".join(repr(i) for i in ids[:limit])
+    return f"[{shown}, ... {len(ids) - limit} more]"
+
+
 def _validate_trace_dag(steps: list[TraceStep]) -> None:
     """Topological sort to detect cycles and dangling deps."""
     # Check for duplicate IDs first
@@ -176,7 +186,7 @@ def _validate_trace_dag(steps: list[TraceStep]) -> None:
     if visited != len(steps):
         cycle_members = [sid for sid, deg in in_degree.items() if deg > 0]
         raise SPIFFormatError(
-            f"Cycle detected in trace DAG involving steps: {cycle_members}"
+            f"Cycle detected in trace DAG involving steps: {_summarize_ids(cycle_members)}"
         )
 
 
@@ -229,7 +239,7 @@ def _validate_payload_dag(nodes: list[Node]) -> None:
     if visited != len(nodes):
         cycle_members = [nid for nid, deg in in_degree.items() if deg > 0]
         raise SPIFFormatError(
-            f"Cycle detected in payload Node refs involving nodes: {cycle_members}"
+            f"Cycle detected in payload Node refs involving nodes: {_summarize_ids(cycle_members)}"
         )
 
 
@@ -261,12 +271,18 @@ def _cbor_load(data: bytes, chunk_name: str, *,
                 "pip install zstandard"
             ) from exc
         try:
-            data = zstd_mod.ZstdDecompressor().decompress(data)
+            data = zstd_mod.ZstdDecompressor().decompress(data, max_output_size=MAX_DECOMPRESSED_SIZE)
         except Exception as e:
             raise SPIFFormatError(f"zstd decompression failed in {chunk_name} chunk: {e}") from e
     elif compressed:
         try:
-            data = zlib.decompress(data)
+            dobj = zlib.decompressobj()
+            data = dobj.decompress(data, MAX_DECOMPRESSED_SIZE)
+            if dobj.unconsumed_tail or dobj.unused_data:
+                raise SPIFFormatError(
+                    f"zlib decompression failed in {chunk_name} chunk: "
+                    f"Decompressed data size exceeds safety limit of {MAX_DECOMPRESSED_SIZE} bytes"
+                )
         except zlib.error as e:
             raise SPIFFormatError(f"zlib decompression failed in {chunk_name} chunk: {e}") from e
     try:
@@ -430,6 +446,10 @@ class SPIFReader:
         for chunk_type, chunk_data in _iter_chunks(data, len(MAGIC) + 2):
             if chunk_type == CHUNK_CHECKSUM:
                 break
+            if chunk_type in chunks and (chunk_type <= 0x0F or chunk_type == CHUNK_CHECKSUM):
+                raise SPIFFormatError(
+                    f"Duplicate chunk of type 0x{chunk_type:02x} is not allowed"
+                )
             chunks.setdefault(chunk_type, []).append(chunk_data)
 
         # 4a. Detect compression from HEADER chunk (flags2 field)
@@ -470,6 +490,12 @@ class SPIFReader:
                 timestamp_ms=p.get("timestamp_ms", 0),
                 attempt=p.get("attempt", 0),
                 task_id=p.get("task_id", ""),
+                risk_tier=p.get("risk_tier", ""),
+                model_card=p.get("model_card", ""),
+                training_data_hash=p.get("training_data_hash", ""),
+                energy_wh=p.get("energy_wh", 0.0),
+                human_oversight=p.get("human_oversight", ""),
+                nonce=p.get("nonce", ""),
             )
 
         # 7. SEMANTIC — compressed if flag set
@@ -656,6 +682,10 @@ class SPIFReader:
                 )
             current_ms = int(time.time() * 1000)
             age_ms = current_ms - doc.provenance.timestamp_ms
+            if age_ms < -5000:
+                raise SPIFSignatureError(
+                    f"Signature is post-dated (in the future) by {-age_ms / 1000:.1f} seconds"
+                )
             if age_ms > self._max_signature_age_seconds * 1000:
                 raise SPIFSignatureError(
                     f"Signature expired: age is {age_ms / 1000:.1f} seconds, "
@@ -781,6 +811,10 @@ class SPIFReader:
             import time
             current_ms = int(time.time() * 1000)
             age_ms = current_ms - doc.provenance.timestamp_ms
+            if age_ms < -5000:
+                raise SPIFSignatureError(
+                    f"Signature is post-dated (in the future) by {-age_ms / 1000:.1f} seconds"
+                )
             if age_ms > limit_sec * 1000:
                 raise SPIFSignatureError(
                     f"Signature expired: age is {age_ms / 1000:.1f} seconds, "

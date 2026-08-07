@@ -18,8 +18,15 @@
 // Constants (must match sif/format.py exactly)
 // ---------------------------------------------------------------------------
 
-const MAGIC = new Uint8Array([0x89, 0x53, 0x49, 0x46, 0x0d, 0x0a, 0x1a, 0x0a]);
+const MAGIC = new Uint8Array([0x89, 0x53, 0x50, 0x49, 0x46, 0x0d, 0x0a, 0x1a, 0x0a]);
 const SUPPORTED_VERSIONS = new Set([0x01, 0x02]);
+const FLAG_COMPRESSED = 0b00000001;
+
+async function inflateZlib(data: Uint8Array): Promise<Uint8Array> {
+  const ds = new DecompressionStream("deflate");
+  const stream = new Blob([data]).stream().pipeThrough(ds);
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}
 
 const CHUNK_HEADER     = 0x00;
 const CHUNK_PROVENANCE = 0x01;
@@ -254,11 +261,11 @@ async function readSIF(data: Uint8Array): Promise<SIFDocument> {
   for (let i = 0; i < 8; i++) {
     if (data[i] !== MAGIC[i]) throw new Error(`Bad magic at byte ${i}: got ${data[i].toString(16)}`);
   }
-  if (!SUPPORTED_VERSIONS.has(data[8])) throw new Error(`Unsupported version: ${data[8]}`);
+  if (!SUPPORTED_VERSIONS.has(data[9])) throw new Error(`Unsupported version: ${data[9]}`);
 
   // 2. Find CHECKSUM chunk and validate
   let checksumOffset = -1;
-  let offset = 10;
+  let offset = 11;
   while (offset < data.length) {
     if (offset + 5 > data.length) throw new Error("Truncated chunk header");
     const chunkType = data[offset];
@@ -277,7 +284,7 @@ async function readSIF(data: Uint8Array): Promise<SIFDocument> {
 
   // 3. Parse chunks
   const chunks = new Map<number, Uint8Array>();
-  offset = 10;
+  offset = 11;
   while (offset < checksumOffset) {
     const chunkType = data[offset];
     const length = new DataView(data.buffer, data.byteOffset + offset + 1, 4).getUint32(0, false);
@@ -287,8 +294,17 @@ async function readSIF(data: Uint8Array): Promise<SIFDocument> {
 
   if (!chunks.has(CHUNK_PAYLOAD)) throw new Error("Missing required PAYLOAD chunk");
 
+  // 3a. Detect compression from HEADER chunk (flags2 field) — matches reader.py
+  let compressed = false;
+  if (chunks.has(CHUNK_HEADER)) {
+    const hdr = decodeCBOR(chunks.get(CHUNK_HEADER)!) as Record<string, unknown>;
+    const flags2 = (hdr.flags2 as number) ?? 0;
+    compressed = (flags2 & FLAG_COMPRESSED) !== 0;
+  }
+  const maybeDecompress = async (bytes: Uint8Array) => compressed ? await inflateZlib(bytes) : bytes;
+
   // 4. Decode payload
-  const payloadRaw = decodeCBOR(chunks.get(CHUNK_PAYLOAD)!) as Record<string, unknown>[];
+  const payloadRaw = decodeCBOR(await maybeDecompress(chunks.get(CHUNK_PAYLOAD)!)) as Record<string, unknown>[];
   const payload: SIFNode[] = payloadRaw.map(n => ({
     id: n.id as string,
     type: n.type as string,
@@ -300,7 +316,7 @@ async function readSIF(data: Uint8Array): Promise<SIFDocument> {
   // 5. Decode trace (optional; v0.2: {method, steps}, v0.1: bare array)
   const trace: TraceStep[] = [];
   if (chunks.has(CHUNK_TRACE)) {
-    const rawTrace = decodeCBOR(chunks.get(CHUNK_TRACE)!);
+    const rawTrace = decodeCBOR(await maybeDecompress(chunks.get(CHUNK_TRACE)!));
     const steps: Record<string, unknown>[] = Array.isArray(rawTrace)
       ? rawTrace as Record<string, unknown>[]
       : ((rawTrace as Record<string, unknown>).steps as Record<string, unknown>[]) ?? [];
@@ -331,14 +347,14 @@ async function readSIF(data: Uint8Array): Promise<SIFDocument> {
 
   let semanticDim: number | undefined;
   if (chunks.has(CHUNK_SEMANTIC)) {
-    const s = decodeCBOR(chunks.get(CHUNK_SEMANTIC)!) as Record<string, unknown>;
+    const s = decodeCBOR(await maybeDecompress(chunks.get(CHUNK_SEMANTIC)!)) as Record<string, unknown>;
     const emb = s.embedding as { values?: number[] } | number[];
     semanticDim = Array.isArray(emb) ? emb.length : (emb?.values?.length ?? 0);
   }
 
   let alternativeCount: number | undefined;
   if (chunks.has(CHUNK_ALTS)) {
-    const rawAlts = decodeCBOR(chunks.get(CHUNK_ALTS)!);
+    const rawAlts = decodeCBOR(await maybeDecompress(chunks.get(CHUNK_ALTS)!));
     const altsList: unknown[] = Array.isArray(rawAlts)
       ? rawAlts
       : ((rawAlts as Record<string, unknown>).alts as unknown[]) ?? [];

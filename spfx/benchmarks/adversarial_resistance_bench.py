@@ -25,9 +25,13 @@ import msgpack
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+import struct
+import zlib
+
 from spfx import SPIFDocument, SPIFWriter, SPIFReader, Node
 from spfx.types import Distribution, Provenance, TraceStep
 from spfx import SemanticLayer
+from spfx.format import MAGIC
 from benchmarks.bench_size import (
     doc_minimal, doc_medium, doc_with_trace, doc_full,
     to_json_dict, to_cbor_raw, to_msgpack_raw,
@@ -53,6 +57,59 @@ def _mutate(data: bytes, rng: random.Random, pos: int | None = None) -> bytes:
     idx = pos if pos is not None else rng.randint(0, len(arr) - 1)
     arr[idx] ^= rng.randint(1, 255)
     return bytes(arr)
+
+
+# ---------------------------------------------------------------------------
+# SPIF-specific structural attack classes (beyond generic single-byte flip)
+# ---------------------------------------------------------------------------
+
+def _mutate_magic_byte(data: bytes, rng: random.Random) -> bytes:
+    """Corrupt one byte inside the 9-byte MAGIC preamble."""
+    arr = bytearray(data)
+    idx = rng.randint(0, len(MAGIC) - 1)
+    arr[idx] ^= rng.randint(1, 255)
+    return bytes(arr)
+
+
+def _mutate_chunk_length_overflow(data: bytes, rng: random.Random) -> bytes:
+    """Rewrite the first chunk's length field to 0xFFFFFFFF."""
+    arr = bytearray(data)
+    offset = len(MAGIC) + 2
+    struct.pack_into(">I", arr, offset + 1, 0xFFFFFFFF)
+    return bytes(arr)
+
+
+def _inject_unknown_chunk(data: bytes, rng: random.Random) -> bytes:
+    """Splice an unknown chunk type (0x63/99), length 0, right after the header."""
+    offset = len(MAGIC) + 2
+    unknown_chunk = struct.pack(">BI", 0x63, 0)
+    return data[:offset] + unknown_chunk + data[offset:]
+
+
+_ZLIB_BOMB_CACHE: list[bytes] = []
+
+
+def _zlib_bomb_chunk(data: bytes, rng: random.Random) -> bytes:
+    """Replace the first chunk's body with a zlib bomb that decompresses past
+    MAX_DECOMPRESSED_SIZE — must be rejected by the safety limit, not silently
+    truncated or OOM'd."""
+    if not _ZLIB_BOMB_CACHE:
+        from spfx.reader import MAX_DECOMPRESSED_SIZE
+        bomb_plain = b"\x00" * (MAX_DECOMPRESSED_SIZE + 1024)
+        _ZLIB_BOMB_CACHE.append(zlib.compress(bomb_plain, level=9))
+    bomb = _ZLIB_BOMB_CACHE[0]
+    offset = len(MAGIC) + 2
+    chunk_type, orig_len = struct.unpack_from(">BI", data, offset)
+    new_chunk = struct.pack(">BI", chunk_type, len(bomb)) + bomb
+    return data[:offset] + new_chunk + data[offset + 5 + orig_len:]
+
+
+STRUCTURAL_ATTACKS = {
+    "magic_byte_corrupt": _mutate_magic_byte,
+    "chunk_length_overflow": _mutate_chunk_length_overflow,
+    "unknown_chunk_99": _inject_unknown_chunk,
+    "zlib_bomb": _zlib_bomb_chunk,
+}
 
 
 # ---------------------------------------------------------------------------
@@ -177,6 +234,19 @@ def run(n_docs: int = 100, mutations: int = 50, seed: int = 42,
 
     elapsed = _time.perf_counter() - t0
 
+    # Structural attack classes — SPIF-only, one pass per doc per attack kind.
+    structural = {name: FormatStats(name) for name in STRUCTURAL_ATTACKS}
+    for doc in corpus:
+        spif_data = _writer.encode(doc)
+        for name, attack_fn in STRUCTURAL_ATTACKS.items():
+            try:
+                mutated = attack_fn(spif_data, rng)
+                structural[name].record(_try_spif(mutated))
+            except Exception as e:
+                # attack construction itself blew up (e.g. MemoryError building
+                # the bomb plaintext) — count as detected, note the exception type.
+                structural[name].record(f"construct_error:{type(e).__name__}")
+
     result = BenchResult(
         n_docs=n_docs,
         mutations_per_doc=mutations,
@@ -186,9 +256,10 @@ def run(n_docs: int = 100, mutations: int = 50, seed: int = 42,
     )
 
     _print_results(result, fp_errors)
+    _print_structural(structural)
 
     if output:
-        _save_json(result, fp_errors, output)
+        _save_json(result, fp_errors, output, structural)
         print(f"\nResults saved to {output}")
 
     return result
@@ -222,7 +293,18 @@ def _print_results(r: BenchResult, fp_errors: int) -> None:
     print("  Detection rate = % of mutations that raised an error on decode/parse.")
 
 
-def _save_json(r: BenchResult, fp_errors: int, path: str) -> None:
+def _print_structural(structural: dict) -> None:
+    print("\n## Structural Attack Classes (SPIF only)\n")
+    hdr = f"{'Attack':<24} {'Docs':>6} {'Detected':>10} {'Silent':>8}  {'Outcomes'}"
+    print(hdr)
+    print("-" * 90)
+    for name, fs in structural.items():
+        et_sorted = sorted(fs.error_types.items(), key=lambda x: -x[1])
+        et_str = "  ".join(f"{k}={v}" for k, v in et_sorted)
+        print(f"{name:<24} {fs.total_mutations:>6} {fs.detected:>10} {fs.silent:>8}  {et_str}")
+
+
+def _save_json(r: BenchResult, fp_errors: int, path: str, structural: dict | None = None) -> None:
     data = {
         "n_docs": r.n_docs,
         "mutations_per_doc": r.mutations_per_doc,
@@ -241,6 +323,16 @@ def _save_json(r: BenchResult, fp_errors: int, path: str) -> None:
             for fs in r.formats
         ],
     }
+    if structural:
+        data["structural_attacks"] = {
+            name: {
+                "total": fs.total_mutations,
+                "detected": fs.detected,
+                "silent": fs.silent,
+                "error_types": fs.error_types,
+            }
+            for name, fs in structural.items()
+        }
     Path(path).write_text(json.dumps(data, indent=2))
 
 

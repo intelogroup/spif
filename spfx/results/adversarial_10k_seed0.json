@@ -1,0 +1,89 @@
+{
+  "n_docs": 100,
+  "mutations_per_doc": 100,
+  "seed": 0,
+  "elapsed_s": 0.192,
+  "false_positives": 0,
+  "formats": [
+    {
+      "name": "SPIF",
+      "total_mutations": 10000,
+      "detected": 10000,
+      "silent": 0,
+      "detection_rate": 1.0,
+      "error_types": {
+        "checksum": 9652,
+        "magic": 119,
+        "format": 217,
+        "version": 12
+      }
+    },
+    {
+      "name": "JSON",
+      "total_mutations": 10000,
+      "detected": 7721,
+      "silent": 2279,
+      "detection_rate": 0.7721,
+      "error_types": {
+        "silent": 2279,
+        "parse": 7721
+      }
+    },
+    {
+      "name": "CBOR",
+      "total_mutations": 10000,
+      "detected": 4662,
+      "silent": 5338,
+      "detection_rate": 0.4662,
+      "error_types": {
+        "parse": 4662,
+        "silent": 5338
+      }
+    },
+    {
+      "name": "MsgPack",
+      "total_mutations": 10000,
+      "detected": 4769,
+      "silent": 5231,
+      "detection_rate": 0.4769,
+      "error_types": {
+        "silent": 5231,
+        "parse": 4769
+      }
+    }
+  ],
+  "structural_attacks": {
+    "magic_byte_corrupt": {
+      "total": 100,
+      "detected": 100,
+      "silent": 0,
+      "error_types": {
+        "magic": 100
+      }
+    },
+    "chunk_length_overflow": {
+      "total": 100,
+      "detected": 100,
+      "silent": 0,
+      "error_types": {
+        "format": 100
+      }
+    },
+    "unknown_chunk_99": {
+      "total": 100,
+      "detected": 100,
+      "silent": 0,
+      "error_types": {
+        "checksum": 100
+      }
+    },
+    "zlib_bomb": {
+      "total": 100,
+      "detected": 100,
+      "silent": 0,
+      "error_types": {
+        "checksum": 100
+      }
+    }
+  }
+}

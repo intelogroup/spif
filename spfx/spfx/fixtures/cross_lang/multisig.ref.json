@@ -1,0 +1,16 @@
+{
+  "name": "multisig",
+  "filename": "multisig.spfx",
+  "sha256": "8460524ba37afa25216cb1eb64829b8772919722283627e1bd86871ec96a6922",
+  "bytes": 875,
+  "payload_count": 1,
+  "trace_count": 0,
+  "has_provenance": true,
+  "source_model": "claude-sonnet-4-6",
+  "features": {
+    "signed": true,
+    "signatures": 2,
+    "compressed": false,
+    "streaming": false
+  }
+}

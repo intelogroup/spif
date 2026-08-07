@@ -577,7 +577,30 @@ def _print_results(results: list[_FormatResult]) -> None:
     print("  GPG sign LOC is CLI commands, not Python.")
 
 
-def run(reps: int = REPS) -> None:
+def _to_json(results: list[_FormatResult]) -> dict:
+    return {
+        "formats": [
+            {
+                "name": r.name,
+                "plain_bytes": r.plain_bytes,
+                "signed_bytes": r.signed_bytes,
+                "overhead_bytes": r.signed_bytes - r.plain_bytes,
+                "sign_us": round(r.sign_us, 3),
+                "verify_us": round(r.verify_us, 3),
+                "loc_sign": r.loc_sign,
+                "loc_verify": r.loc_verify,
+                "verified_bit_flip": r.verified_bit_flip,
+                "unverified_bit_flip": r.unverified_bit_flip,
+                "verified_value_inject": r.verified_value_inject,
+                "unverified_value_inject": r.unverified_value_inject,
+                "verified_prov_spoof": r.verified_prov_spoof,
+            }
+            for r in results
+        ]
+    }
+
+
+def run(reps: int = REPS, output: str | None = None) -> None:
     doc = _make_doc()
     results: list[_FormatResult] = []
 
@@ -599,9 +622,14 @@ def run(reps: int = REPS) -> None:
 
     _print_results(results)
 
+    if output:
+        Path(output).write_text(json.dumps(_to_json(results), indent=2))
+        print(f"\nResults saved to {output}")
+
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--quick", action="store_true", help="Fewer reps for fast run")
+    ap.add_argument("--output", type=str, default=None, help="Save JSON results to this path")
     args = ap.parse_args()
-    run(reps=10 if args.quick else REPS)
+    run(reps=10 if args.quick else REPS, output=args.output)

@@ -1,0 +1,17 @@
+{
+  "name": "unknown_chunk",
+  "filename": "unknown_chunk.spfx",
+  "sha256": "39bec03c744547f493f75b04c751dd6aa1883022fdc1bfb3419fc7af47073172",
+  "bytes": 603,
+  "payload_count": 1,
+  "trace_count": 0,
+  "has_provenance": true,
+  "source_model": "claude-sonnet-4-6",
+  "features": {
+    "signed": false,
+    "signatures": 0,
+    "compressed": false,
+    "streaming": false,
+    "unknown_chunk": true
+  }
+}

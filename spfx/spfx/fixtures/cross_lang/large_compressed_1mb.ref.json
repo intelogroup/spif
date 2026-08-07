@@ -1,0 +1,17 @@
+{
+  "name": "large_compressed_1mb",
+  "filename": "large_compressed_1mb.spfx",
+  "sha256": "066c5aeb56b88773a35cc66945ea94eb5ed6f00f9b6b013e6f768219f5ba9f6e",
+  "bytes": 1593,
+  "payload_count": 1,
+  "trace_count": 0,
+  "has_provenance": true,
+  "source_model": "claude-sonnet-4-6",
+  "features": {
+    "signed": false,
+    "signatures": 0,
+    "compressed": true,
+    "streaming": false,
+    "large_payload": true
+  }
+}

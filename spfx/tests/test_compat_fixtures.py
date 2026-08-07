@@ -38,6 +38,7 @@ def test_fixture_manifest_matches_fixture_bytes(tmp_path):
         "tool_chain",
         "streaming",
         "resumed_streaming",
+        "large_compressed_1mb",
     }
 
     reader = SPIFReader()

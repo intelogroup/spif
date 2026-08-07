@@ -129,6 +129,12 @@ def compute_content_id(doc: SPIFDocument) -> str:
             "timestamp_ms":  p.timestamp_ms,
             "attempt":       p.attempt,
             "task_id":       p.task_id,
+            "risk_tier":     p.risk_tier,
+            "model_card":    p.model_card,
+            "training_data_hash": p.training_data_hash,
+            "energy_wh":     p.energy_wh,
+            "human_oversight": p.human_oversight,
+            "nonce":         p.nonce,
         }
     content = {
         "payload":    [_encode_node(n) for n in doc.payload],
@@ -226,6 +232,12 @@ class SPIFWriter:
                 "timestamp_ms":  p.timestamp_ms,
                 "attempt":       p.attempt,
                 "task_id":       p.task_id,
+                "risk_tier":     p.risk_tier,
+                "model_card":    p.model_card,
+                "training_data_hash": p.training_data_hash,
+                "energy_wh":     p.energy_wh,
+                "human_oversight": p.human_oversight,
+                "nonce":         p.nonce,
             }, fast=fast))
 
         # SEMANTIC chunk — compressed (embeddings are large)

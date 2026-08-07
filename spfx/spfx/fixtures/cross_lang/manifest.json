@@ -1,0 +1,157 @@
+{
+  "fixtures": [
+    {
+      "bytes": 562,
+      "features": {
+        "compressed": false,
+        "signatures": 0,
+        "signed": false,
+        "streaming": false
+      },
+      "filename": "minimal_unsigned.spfx",
+      "has_provenance": true,
+      "name": "minimal_unsigned",
+      "payload_count": 1,
+      "sha256": "d89bccbb23d32aa22263726e6bfe2cbfb958d48ed2649af56d8b0ae2ecbfcd97",
+      "source_model": "claude-sonnet-4-6",
+      "trace_count": 0
+    },
+    {
+      "bytes": 718,
+      "features": {
+        "compressed": false,
+        "signatures": 1,
+        "signed": true,
+        "streaming": false
+      },
+      "filename": "signed_single.spfx",
+      "has_provenance": true,
+      "name": "signed_single",
+      "payload_count": 1,
+      "sha256": "305d1df774d597a04af2fe9eaddb96ab3b9b3dae8a3728c19da471e1f2c6d32d",
+      "source_model": "claude-sonnet-4-6",
+      "trace_count": 0
+    },
+    {
+      "bytes": 875,
+      "features": {
+        "compressed": false,
+        "signatures": 2,
+        "signed": true,
+        "streaming": false
+      },
+      "filename": "multisig.spfx",
+      "has_provenance": true,
+      "name": "multisig",
+      "payload_count": 1,
+      "sha256": "8460524ba37afa25216cb1eb64829b8772919722283627e1bd86871ec96a6922",
+      "source_model": "claude-sonnet-4-6",
+      "trace_count": 0
+    },
+    {
+      "bytes": 785,
+      "features": {
+        "compressed": true,
+        "signatures": 0,
+        "signed": false,
+        "streaming": false
+      },
+      "filename": "compressed.spfx",
+      "has_provenance": true,
+      "name": "compressed",
+      "payload_count": 1,
+      "sha256": "ec7f5c5e625ff7244b7affca28eafb5ae79dffca7e587fb7f2b19c50ee8ada14",
+      "source_model": "claude-sonnet-4-6",
+      "trace_count": 2
+    },
+    {
+      "bytes": 603,
+      "features": {
+        "compressed": false,
+        "signatures": 0,
+        "signed": false,
+        "streaming": false,
+        "unknown_chunk": true
+      },
+      "filename": "unknown_chunk.spfx",
+      "has_provenance": true,
+      "name": "unknown_chunk",
+      "payload_count": 1,
+      "sha256": "39bec03c744547f493f75b04c751dd6aa1883022fdc1bfb3419fc7af47073172",
+      "source_model": "claude-sonnet-4-6",
+      "trace_count": 0
+    },
+    {
+      "bytes": 1027,
+      "features": {
+        "compressed": false,
+        "signatures": 0,
+        "signed": false,
+        "streaming": false,
+        "tool_nodes": true
+      },
+      "filename": "tool_chain.spfx",
+      "has_provenance": true,
+      "name": "tool_chain",
+      "payload_count": 3,
+      "sha256": "dd9a0b5926403c26c4fabfc0949d763d55e7499723e90092ab2198d8b85ff48c",
+      "source_model": "claude-sonnet-4-6",
+      "trace_count": 0
+    },
+    {
+      "bytes": 1593,
+      "features": {
+        "compressed": true,
+        "large_payload": true,
+        "signatures": 0,
+        "signed": false,
+        "streaming": false
+      },
+      "filename": "large_compressed_1mb.spfx",
+      "has_provenance": true,
+      "name": "large_compressed_1mb",
+      "payload_count": 1,
+      "sha256": "066c5aeb56b88773a35cc66945ea94eb5ed6f00f9b6b013e6f768219f5ba9f6e",
+      "source_model": "claude-sonnet-4-6",
+      "trace_count": 0
+    },
+    {
+      "bytes": 576,
+      "features": {
+        "compressed": false,
+        "partial_tokens": 3,
+        "signatures": 0,
+        "signed": false,
+        "streaming": true
+      },
+      "filename": "streaming.spfx",
+      "has_provenance": true,
+      "name": "streaming",
+      "payload_count": 1,
+      "sha256": "f7bc8bfd73ef37f8b17efb326ba18bf275400a6f84600b6be42ac40996d47812",
+      "source_model": "claude-sonnet-4-6",
+      "trace_count": 0
+    },
+    {
+      "bytes": 593,
+      "features": {
+        "compressed": false,
+        "resume_seq": 1,
+        "resumed": true,
+        "signatures": 0,
+        "signed": false,
+        "streaming": true
+      },
+      "filename": "resumed_streaming.spfx",
+      "has_provenance": true,
+      "name": "resumed_streaming",
+      "payload_count": 1,
+      "sha256": "e8bd5c71b24b4a426fc36d300792d2c1b81179cce3e2666d3ae805c5785ad49c",
+      "source_model": "claude-sonnet-4-6",
+      "trace_count": 0
+    }
+  ],
+  "generated_at_ms": 1712000000000,
+  "generated_by": "compat/generate_compat_fixtures.py",
+  "version": 1
+}

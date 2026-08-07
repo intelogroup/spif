@@ -1,0 +1,64 @@
+{
+  "formats": [
+    {
+      "name": "SPIF",
+      "plain_bytes": 1374,
+      "signed_bytes": 1374,
+      "overhead_bytes": 0,
+      "sign_us": 121.43,
+      "verify_us": 165.193,
+      "loc_sign": 8,
+      "loc_verify": 1,
+      "verified_bit_flip": true,
+      "unverified_bit_flip": true,
+      "verified_value_inject": true,
+      "unverified_value_inject": true,
+      "verified_prov_spoof": true
+    },
+    {
+      "name": "JWS-Ed25519",
+      "plain_bytes": 623,
+      "signed_bytes": 961,
+      "overhead_bytes": 338,
+      "sign_us": 66.495,
+      "verify_us": 148.436,
+      "loc_sign": 3,
+      "loc_verify": 2,
+      "verified_bit_flip": true,
+      "unverified_bit_flip": true,
+      "verified_value_inject": true,
+      "unverified_value_inject": false,
+      "verified_prov_spoof": true
+    },
+    {
+      "name": "HMAC-SHA256",
+      "plain_bytes": 623,
+      "signed_bytes": 655,
+      "overhead_bytes": 32,
+      "sign_us": 1.13,
+      "verify_us": 1.105,
+      "loc_sign": 2,
+      "loc_verify": 2,
+      "verified_bit_flip": true,
+      "unverified_bit_flip": false,
+      "verified_value_inject": true,
+      "unverified_value_inject": false,
+      "verified_prov_spoof": null
+    },
+    {
+      "name": "GPG",
+      "plain_bytes": 623,
+      "signed_bytes": 888,
+      "overhead_bytes": 265,
+      "sign_us": 9570.842,
+      "verify_us": 8240.025,
+      "loc_sign": 1,
+      "loc_verify": 1,
+      "verified_bit_flip": true,
+      "unverified_bit_flip": false,
+      "verified_value_inject": true,
+      "unverified_value_inject": false,
+      "verified_prov_spoof": true
+    }
+  ]
+}

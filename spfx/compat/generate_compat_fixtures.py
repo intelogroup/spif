@@ -271,6 +271,17 @@ def generate_fixtures(output_dir: str | Path | None = None) -> dict[str, object]
         ),
     ]
 
+    large_doc = SPIFDocument(
+        payload=[Node(id="large", type="text", value="x" * (1024 * 1024), confidence=_dist(0.9))],
+        provenance=_provenance(),
+    )
+    fixtures.append((
+        "large_compressed_1mb",
+        SPIFWriter(compress=True).encode(large_doc),
+        large_doc,
+        {"signed": False, "signatures": 0, "compressed": True, "streaming": False, "large_payload": True},
+    ))
+
     stream_tokens = ["hello ", "streaming ", "world"]
     stream_bytes = _stream_doc(stream_doc, stream_tokens)
     fixtures.append((

@@ -1,0 +1,26 @@
+=== Test 4: DAG DoS Safety (N=10000) ===
+
+Cycle position sweep at N=10000:
+  [N=10000 cycle@start] result=SPIFFormatError: Cycle detected in trace DAG involving steps: ['s1', 's2', 's3', 's4', 's5', 's6', 's7', 's8', 's9', 's10', 's11', 's12', 's13', 's14', 's15', 's16', 's17', 's18', 's19', 's20', ... 9979 more]  time=26.07ms
+  [N=10000 cycle@middle] result=SPIFFormatError: Cycle detected in trace DAG involving steps: ['s5000', 's5001', 's5002', 's5003', 's5004', 's5005', 's5006', 's5007', 's5008', 's5009', 's5010', 's5011', 's5012', 's5013', 's5014', 's5015', 's5016', 's5017', 's5018', 's5019', ... 4980 more]  time=29.37ms
+  [N=10000 cycle@end] result=SPIFFormatError: Cycle detected in trace DAG involving steps: ['s0', 's1', 's2', 's3', 's4', 's5', 's6', 's7', 's8', 's9', 's10', 's11', 's12', 's13', 's14', 's15', 's16', 's17', 's18', 's19', ... 9980 more]  time=25.72ms
+
+Acyclic decode scaling:
+  N=  1000 -> 2.31ms  (129.9 KB)
+  N= 10000 -> 27.43ms  (1316.4 KB)
+  N= 50000 -> 207.50ms  (6668.0 KB)
+
+1k->10k (10x nodes): 11.9x time (O(N) expects ~10x)
+1k->50k (50x nodes): 89.7x time (O(N) expects ~50x)
+
+50k-node cyclic chain (end position):
+  [N=50000 cycle@end] result=SPIFFormatError: Cycle detected in trace DAG involving steps: ['s0', 's1', 's2', 's3', 's4', 's5', 's6', 's7', 's8', 's9', 's10', 's11', 's12', 's13', 's14', 's15', 's16', 's17', 's18', 's19', ... 49980 more]  time=214.47ms
+
+=== Verdict ===
+Cycle@start detected, no overflow:    PASS (26.07ms)
+Cycle@middle detected, no overflow:    PASS (29.37ms)
+Cycle@end detected, no overflow:    PASS (25.72ms)
+O(N) scaling (1k/10k/50k):           PASS (10x->11.9x, 50x->89.7x)
+50k-node cycle detected at scale:    PASS (RSS delta: 6736)
+
+TEST 4 OVERALL: PASS

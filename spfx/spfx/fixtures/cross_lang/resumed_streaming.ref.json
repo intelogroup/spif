@@ -1,0 +1,18 @@
+{
+  "name": "resumed_streaming",
+  "filename": "resumed_streaming.spfx",
+  "sha256": "e8bd5c71b24b4a426fc36d300792d2c1b81179cce3e2666d3ae805c5785ad49c",
+  "bytes": 593,
+  "payload_count": 1,
+  "trace_count": 0,
+  "has_provenance": true,
+  "source_model": "claude-sonnet-4-6",
+  "features": {
+    "signed": false,
+    "signatures": 0,
+    "compressed": false,
+    "streaming": true,
+    "resumed": true,
+    "resume_seq": 1
+  }
+}

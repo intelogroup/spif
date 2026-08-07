@@ -1,0 +1,17 @@
+{
+  "name": "tool_chain",
+  "filename": "tool_chain.spfx",
+  "sha256": "dd9a0b5926403c26c4fabfc0949d763d55e7499723e90092ab2198d8b85ff48c",
+  "bytes": 1027,
+  "payload_count": 3,
+  "trace_count": 0,
+  "has_provenance": true,
+  "source_model": "claude-sonnet-4-6",
+  "features": {
+    "signed": false,
+    "signatures": 0,
+    "compressed": false,
+    "streaming": false,
+    "tool_nodes": true
+  }
+}

@@ -32,6 +32,7 @@ from .reader import (
     SPIFChecksumError, SPIFSignatureError, SPIFFormatError,
 )
 from .renderer import SPIFRenderer
+from .replay import ReplayGuard, SPIFReplayError
 from .exporters.lossless_json import to_lossless_json, from_lossless_json
 from .exporters.msgpack import to_msgpack, from_msgpack
 from .crypto import (
@@ -50,6 +51,7 @@ __all__ = [
     "SPIFKeyStore", "verify_with_keystore",
     "SPIFError", "SPIFMagicError", "SPIFVersionError",
     "SPIFChecksumError", "SPIFSignatureError", "SPIFFormatError",
+    "ReplayGuard", "SPIFReplayError",
     "NODE_TEXT", "NODE_CODE", "NODE_FACT", "NODE_CONCEPT", "NODE_MULTIMODAL",
     "NODE_TOOL_CALL", "NODE_TOOL_RESULT",
     "DIST_SEM_FACTUAL", "DIST_SEM_STABILITY", "DIST_SEM_EPISTEMIC", "DIST_SEM_TOKEN_PROB",

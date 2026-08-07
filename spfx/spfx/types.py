@@ -109,6 +109,13 @@ class Provenance:
     model_version: str = ""
     attempt: int = 0          # v1.1+: which retry attempt this is (0 = first)
     task_id: str = ""         # v1.1+: stable ID for the parent task/run
+    risk_tier: str = ""       # v1.1+: EU AI Act risk tier (minimal/limited/high/unacceptable)
+    model_card: str = ""      # v1.1+: URI to model card / training data registry
+    training_data_hash: str = ""  # v1.1+: stable hash of the dataset training manifest or weights base
+    energy_wh: float = 0.0        # v1.1+: total energy consumed during generation in Watt-hours
+    human_oversight: str = ""     # v1.1+: EU AI Act Art. 14 — "none"/"human-in-loop"/"human-on-loop"
+    nonce: str = ""                # v1.1+: unique per-signing value; verifiers use this for replay rejection
+
 
 
 @dataclass

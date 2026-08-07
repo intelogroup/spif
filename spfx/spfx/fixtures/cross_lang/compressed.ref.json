@@ -1,0 +1,16 @@
+{
+  "name": "compressed",
+  "filename": "compressed.spfx",
+  "sha256": "ec7f5c5e625ff7244b7affca28eafb5ae79dffca7e587fb7f2b19c50ee8ada14",
+  "bytes": 785,
+  "payload_count": 1,
+  "trace_count": 2,
+  "has_provenance": true,
+  "source_model": "claude-sonnet-4-6",
+  "features": {
+    "signed": false,
+    "signatures": 0,
+    "compressed": true,
+    "streaming": false
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "name": "streaming",
+  "filename": "streaming.spfx",
+  "sha256": "f7bc8bfd73ef37f8b17efb326ba18bf275400a6f84600b6be42ac40996d47812",
+  "bytes": 576,
+  "payload_count": 1,
+  "trace_count": 0,
+  "has_provenance": true,
+  "source_model": "claude-sonnet-4-6",
+  "features": {
+    "signed": false,
+    "signatures": 0,
+    "compressed": false,
+    "streaming": true,
+    "partial_tokens": 3
+  }
+}

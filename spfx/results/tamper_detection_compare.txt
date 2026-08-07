@@ -1,0 +1,33 @@
+Building SPIF results...
+Building JWS results...
+Building HMAC results...
+Building GPG results (skipped if gpg not available)...
+
+## Tamper Detection Comparison
+
+### Detection rates
+
+Format           Bit flip (verified)      Bit flip (unverified)    Value inject (verified)  Value inject (unverified) Prov spoof (verified)   
+----------------------------------------------------------------------------------------------------------------------------------------------
+SPIF             DETECTED                 DETECTED                 DETECTED                 DETECTED                 DETECTED                
+JWS-Ed25519      DETECTED                 DETECTED                 DETECTED                 silent                   DETECTED                
+HMAC-SHA256      DETECTED                 silent                   DETECTED                 silent                   N/A                     
+GPG              DETECTED                 silent                   DETECTED                 silent                   DETECTED                
+
+### Overhead metrics
+
+Format            Plain B  Signed B  Overhead B    Sign μs   Verify μs  Sign LOC  Verify LOC
+--------------------------------------------------------------------------------------------
+SPIF                 1374      1374          +0     121.4μ      165.2μ         8           1
+JWS-Ed25519           623       961        +338      66.5μ      148.4μ         3           2
+HMAC-SHA256           623       655         +32       1.1μ        1.1μ         2           2
+GPG                   623       888        +265    9570.8μ     8240.0μ         1           1
+
+Notes:
+  'unverified' = decode without calling verify() — shows what happens when
+  developers forget to verify (common mistake). SPIF checksum fires on decode,
+  JWS/HMAC are silent unless you explicitly call verify.
+  HMAC provenance spoof is N/A: symmetric key means re-signing is trivial.
+  GPG sign LOC is CLI commands, not Python.
+
+Results saved to results/tamper_detection_compare.json

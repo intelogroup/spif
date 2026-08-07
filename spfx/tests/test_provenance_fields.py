@@ -55,6 +55,31 @@ class TestProvenanceNewFields:
         doc2 = _doc_with_provenance(task_id="task-b")
         assert compute_content_id(doc1) != compute_content_id(doc2)
 
+    def test_risk_tier_and_model_card_roundtrip(self):
+        doc = _doc_with_provenance(risk_tier="high", model_card="https://modelregistry.example.com/cards/1")
+        out = _write_read(doc)
+        assert out.provenance.risk_tier == "high"
+        assert out.provenance.model_card == "https://modelregistry.example.com/cards/1"
+
+    def test_risk_tier_and_model_card_defaults(self):
+        doc = _doc_with_provenance()
+        out = _write_read(doc)
+        assert out.provenance.risk_tier == ""
+        assert out.provenance.model_card == ""
+
+    def test_risk_tier_included_in_content_id(self):
+        from spfx import compute_content_id
+        doc1 = _doc_with_provenance(risk_tier="minimal")
+        doc2 = _doc_with_provenance(risk_tier="high")
+        assert compute_content_id(doc1) != compute_content_id(doc2)
+
+    def test_model_card_included_in_content_id(self):
+        from spfx import compute_content_id
+        doc1 = _doc_with_provenance(model_card="http://ref/1")
+        doc2 = _doc_with_provenance(model_card="http://ref/2")
+        assert compute_content_id(doc1) != compute_content_id(doc2)
+
+
 
 class TestDocumentStatus:
     def _tool_result_node(self, *, is_error: bool) -> Node:

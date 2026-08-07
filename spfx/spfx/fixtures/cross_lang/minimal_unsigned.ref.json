@@ -1,0 +1,16 @@
+{
+  "name": "minimal_unsigned",
+  "filename": "minimal_unsigned.spfx",
+  "sha256": "d89bccbb23d32aa22263726e6bfe2cbfb958d48ed2649af56d8b0ae2ecbfcd97",
+  "bytes": 562,
+  "payload_count": 1,
+  "trace_count": 0,
+  "has_provenance": true,
+  "source_model": "claude-sonnet-4-6",
+  "features": {
+    "signed": false,
+    "signatures": 0,
+    "compressed": false,
+    "streaming": false
+  }
+}
