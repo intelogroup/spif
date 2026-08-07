@@ -2,6 +2,8 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Format Specification](https://img.shields.io/badge/Spec-v0.2--Active-success)](spfx/SPEC.md)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/intelogroup/spif/badge)](https://scorecard.dev/viewer/?uri=github.com/intelogroup/spif)
+[![CodeQL](https://github.com/intelogroup/spif/actions/workflows/codeql.yml/badge.svg)](https://github.com/intelogroup/spif/actions/workflows/codeql.yml)
 
 **SPIF** (Semantic Provenance Inference Format) is an open-standard binary serialization format designed for structured, cryptographically signed, and tamper-evident AI outputs. SPIF captures the full lineage of AI inference—including prompts, responses, reasoning traces, uncertainty distributions, tool calls, and multiple signatures—ensuring high auditability and trust in agentic workflows.
 
@@ -59,6 +61,10 @@ INVALID  signature verification failed for sample_tampered.spif
 $ python3 -m spfx.cli validate sample_corrupted.spif
 FAIL  sample_corrupted.spif: Checksum mismatch
 ```
+
+**Using the web verifier (no install, wasm, nothing uploaded):**
+
+https://intelogroup.github.io/spif/ — drop a `.spif` file, get signature status and full decoded JSON in-browser. Source in [`/verify`](verify/).
 
 **Using Rust Core Viewer (`spif-rust`):**
 ```bash
