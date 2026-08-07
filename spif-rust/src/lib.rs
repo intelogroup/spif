@@ -5,6 +5,9 @@ pub mod streaming;
 pub mod types;
 pub mod writer;
 
+#[cfg(target_arch = "wasm32")]
+pub mod wasm;
+
 pub use reader::SPIFReader;
 pub use renderer::SPIFRenderer;
 pub use types::*;
