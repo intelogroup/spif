@@ -1,0 +1,27 @@
+name: spif-rust test
+
+on:
+  push:
+    paths:
+      - "spif-rust/**"
+      - ".github/workflows/spif-rust-test.yml"
+  pull_request:
+    paths:
+      - "spif-rust/**"
+      - ".github/workflows/spif-rust-test.yml"
+
+defaults:
+  run:
+    working-directory: spif-rust
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install cbor2 cryptography
+      - run: cargo test --release
