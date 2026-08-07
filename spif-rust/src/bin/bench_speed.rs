@@ -145,6 +145,8 @@ fn doc_full() -> SPIFDocument {
             model_version: "".to_string(),
             attempt: 0,
             task_id: "".to_string(),
+            risk_tier: "".to_string(),
+            model_card: "".to_string(),
         }),
         semantic: Some(SemanticLayer {
             embedding: (0..128).map(|i| (i as f32) / 100.0).collect(),

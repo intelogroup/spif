@@ -1,3 +1,4 @@
+pub mod ffi;
 pub mod reader;
 pub mod renderer;
 pub mod streaming;

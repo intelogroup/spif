@@ -153,6 +153,10 @@ pub struct Provenance {
     pub attempt: u32,
     #[serde(default)]
     pub task_id: String,
+    #[serde(default)]
+    pub risk_tier: String,
+    #[serde(default)]
+    pub model_card: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
