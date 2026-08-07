@@ -19,7 +19,7 @@
 - **💥 Denial-of-Service / Memory Exhaustion Protection**: Early stream-offset validation preventing pre-allocation buffer out-of-memory exploits (CVE-2026-34665 style) on truncated or malicious payloads.
 - **📊 Rich Metadata & Lineage**: Full support for `task_info` (status, total execution duration, tool counts, error counts) and `provenance` retries.
 - **Cross-Language Fidelity**: Complete feature parity and validated interoperability between Python, TypeScript/Node.js, and Rust.
-- **Visual Analytics**: Interactive, desktop-grade glassmorphic visualizer for audit trails and probability distributions.
+- **Web Verifier**: In-browser, wasm-based `.spif` verification — nothing uploaded. See [`/verify`](verify/).
 
 ---
 
@@ -32,7 +32,7 @@ This repository is structured as a monorepo, containing all components of the SP
 | [`/spfx`](spfx/) | **Core Python & CLI** | Python 3.9+ | Main specification (`SPEC.md`), reference compiler, CLI generator, and LLM integrations. |
 | [`/spfx/packages/spfx-js`](spfx/packages/spfx-js/) | **JS/TS Client Library** | TypeScript | High-performance isomorphic client library for Node.js, Web, and Edge runtimes. |
 | [`/spif-rust`](spif-rust/) | **Rust Engine & CLI** | Rust (2021) | Ultra-fast native core decoder, multi-signer validator, and high-throughput batch signature verifier. |
-| [`/spif-desktop`](spif-desktop/) | **SPIF Desktop Viewer** | Tauri, TS, React | A beautiful cross-platform desktop visualizer for inspecting reasoning traces, signatures, and distribution charts. |
+| [`/verify`](verify/) | **Web Verifier** | Rust/wasm | Static, in-browser `.spif` verifier — no upload, no GUI viewer, ghost artifact stays binary-only. Live at [intelogroup.github.io/spif](https://intelogroup.github.io/spif/). |
 
 ---
 
@@ -114,14 +114,6 @@ Build the ultra-fast Rust encoder/decoder or CLI tool:
 cd spif-rust
 cargo build --release
 cargo test
-```
-
-### 4. Desktop Visualizer (`spif-desktop`)
-Launch the interactive desktop inspection interface:
-```bash
-cd spif-desktop
-npm install
-npm run dev
 ```
 
 ---
