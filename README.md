@@ -128,5 +128,7 @@ SPIF implements eager signature verification under **Strict Mode**. Any modifica
 
 ## License
 
-This project is licensed under the **MIT License**. See the [LICENSE](LICENSE) file for details.
+Most of this monorepo (`spfx`, `verify`, docs) is licensed under the **MIT License** — see [LICENSE](LICENSE).
+
+[`/spif-rust`](spif-rust/) is licensed separately under **Apache-2.0** — see [spif-rust/LICENSE](spif-rust/LICENSE).
 
