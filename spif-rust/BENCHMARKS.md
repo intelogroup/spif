@@ -10,6 +10,10 @@ Honest state as of this release. Numbers below were actually run, not estimated.
 - **cargo audit**: 0 outstanding advisories (2 HIGH-severity RustSec advisories fixed via dependency upgrade during this release cycle).
 - **cargo test**: 25 passed, 0 failed, 2 ignored.
 
+## Known, deferred to rc3
+
+- 2 pre-existing Dependabot alerts (1 moderate, 1 low), unrelated to the quick-xml 0.36→0.41 fix that cleared 2 HIGH advisories this release. Not blocking rc2 launch.
+
 ## WEAK — known gaps, not blockers for rc1
 
 - **OpenSSF Scorecard**: 1.5/10 aggregate. No branch protection, no pinned dependencies, no token-permission hardening yet. Targeted for v1.0.
