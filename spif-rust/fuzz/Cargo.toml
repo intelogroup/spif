@@ -1,0 +1,13 @@
+[package]
+name = "spif-fuzz"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+afl = "0.15"
+spif_rust = { package = "spif-rust", path = ".." }
+
+[[bin]]
+name = "fuzz_read"
+path = "src/fuzz_read.rs"

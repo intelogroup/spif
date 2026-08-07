@@ -53,3 +53,10 @@ path = "src/bin/bench_speed.rs"
 name = "spif-sidecar"
 path = "src/bin/sidecar.rs"
 
+[[bin]]
+name = "crypto_conformance"
+path = "src/bin/crypto_conformance.rs"
+
+[[bin]]
+name = "tamper_detect"
+path = "src/bin/tamper_detect.rs"

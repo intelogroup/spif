@@ -1,1 +1,9 @@
 /target
+/fuzz/out/
+/fuzz/target/
+/fuzz-libfuzzer/target/
+/fuzz-libfuzzer/corpus_strict/
+/fuzz-libfuzzer/artifacts/
+/fuzz-libfuzzer/corpus/
+/fuzz/in/
+/fuzz/graphify-out/

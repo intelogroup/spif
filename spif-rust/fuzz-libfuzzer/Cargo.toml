@@ -1,0 +1,28 @@
+[package]
+name = "spif-rust-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+
+[dependencies.spif-rust]
+path = ".."
+
+[[bin]]
+name = "fuzz_read"
+path = "fuzz_targets/fuzz_read.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_read_strict"
+path = "fuzz_targets/fuzz_read_strict.rs"
+test = false
+doc = false
+bench = false
