@@ -54,7 +54,6 @@ Pass `capture_reasoning=False` to suppress this trace step.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import math
 import time
@@ -63,6 +62,7 @@ from typing import Any
 
 import time as _time_mod
 from typing import Callable
+from ._common import input_hash as _input_hash, build_provenance as _build_provenance
 from ..format import NODE_TEXT, NODE_TOOL_CALL, NODE_TOOL_RESULT
 from ..streaming import SPIFStreamWriter
 from ..types import (
@@ -75,28 +75,6 @@ _DEFAULT_CONFIDENCE = Distribution(
     shape="gaussian",
     semantics="output_stability",
 )
-
-
-def _input_hash(messages: list[dict[str, Any]]) -> str:
-    canonical = json.dumps(messages, sort_keys=True, ensure_ascii=False)
-    return hashlib.sha256(canonical.encode()).hexdigest()
-
-
-def _build_provenance(
-    model: str,
-    messages: list[dict[str, Any]],
-    temperature: float,
-    timestamp_ms: int,
-    context_ref: str,
-) -> Provenance:
-    return Provenance(
-        source_model=model,
-        model_version=model,
-        temperature=temperature,
-        input_hash=_input_hash(messages),
-        context_ref=context_ref,
-        timestamp_ms=timestamp_ms,
-    )
 
 
 def _confidence_from_logprobs(probs: list[float]) -> Distribution:

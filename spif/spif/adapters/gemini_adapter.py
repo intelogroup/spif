@@ -62,14 +62,13 @@ Pass `capture_thinking=False` to suppress this.
 
 from __future__ import annotations
 
-import hashlib
-import json
 import math
 import time
 import warnings
 from collections.abc import Generator, AsyncGenerator
 from typing import Any
 
+from ._common import input_hash as _input_hash, build_provenance as _build_provenance
 from ..format import NODE_TEXT
 from ..streaming import SPIFStreamWriter
 from ..types import (
@@ -102,28 +101,6 @@ def _make_legacy_generation_config(config: dict[str, Any]) -> Any:
         warnings.simplefilter("ignore", FutureWarning)
         import google.generativeai as genai  # type: ignore[import]
     return genai.GenerationConfig(**config)
-
-
-def _input_hash(messages: list[dict[str, Any]]) -> str:
-    canonical = json.dumps(messages, sort_keys=True, ensure_ascii=False)
-    return hashlib.sha256(canonical.encode()).hexdigest()
-
-
-def _build_provenance(
-    model: str,
-    messages: list[dict[str, Any]],
-    temperature: float,
-    timestamp_ms: int,
-    context_ref: str,
-) -> Provenance:
-    return Provenance(
-        source_model=model,
-        model_version=model,
-        temperature=temperature,
-        input_hash=_input_hash(messages),
-        context_ref=context_ref,
-        timestamp_ms=timestamp_ms,
-    )
 
 
 def _confidence_from_logprobs(probs: list[float]) -> Distribution:
