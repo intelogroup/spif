@@ -76,10 +76,10 @@ replayed/stale provenance, dependency vulnerabilities in the crate itself.
 - 2 Dependabot alerts (1 moderate, 1 low) are open and unrelated to the
   above; tracked for the next release, not fixed yet — see
   `BENCHMARKS.md`.
-- `spif-viewer inspect --json|--pretty` (`src/main.rs`) gives a
-  machine-readable dump for tooling that wants to cross-check a `.spif`
-  against external provenance metadata; it does not itself perform
-  cross-artifact binding checks.
+- The web verifier (`verify/`, wasm-based) gives a decoded JSON dump for
+  tooling that wants to cross-check a `.spif` against external provenance
+  metadata; it does not itself perform cross-artifact binding checks. There
+  is no native viewer/desktop binary.
 
 **Status: dependency-level auditing only. No cross-artifact binding
 mechanism exists yet — not claimed here.**
