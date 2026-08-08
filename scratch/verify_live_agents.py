@@ -4,12 +4,12 @@ import json
 import base64
 from pathlib import Path
 
-# Add spfx path to sys
-sys.path.insert(0, str(Path(__file__).parent.parent / "spfx"))
+# Add spif path to sys
+sys.path.insert(0, str(Path(__file__).parent.parent / "spif"))
 
-from spfx import SPIFReader, SPIFWriter, Signature
-from spfx.adapters.openai_adapter import OpenAISPIFAdapter
-from spfx.crypto import derive_key_from_mnemonic
+from spif import SPIFReader, SPIFWriter, Signature
+from spif.adapters.openai_adapter import OpenAISPIFAdapter
+from spif.crypto import derive_key_from_mnemonic
 
 def run_simulation():
     print("=" * 70)

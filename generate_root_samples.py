@@ -4,12 +4,12 @@ import hashlib
 import struct
 import base64
 
-# Insert spfx path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "spfx"))
+# Insert spif path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "spif"))
 
-from spfx import SPIFDocument, Node, NodeRef, Distribution, TraceStep, TaskInfo, Provenance, Signature, SPIFWriter, SPIFReader
-from spfx.crypto import derive_key_from_mnemonic
-from spfx.format import CHUNK_CHECKSUM
+from spif import SPIFDocument, Node, NodeRef, Distribution, TraceStep, TaskInfo, Provenance, Signature, SPIFWriter, SPIFReader
+from spif.crypto import derive_key_from_mnemonic
+from spif.format import CHUNK_CHECKSUM
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 
 def create_samples():
