@@ -202,7 +202,7 @@ For bug reports, feature requests, and security issues:
 
 ## License
 
-MIT — See LICENSE file.
+Apache-2.0 — See LICENSE file.
 
 ---
 

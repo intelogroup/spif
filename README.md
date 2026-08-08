@@ -1,6 +1,6 @@
 # SPIF: Semantic Provenance Inference Format
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Format Specification](https://img.shields.io/badge/Spec-v0.2--Active-success)](spif/SPEC.md)
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/intelogroup/spif/badge)](https://scorecard.dev/viewer/?uri=github.com/intelogroup/spif)
 [![CodeQL](https://github.com/intelogroup/spif/actions/workflows/codeql.yml/badge.svg)](https://github.com/intelogroup/spif/actions/workflows/codeql.yml)
@@ -107,7 +107,5 @@ SPIF implements eager signature verification under **Strict Mode**. Any modifica
 
 ## License
 
-Most of this monorepo (`spif`, `verify`, docs) is licensed under the **MIT License** — see [LICENSE](LICENSE).
-
-[`/spif-rust`](spif-rust/) is licensed separately under **Apache-2.0** — see [spif-rust/LICENSE](spif-rust/LICENSE).
+This monorepo is licensed under **Apache-2.0** — see [LICENSE](LICENSE).
 

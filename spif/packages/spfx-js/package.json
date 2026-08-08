@@ -20,7 +20,7 @@
     "ai", "llm", "provenance", "signatures", "audit", "binary-format",
     "agents", "compliance", "ed25519", "tamper-evident"
   ],
-  "license": "MIT",
+  "license": "Apache-2.0",
   "author": "Brainex <hello@brainex.ai>",
   "repository": {
     "type": "git",

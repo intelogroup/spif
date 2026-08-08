@@ -203,4 +203,4 @@ Cryptographic implementation audit: [`CRYPTO_AUDIT.md`](CRYPTO_AUDIT.md)
 
 ## License
 
-MIT
+Apache-2.0

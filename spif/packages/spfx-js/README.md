@@ -129,4 +129,4 @@ npm install spif-js  # Node.js reader
 
 ## License
 
-MIT
+Apache-2.0

@@ -7,7 +7,7 @@ name = "spif"
 version = "1.0.0"
 description = "Semantic Provenance Inference Format — a binary file format for AI outputs with provenance, uncertainty, and signatures"
 readme = "README.md"
-license = {text = "MIT"}
+license = {text = "Apache-2.0"}
 requires-python = ">=3.9"
 authors = [
     {name = "Brainex", email = "hello@brainex.ai"},
@@ -16,7 +16,7 @@ keywords = ["ai", "llm", "binary-format", "provenance", "signatures", "audit", "
 classifiers = [
     "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
