@@ -34,6 +34,14 @@ cargo test
 4. Don't commit generated output (`spif/graphify-out/`, `spif/results/*.txt`, build artifacts) — these are gitignored.
 5. Open a PR against `main`. CI (Rust tests, CodeQL) must pass before merge.
 
+## Requirements for an acceptable PR
+
+- Tests pass locally (`cargo test` / `pytest`) and in CI — a PR without passing checks won't be merged.
+- New behavior gets a test; bug fixes get a regression test where practical.
+- No unrelated changes bundled in — one logical change per PR.
+- No generated/build output committed (see point 4 above).
+- Commit messages describe the *why*, not just the *what*.
+
 ## Reporting security issues
 
 Do not open a public issue for a security vulnerability — follow the process in [SECURITY.md](SECURITY.md).
