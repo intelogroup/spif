@@ -13,10 +13,10 @@ What’s new
 
 Quick start
 - `pip install spfx` (and `npm install spfx-js` if you want TS)
-- `spfx export demo.spfx --lossless-json` or `--msgpack`
+- `spfx export demo.spif --lossless-json` or `--msgpack`
 - `python - <<'PY'
 from spfx import SPIFReader, to_msgpack, from_msgpack
-doc = SPIFReader().read("demo.spfx")
+doc = SPIFReader().read("demo.spif")
 blob = to_msgpack(doc)
 restored = from_msgpack(blob)
 PY`

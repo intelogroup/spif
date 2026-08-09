@@ -34,7 +34,7 @@ def _doc_full() -> SPIFDocument:
             Node(
                 id="call",
                 type="tool_call",
-                value={"name": "lookup", "arguments": {"q": "spfx"}, "call_id": "c1"},
+                value={"name": "lookup", "arguments": {"q": "spif"}, "call_id": "c1"},
                 confidence=Distribution(mean=0.99, var=0.0, shape="point",
                                         semantics="output_stability"),
             ),

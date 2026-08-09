@@ -5,7 +5,7 @@ Pass: (a) re-verifying a doc with a previously-seen (signer, nonce) via
 ReplayGuard is rejected, (b) `spif inspect --json` emits producer/model
 version/timestamp/human-oversight fields.
 
-Usage: python spfx/benchmarks/replay_and_compliance.py
+Usage: python spif/benchmarks/replay_and_compliance.py
 """
 from __future__ import annotations
 
@@ -42,7 +42,7 @@ def main():
     print(f"Replay of same (signer, nonce) rejected: {'PASS' if replay_rejected else 'FAIL'}")
 
     with tempfile.TemporaryDirectory() as td:
-        path = Path(td) / "doc.spfx"
+        path = Path(td) / "doc.spif"
         path.write_bytes(SPIFWriter().encode(doc))
         result = subprocess.run(
             [sys.executable, "-m", "spif.cli", "inspect", str(path), "--json"],

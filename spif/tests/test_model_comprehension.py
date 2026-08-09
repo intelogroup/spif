@@ -52,7 +52,7 @@ def _make_doc():
                               temperature=0.7, input_hash="a" * 64,
                               timestamp_ms=1712000000000, context_ref=CONTEXT_REF),
         trace=[
-            *[__import__("spfx").TraceStep(
+            *[__import__("spif").TraceStep(
                 id=f"t{i}", type="inference", content=f"Reasoning step {i}.",
                 confidence=Distribution(mean=0.8, var=0.04, shape="gaussian",
                                         semantics="epistemic"),
@@ -113,7 +113,7 @@ def _spif_lossless_json(doc) -> str:
 
     p = doc.provenance
     body = {
-        "fmt": "spfx", "v": "0.2",
+        "fmt": "spif", "v": "0.2",
         "prov": {"m": p.source_model, "mv": p.model_version, "tmp": p.temperature,
                  "ts": p.timestamp_ms, "ih": p.input_hash, "cr": p.context_ref},
         "payload": [{"id": n.id, "t": n.type,

@@ -130,13 +130,13 @@ describe('SPIF compatibility', () => {
   test('test_python_signed_fixtures_verify_in_typescript', () => {
     const reader = new SPIFReader();
 
-    expect(reader.verifySignature(fixtureBytes(fixtureDir, 'signed_single.spfx'))).toBe(true);
-    expect(reader.verifySignature(fixtureBytes(fixtureDir, 'multisig.spfx'))).toBe(true);
+    expect(reader.verifySignature(fixtureBytes(fixtureDir, 'signed_single.spif'))).toBe(true);
+    expect(reader.verifySignature(fixtureBytes(fixtureDir, 'multisig.spif'))).toBe(true);
   });
 
   test('test_tampered_python_signed_fixture_is_rejected', () => {
     const reader = new SPIFReader();
-    const bytes = fixtureBytes(fixtureDir, 'signed_single.spfx');
+    const bytes = fixtureBytes(fixtureDir, 'signed_single.spif');
     const marker = Buffer.from('Minimal fixture', 'utf8');
     const offset = Buffer.from(bytes).indexOf(marker);
 

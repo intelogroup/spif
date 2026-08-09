@@ -37,7 +37,7 @@ adapter = AnthropicSPIFAdapter(client, model="claude-sonnet-4-6")
 doc = adapter.complete("Summarize the EU AI Act in one paragraph.")
 
 # Write to disk — tamper-evident binary
-SPIFWriter().write(doc, "response.spfx")
+SPIFWriter().write(doc, "response.spif")
 ```
 
 ### Wrap an OpenAI response
@@ -51,7 +51,7 @@ client = OpenAI()
 adapter = OpenAISPIFAdapter(client, model="gpt-4o")
 
 doc = adapter.complete("Summarize the EU AI Act in one paragraph.")
-SPIFWriter().write(doc, "response.spfx")
+SPIFWriter().write(doc, "response.spif")
 ```
 
 ### Sign the output
@@ -63,7 +63,7 @@ from spif.writer import SPIFWriter
 # Always supply a non-empty passphrase for production-grade keys.
 # Leaving passphrase empty ("") works but triggers a UserWarning about PBKDF2 precomputation risk.
 key = derive_key_from_mnemonic("your twelve word mnemonic phrase here", passphrase="strong-passphrase")
-SPIFWriter(sign_key=key, signer_id="https://yourorg.com/keys/signing-key-1").write(doc, "signed.spfx")
+SPIFWriter(sign_key=key, signer_id="https://yourorg.com/keys/signing-key-1").write(doc, "signed.spif")
 ```
 
 Or use a PEM private key:
@@ -72,7 +72,7 @@ Or use a PEM private key:
 from spif.crypto import load_pem_private_key
 
 key = load_pem_private_key("private_key.pem")
-SPIFWriter(sign_key=key, signer_id="https://yourorg.com/keys/v1").write(doc, "signed.spfx")
+SPIFWriter(sign_key=key, signer_id="https://yourorg.com/keys/v1").write(doc, "signed.spif")
 ```
 
 ### Verify
@@ -81,7 +81,7 @@ SPIFWriter(sign_key=key, signer_id="https://yourorg.com/keys/v1").write(doc, "si
 from spif.reader import SPIFReader
 
 # Always verifies checksum on decode
-doc = SPIFReader().decode(open("signed.spfx", "rb").read())
+doc = SPIFReader().decode(open("signed.spif", "rb").read())
 
 # Strict: reject unsigned documents
 doc = SPIFReader(require_signature=True).decode(data)
@@ -105,10 +105,10 @@ print(doc.provenance.context_ref)     # content_id of prior doc in chain
 ### CLI
 
 ```bash
-spif validate response.spfx          # checksum + signature check
-spif inspect response.spfx           # show provenance, model, timestamp
-spif verify response.spfx --signer https://yourorg.com/keys/v1
-spif sign response.spfx --key "twelve word mnemonic" --signer-id https://yourorg.com/keys/v1
+spif validate response.spif          # checksum + signature check
+spif inspect response.spif           # show provenance, model, timestamp
+spif verify response.spif --signer https://yourorg.com/keys/v1
+spif sign response.spif --key "twelve word mnemonic" --signer-id https://yourorg.com/keys/v1
 ```
 
 ---

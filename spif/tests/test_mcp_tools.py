@@ -55,7 +55,7 @@ class TestWrapText:
     def test_returns_valid_json(self):
         result = wrap_text("hello world", model="gpt-4o")
         data = json.loads(result)
-        assert data["fmt"] == "spfx"
+        assert data["fmt"] == "spif"
         assert data["v"] == "0.2"
 
     def test_payload_contains_text(self):
@@ -131,7 +131,7 @@ class TestCallClaude:
             result = call_claude("What is the capital of France?")
 
         data = json.loads(result)
-        assert data["fmt"] == "spfx"
+        assert data["fmt"] == "spif"
         assert "Paris" in data["payload"][0]["val"]
 
     def test_provenance_records_model(self):

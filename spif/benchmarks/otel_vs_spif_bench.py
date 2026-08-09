@@ -16,7 +16,7 @@ Scenarios
 8. VERDICT            — honest summary
 
 Run:
-    cd /path/to/spfx
+    cd /path/to/spif
     python benchmarks/otel_vs_spif_bench.py
 
 No API keys required. All data is synthetic but realistic.

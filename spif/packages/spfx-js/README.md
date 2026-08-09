@@ -29,7 +29,7 @@ Any byte changed after writing raises `SPIFChecksumError` or `SPIFSignatureError
 import { SPIFReader } from 'spif-js';
 import { readFileSync } from 'fs';
 
-const bytes = new Uint8Array(readFileSync('response.spfx'));
+const bytes = new Uint8Array(readFileSync('response.spif'));
 const doc = new SPIFReader().decode(bytes);
 
 console.log(doc.provenance?.sourceModel);   // "gpt-4o"
@@ -54,7 +54,7 @@ const doc = {
 };
 
 const bytes = writer.encode(doc);
-writeFileSync('response.spfx', bytes);
+writeFileSync('response.spif', bytes);
 ```
 
 ### OpenAI adapter
@@ -71,7 +71,7 @@ const doc = await adapter.complete([
   { role: 'user', content: 'Summarize the EU AI Act.' }
 ]);
 
-writeFileSync('response.spfx', new SPIFWriter().encode(doc));
+writeFileSync('response.spif', new SPIFWriter().encode(doc));
 ```
 
 ### Streaming

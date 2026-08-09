@@ -309,7 +309,7 @@ class TestStreamDocumentFidelity:
     def test_require_signature_real_fixture(self):
         """resumability_study.sif is unsigned — strict reader must reject it via stream."""
         import pathlib
-        sif_path = pathlib.Path(__file__).parent.parent / "experiments" / "resumability_study.spfx"
+        sif_path = pathlib.Path(__file__).parent.parent / "experiments" / "resumability_study.spif"
         data = sif_path.read_bytes()
         reader = SPIFStreamReader(require_signature=True)
         events = reader.feed(data)

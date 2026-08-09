@@ -15,7 +15,7 @@ app = typer.Typer(name="spif", help="Semantic Provenance Inference Format tools 
 
 
 @app.command()
-def render(path: Path = typer.Argument(..., help="Path to a .spfx file")):
+def render(path: Path = typer.Argument(..., help="Path to a .spif file")):
     """Render a SPIF file as human-readable text."""
     typer.echo(
         "WARNING: spif render is for human debugging only. "
@@ -33,7 +33,7 @@ def render(path: Path = typer.Argument(..., help="Path to a .spfx file")):
 
 @app.command()
 def export(
-    path: Path = typer.Argument(..., help="Path to a .spfx file"),
+    path: Path = typer.Argument(..., help="Path to a .spif file"),
     lossless_json: bool = typer.Option(False, "--lossless-json", help="Export as lossless JSON for model consumption (~440 tokens vs ~1350 for base64)"),
     msgpack_export: bool = typer.Option(False, "--msgpack", help="Export as lossless MsgPack bytes"),
     output: Path = typer.Option(None, "--output", "-o", help="Write to file instead of stdout"),
@@ -74,7 +74,7 @@ def export(
 
 @app.command()
 def validate(
-    path: Path = typer.Argument(..., help="Path to a .spfx file"),
+    path: Path = typer.Argument(..., help="Path to a .spif file"),
     strict: bool = typer.Option(False, "--strict", help="Reject unsigned documents"),
 ):
     """Validate a SPIF file (magic, version, checksum, DAG, schema)."""
@@ -89,7 +89,7 @@ def validate(
 
 @app.command()
 def inspect(
-    path: Path = typer.Argument(..., help="Path to a .spfx file"),
+    path: Path = typer.Argument(..., help="Path to a .spif file"),
     layer: str = typer.Option("all", help="Layer: all | payload | trace | provenance | semantic | alts | signature"),
     json_output: bool = typer.Option(False, "--json", help="Emit machine-readable JSON (EU AI Act Art. 50 fields)"),
 ):
@@ -159,7 +159,7 @@ def inspect(
 
 
 @app.command()
-def hexdump(path: Path = typer.Argument(..., help="Path to a .spfx file")):
+def hexdump(path: Path = typer.Argument(..., help="Path to a .spif file")):
     """Show the raw chunk structure of a SPIF file."""
     data = path.read_bytes()
     typer.echo(f"magic:   {data[:9].hex()}")
@@ -177,7 +177,7 @@ def hexdump(path: Path = typer.Argument(..., help="Path to a .spfx file")):
 
 @app.command()
 def sign(
-    path: Path = typer.Argument(..., help="Path to a .spfx file to sign"),
+    path: Path = typer.Argument(..., help="Path to a .spif file to sign"),
     key: Path = typer.Option(..., help="Path to ed25519 private key file (PEM or raw 32-byte seed)"),
     output: Path = typer.Option(None, help="Output path (default: overwrite input)"),
     signer_id: str = typer.Option("local", help="Signer identifier (URL or name)"),
@@ -252,7 +252,7 @@ def sign(
 
 @app.command()
 def verify(
-    path: Path = typer.Argument(..., help="Path to a signed .spfx file"),
+    path: Path = typer.Argument(..., help="Path to a signed .spif file"),
     pubkey: str = typer.Option(None, help="Base64 ed25519 public key (overrides signer field)"),
 ):
     """Verify the ed25519 signature in a SPIF file."""

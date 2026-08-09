@@ -368,7 +368,7 @@ class SPIFStreamReader:
     Typical usage (sync generator):
 
         reader = SPIFStreamReader()
-        with open("response.spfx", "rb") as f:
+        with open("response.spif", "rb") as f:
             while chunk := f.read(4096):
                 for event in reader.feed(chunk):
                     handle(event)

@@ -28,7 +28,7 @@ Measurements
   5. Cross-provider comparison (Anthropic vs OpenAI, same scenario)
 
 Run:
-    cd /path/to/spfx
+    cd /path/to/spif
     python benchmarks/live_failure_telemetry_bench.py
     python benchmarks/live_failure_telemetry_bench.py --reps 3
     python benchmarks/live_failure_telemetry_bench.py --provider anthropic
@@ -674,7 +674,7 @@ def analyze_result(r: ScenarioResult):
     print(f"  {'-'*60}")
 
     rows = [
-        ("SPIF",             len(r.spfx_bytes),          len(r.spfx_zlib_bytes),      ""),
+        ("SPIF",             len(r.spif_bytes),          len(r.spif_zlib_bytes),      ""),
         ("OTel JSON (direct)",len(r.otel_json_bytes),    len(zlib.compress(r.otel_json_bytes, 6)), ""),
         ("OTel via SPIF exp.",len(r.otel_via_spif_bytes),len(zlib.compress(r.otel_via_spif_bytes, 6)), "lossy path"),
         ("Raw API JSON",      len(r.raw_api_json_bytes), len(zlib.compress(r.raw_api_json_bytes, 6)), "full provider response"),
@@ -688,7 +688,7 @@ def analyze_result(r: ScenarioResult):
 
     # SPIF extraction
     reader = SPIFReader()
-    spif_dec = reader.decode(r.spfx_bytes)
+    spif_dec = reader.decode(r.spif_bytes)
     spif_fields = {}
     for node in spif_dec.payload:
         if node.type == NODE_TOOL_CALL:
@@ -730,7 +730,7 @@ def analyze_result(r: ScenarioResult):
     # Integrity check
     print()
     writer = SPIFWriter()
-    ba = bytearray(r.spfx_bytes)
+    ba = bytearray(r.spif_bytes)
     ba[len(ba) // 2] ^= 0xFF
     tampered = bytes(ba)
     try:
@@ -767,10 +767,10 @@ def summarize_across(results: list[ScenarioResult]):
     print(f"  {'-'*88}")
     for r in results:
         otel_sz = len(r.otel_json_bytes)
-        spif_sz = len(r.spfx_bytes)
+        spif_sz = len(r.spif_bytes)
         label = f"{r.provider}/{r.name}"[:33]
         ratio = spif_sz / otel_sz if otel_sz else 0
-        print(f"  {label:<34} {spif_sz:>8} {len(r.spfx_zlib_bytes):>8} "
+        print(f"  {label:<34} {spif_sz:>8} {len(r.spif_zlib_bytes):>8} "
               f"{otel_sz:>8} {len(zlib.compress(r.otel_json_bytes,6)):>8} "
               f"{len(r.raw_api_json_bytes):>8}  {ratio:.2f}x")
 
@@ -791,8 +791,8 @@ def summarize_across(results: list[ScenarioResult]):
         print(f"    - {f}")
 
     print(f"\n  Verdict:")
-    avg_ratio = sum(len(r.spfx_bytes) / len(r.otel_json_bytes) for r in results) / len(results)
-    avg_ratio_z = sum(len(r.spfx_zlib_bytes) / len(zlib.compress(r.otel_json_bytes, 6)) for r in results) / len(results)
+    avg_ratio = sum(len(r.spif_bytes) / len(r.otel_json_bytes) for r in results) / len(results)
+    avg_ratio_z = sum(len(r.spif_zlib_bytes) / len(zlib.compress(r.otel_json_bytes, 6)) for r in results) / len(results)
     print(f"    SPIF is {avg_ratio:.2f}x the size of OTel JSON (uncompressed)")
     print(f"    SPIF+zlib is {avg_ratio_z:.2f}x the size of OTel JSON+zlib")
     print(f"    SPIF catches tamper in 100% of docs — OTel catches 0% silently")

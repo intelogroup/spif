@@ -267,18 +267,18 @@ def scenario_b():
     t = bench(lambda: re.search(rb"confidence.*?(\d+)%", render_bytes))
     print(f"  {'SPIF (render)':<16} {t:>8.1f}μ  grep '\\d+%' on rendered text")
 
-    # CLI spfx inspect
-    with tempfile.NamedTemporaryFile(suffix=".spfx", delete=False) as f:
+    # CLI spif inspect
+    with tempfile.NamedTemporaryFile(suffix=".spif", delete=False) as f:
         f.write(spif_bytes)
         tmp = f.name
     try:
         t0 = time.perf_counter()
         result = subprocess.run(
-            ["python", "-m", "spfx", "inspect", tmp, "--layer", "provenance"],
+            ["python", "-m", "spif", "inspect", tmp, "--layer", "provenance"],
             capture_output=True, text=True
         )
         cli_ms = (time.perf_counter() - t0) * 1000
-        print(f"\n  CLI 'spfx inspect --layer provenance': {cli_ms:.1f}ms  (one-shot, includes Python startup)")
+        print(f"\n  CLI 'spif inspect --layer provenance': {cli_ms:.1f}ms  (one-shot, includes Python startup)")
         if result.returncode == 0:
             print(f"  CLI output ({len(result.stdout)} chars):\n")
             for line in result.stdout.splitlines()[:8]:

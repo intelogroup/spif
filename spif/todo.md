@@ -6,7 +6,7 @@
 - [ ] **2. Model card / training data registry** — link SPIF documents back to the model version and training data that produced them
 - [ ] **3. Risk classification tooling** — tag SPIF documents with EU AI Act risk tier (minimal / limited / high / unacceptable) at write time
 - [ ] **4. Human review workflow** — tooling to route high-risk SPIF outputs to a human reviewer before they act on the decision; log the review outcome in the chain
-- [ ] **5. Audit dashboard** — read `.spfx` archives and present regulators with a verifiable timeline of every AI decision: model, timestamp, input hash, signature; the part that turns SPIF from a library into a compliance product
+- [ ] **5. Audit dashboard** — read `.spif` archives and present regulators with a verifiable timeline of every AI decision: model, timestamp, input hash, signature; the part that turns SPIF from a library into a compliance product
 
 ## Framework Integrations
 

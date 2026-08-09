@@ -4,7 +4,7 @@ Live demo: Claude API → streaming SPIF → terminal + saved file.
 Run:
     ANTHROPIC_API_KEY=sk-... python examples/streaming_claude.py
     ANTHROPIC_API_KEY=sk-... python examples/streaming_claude.py --thinking
-    ANTHROPIC_API_KEY=sk-... python examples/streaming_claude.py --save out.spfx
+    ANTHROPIC_API_KEY=sk-... python examples/streaming_claude.py --save out.spif
 
 Requires: pip install anthropic
 """

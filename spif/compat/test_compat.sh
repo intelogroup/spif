@@ -24,7 +24,7 @@ ${PYTHON3:-python3} "$SCRIPT_DIR/generate_compat_fixtures.py" "$TMPDIR"
 COMMITTED_DIR="$PROJECT_DIR/spfx/fixtures/cross_lang"
 if [[ -d "$COMMITTED_DIR" ]]; then
   DETERMINISM_FAIL=0
-  for committed_file in "$COMMITTED_DIR"/*.spfx; do
+  for committed_file in "$COMMITTED_DIR"/*.spif; do
     name="$(basename "$committed_file")"
     regenerated="$TMPDIR/$name"
     if [[ ! -f "$regenerated" ]]; then
@@ -55,8 +55,8 @@ if ! command -v deno &>/dev/null; then
 fi
 
 # Read each file with both Python and Deno, compare key fields
-for spif_file in "$TMPDIR"/*.spfx; do
-  name="$(basename "$spif_file" .spfx)"
+for spif_file in "$TMPDIR"/*.spif; do
+  name="$(basename "$spif_file" .spif)"
   ref_json="$TMPDIR/${name}.ref.json"
 
   if [[ ! -f "$ref_json" ]]; then

@@ -3,7 +3,7 @@ Generate deterministic SPIF conformance fixtures plus a manifest.
 
 Usage:
     python compat/generate_compat_fixtures.py
-    python compat/generate_compat_fixtures.py /tmp/spfx-fixtures
+    python compat/generate_compat_fixtures.py /tmp/spif-fixtures
 """
 
 from __future__ import annotations
@@ -169,7 +169,7 @@ def generate_fixtures(output_dir: str | Path | None = None) -> dict[str, object]
     out_dir = Path(output_dir) if output_dir is not None else DEFAULT_OUTPUT_DIR
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    for path in out_dir.glob("*.spfx"):
+    for path in out_dir.glob("*.spif"):
         path.unlink()
     for path in out_dir.glob("*.ref.json"):
         path.unlink()
@@ -199,7 +199,7 @@ def generate_fixtures(output_dir: str | Path | None = None) -> dict[str, object]
             Node(
                 id="call",
                 type="tool_call",
-                value={"name": "search", "arguments": {"q": "spfx"}, "call_id": "c1"},
+                value={"name": "search", "arguments": {"q": "spif"}, "call_id": "c1"},
                 confidence=_dist(0.99),
             ),
             Node(
@@ -308,7 +308,7 @@ def generate_fixtures(output_dir: str | Path | None = None) -> dict[str, object]
 
     manifest_entries: list[dict[str, object]] = []
     for name, data, doc, features in fixtures:
-        filename = f"{name}.spfx"
+        filename = f"{name}.spif"
         path = out_dir / filename
         path.write_bytes(data)
         ref_path = out_dir / f"{name}.ref.json"

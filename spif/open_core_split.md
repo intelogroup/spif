@@ -4,7 +4,7 @@
 SPIF will adopt an open-core model to ensure accessibility and adoption, while maintaining a robust commercial moat to protect against proprietary risks. 
 
 ## Open Source Components
-- **SPEC.md**: This will be published as an open standard, ensuring that the MIME `application/x-spif` and the `.spfx` magic bytes remain intact.
+- **SPEC.md**: This will be published as an open standard, ensuring that the MIME `application/x-spif` and the `.spif` magic bytes remain intact.
 - **Core Library & CLI**: The essential functionality, including commands such as `spif validate`, `spif inspect`, and `spif verify`, will be open-sourced under Apache-2.0.
 - **Reference Wrappers**: Open-source wrappers for LLM calls (OpenAI, Anthropic, LangChain, Vercel AI SDK, LlamaIndex) encouraging widespread use and adoption.
 

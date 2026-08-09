@@ -8,7 +8,7 @@
         "signed": false,
         "streaming": false
       },
-      "filename": "minimal_unsigned.spfx",
+      "filename": "minimal_unsigned.spif",
       "has_provenance": true,
       "name": "minimal_unsigned",
       "payload_count": 1,
@@ -24,7 +24,7 @@
         "signed": true,
         "streaming": false
       },
-      "filename": "signed_single.spfx",
+      "filename": "signed_single.spif",
       "has_provenance": true,
       "name": "signed_single",
       "payload_count": 1,
@@ -40,7 +40,7 @@
         "signed": true,
         "streaming": false
       },
-      "filename": "multisig.spfx",
+      "filename": "multisig.spif",
       "has_provenance": true,
       "name": "multisig",
       "payload_count": 1,
@@ -56,7 +56,7 @@
         "signed": false,
         "streaming": false
       },
-      "filename": "compressed.spfx",
+      "filename": "compressed.spif",
       "has_provenance": true,
       "name": "compressed",
       "payload_count": 1,
@@ -73,7 +73,7 @@
         "streaming": false,
         "unknown_chunk": true
       },
-      "filename": "unknown_chunk.spfx",
+      "filename": "unknown_chunk.spif",
       "has_provenance": true,
       "name": "unknown_chunk",
       "payload_count": 1,
@@ -90,7 +90,7 @@
         "streaming": false,
         "tool_nodes": true
       },
-      "filename": "tool_chain.spfx",
+      "filename": "tool_chain.spif",
       "has_provenance": true,
       "name": "tool_chain",
       "payload_count": 3,
@@ -107,7 +107,7 @@
         "signed": false,
         "streaming": false
       },
-      "filename": "large_compressed_1mb.spfx",
+      "filename": "large_compressed_1mb.spif",
       "has_provenance": true,
       "name": "large_compressed_1mb",
       "payload_count": 1,
@@ -124,7 +124,7 @@
         "signed": false,
         "streaming": true
       },
-      "filename": "streaming.spfx",
+      "filename": "streaming.spif",
       "has_provenance": true,
       "name": "streaming",
       "payload_count": 1,
@@ -142,7 +142,7 @@
         "signed": false,
         "streaming": true
       },
-      "filename": "resumed_streaming.spfx",
+      "filename": "resumed_streaming.spif",
       "has_provenance": true,
       "name": "resumed_streaming",
       "payload_count": 1,

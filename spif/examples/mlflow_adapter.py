@@ -9,7 +9,7 @@ Shows two patterns:
 2. **Manual**: call your model normally, wrap the result in SPIF, then log manually.
 
 Run:
-    pip install spfx mlflow
+    pip install spif mlflow
     python examples/mlflow_adapter.py
 
 Or dry-run (no MLflow required):
@@ -103,7 +103,7 @@ class SPIFMLflowLogger:
         fn: Callable[[str], str],
         model_name: str = "unknown",
         temperature: float = 0.0,
-        artifact_prefix: str = "spfx",
+        artifact_prefix: str = "spif",
     ) -> None:
         self._fn = fn
         self._model = model_name
@@ -121,10 +121,10 @@ class SPIFMLflowLogger:
     def _log(self, doc: SPIFDocument, prompt: str, idx: int) -> None:
         encoded = SPIFWriter().encode(doc)
         checksum = hashlib.sha256(encoded).hexdigest()[:16]
-        artifact_name = f"{self._prefix}_{idx:04d}_{checksum}.spfx"
+        artifact_name = f"{self._prefix}_{idx:04d}_{checksum}.spif"
 
         if HAVE_MLFLOW and mlflow.active_run():
-            with tempfile.NamedTemporaryFile(suffix=".spfx", delete=False) as f:
+            with tempfile.NamedTemporaryFile(suffix=".spif", delete=False) as f:
                 f.write(encoded)
                 tmp_path = f.name
             try:
@@ -167,7 +167,7 @@ def demo_manual(dry_run: bool = False) -> None:
 
     if HAVE_MLFLOW and not dry_run:
         with mlflow.start_run(run_name="manual_spif_demo"):
-            with tempfile.NamedTemporaryFile(suffix=".spfx", delete=False) as f:
+            with tempfile.NamedTemporaryFile(suffix=".spif", delete=False) as f:
                 f.write(encoded)
                 tmp = f.name
             try:

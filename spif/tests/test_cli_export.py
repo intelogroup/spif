@@ -1,4 +1,4 @@
-"""Tests for spfx render warning and spfx export command."""
+"""Tests for spif render warning and spif export command."""
 
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ def _write_spif(tmp_path, doc: SPIFDocument | None = None) -> object:
                 input_hash="abc123",
             ),
         )
-    path = tmp_path / "test.spfx"
+    path = tmp_path / "test.spif"
     path.write_bytes(SPIFWriter().encode(doc))
     return path
 
@@ -66,7 +66,7 @@ class TestExportLosslessJson:
                                catch_exceptions=False)
         assert result.exit_code == 0
         data = json.loads(result.stdout)
-        assert data["fmt"] == "spfx"
+        assert data["fmt"] == "spif"
         assert data["v"] == "0.2"
 
     def test_export_preserves_payload(self, tmp_path):
@@ -103,7 +103,7 @@ class TestExportLosslessJson:
         assert result.exit_code == 0
         assert out.exists()
         data = json.loads(out.read_text())
-        assert data["fmt"] == "spfx"
+        assert data["fmt"] == "spif"
 
     def test_export_indent_pretty_prints(self, tmp_path):
         path = _write_spif(tmp_path)

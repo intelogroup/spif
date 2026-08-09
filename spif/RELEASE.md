@@ -12,11 +12,11 @@
 
 ## Quickstart
 ```bash
-spif export demo.spfx --lossless-json > demo.json
-spif export demo.spfx --msgpack -o demo.msgpack
+spif export demo.spif --lossless-json > demo.json
+spif export demo.spif --msgpack -o demo.msgpack
 python - <<'PY'
 from spif import SPIFReader, to_msgpack, from_msgpack
-doc = SPIFReader().read("demo.spfx")
+doc = SPIFReader().read("demo.spif")
 blob = to_msgpack(doc)
 restored = from_msgpack(blob)
 assert restored.payload[0].id == doc.payload[0].id

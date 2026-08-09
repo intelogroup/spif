@@ -10,11 +10,11 @@ This example shows two patterns:
    yourself using SPIFWriter.
 
 Run:
-    pip install spfx langchain langchain-openai
+    pip install spif langchain langchain-openai
     OPENAI_API_KEY=sk-... python examples/langchain_adapter.py
 
 Or with Anthropic:
-    pip install spfx langchain langchain-anthropic
+    pip install spif langchain langchain-anthropic
     ANTHROPIC_API_KEY=sk-ant-... python examples/langchain_adapter.py --provider anthropic
 """
 
@@ -131,9 +131,9 @@ def demo_drop_in(provider: str) -> None:
 
     # Write to disk — tamper-evident
     writer = SPIFWriter()
-    writer.write(doc, "/tmp/langchain_response.spfx")
-    print(f"\nSaved to /tmp/langchain_response.spfx")
-    print("Verify with: spfx validate /tmp/langchain_response.spfx")
+    writer.write(doc, "/tmp/langchain_response.spif")
+    print(f"\nSaved to /tmp/langchain_response.spif")
+    print("Verify with: spif validate /tmp/langchain_response.spif")
 
 
 def demo_manual_wrap(provider: str) -> None:
@@ -175,9 +175,9 @@ def demo_manual_wrap(provider: str) -> None:
         ),
     )
 
-    SPIFWriter().write(doc, "/tmp/langchain_chain_response.spfx")
+    SPIFWriter().write(doc, "/tmp/langchain_chain_response.spif")
     print(f"Response: {text[:100]}...")
-    print("Saved to /tmp/langchain_chain_response.spfx")
+    print("Saved to /tmp/langchain_chain_response.spif")
 
 
 if __name__ == "__main__":

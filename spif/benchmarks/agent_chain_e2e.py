@@ -15,7 +15,7 @@ Pass criteria:
   - SPIF crypto overhead (sign+encode+verify per hop) is a tiny fraction of
     realistic LLM call latency (simulated at ~800ms/hop).
 
-Usage: python spfx/benchmarks/agent_chain_e2e.py
+Usage: python spif/benchmarks/agent_chain_e2e.py
 """
 from __future__ import annotations
 

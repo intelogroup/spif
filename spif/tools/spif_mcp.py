@@ -11,14 +11,14 @@ Usage (standalone):
 Claude Desktop config (~/.claude/claude_desktop_config.json):
     {
       "mcpServers": {
-        "spfx": {
+        "spif": {
           "command": "python",
           "args": ["/path/to/brainex/sif/tools/spif_mcp.py"]
         }
       }
     }
 
-Requirements (not in core spfx dependencies):
+Requirements (not in core spif dependencies):
     pip install anthropic fastmcp
 """
 
@@ -41,7 +41,7 @@ from spif.format import NODE_TEXT
 from spif.types import Distribution, Node, Provenance, SPIFDocument
 
 mcp = FastMCP(
-    "spfx",
+    "spif",
     instructions=(
         "Tools for calling Claude and wrapping model responses as SPIF documents. "
         "SPIF (Semantic Provenance Inference Format) adds provenance, uncertainty, "

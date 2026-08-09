@@ -110,7 +110,7 @@ def spif_to_lossless_json(doc: SPIFDocument) -> str:
         return out
 
     body: dict = {
-        "fmt": "spfx",
+        "fmt": "spif",
         "v": "0.2",
     }
 

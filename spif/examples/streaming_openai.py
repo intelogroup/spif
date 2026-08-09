@@ -4,7 +4,7 @@ Live demo: OpenAI API → streaming SPIF → terminal + saved file.
 Run:
     OPENAI_API_KEY=sk-... python examples/streaming_openai.py
     OPENAI_API_KEY=sk-... python examples/streaming_openai.py --model gpt-4o-mini
-    OPENAI_API_KEY=sk-... python examples/streaming_openai.py --save out.spfx
+    OPENAI_API_KEY=sk-... python examples/streaming_openai.py --save out.spif
     OPENAI_API_KEY=sk-... python examples/streaming_openai.py --no-logprobs
 
 Requires: pip install openai

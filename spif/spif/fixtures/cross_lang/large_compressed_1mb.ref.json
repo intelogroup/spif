@@ -1,6 +1,6 @@
 {
   "name": "large_compressed_1mb",
-  "filename": "large_compressed_1mb.spfx",
+  "filename": "large_compressed_1mb.spif",
   "sha256": "066c5aeb56b88773a35cc66945ea94eb5ed6f00f9b6b013e6f768219f5ba9f6e",
   "bytes": 1593,
   "payload_count": 1,

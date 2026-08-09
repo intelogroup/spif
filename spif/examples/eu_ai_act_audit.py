@@ -103,7 +103,7 @@ def generate_decision(patient_id: str, model: str = "clinical-risk-v2") -> SPIFD
 
 
 # ---------------------------------------------------------------------------
-# Step 2: Sign — two-pass ed25519 (same pattern as spfx sign CLI)
+# Step 2: Sign — two-pass ed25519 (same pattern as spif sign CLI)
 # ---------------------------------------------------------------------------
 
 def sign_document(doc: SPIFDocument, private_key: Ed25519PrivateKey, signer_id: str) -> bytes:
@@ -140,7 +140,7 @@ def sign_document(doc: SPIFDocument, private_key: Ed25519PrivateKey, signer_id: 
 
 def store_artifact(data: bytes, log_dir: Path, label: str) -> Path:
     checksum = hashlib.sha256(data).hexdigest()[:12]
-    path = log_dir / f"{label}_{checksum}.spfx"
+    path = log_dir / f"{label}_{checksum}.spif"
     path.write_bytes(data)
     return path
 

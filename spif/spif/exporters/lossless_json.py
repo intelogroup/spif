@@ -106,7 +106,7 @@ def to_lossless_json(doc: SPIFDocument, *, indent: int | None = None) -> str:
                        "content": f"Analyse this AI output:\\n{json_str}"}]
         )
     """
-    body: dict[str, Any] = {"fmt": "spfx", "v": "0.2"}
+    body: dict[str, Any] = {"fmt": "spif", "v": "0.2"}
 
     if doc.provenance:
         p = doc.provenance

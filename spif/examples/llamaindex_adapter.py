@@ -10,11 +10,11 @@ Two patterns:
    source nodes, and provenance in a SPIF document.
 
 Run:
-    pip install spfx llama-index llama-index-llms-openai
+    pip install spif llama-index llama-index-llms-openai
     OPENAI_API_KEY=sk-... python examples/llamaindex_adapter.py
 
 Or:
-    pip install spfx llama-index llama-index-llms-anthropic
+    pip install spif llama-index llama-index-llms-anthropic
     ANTHROPIC_API_KEY=sk-ant-... python examples/llamaindex_adapter.py --provider anthropic
 """
 
@@ -157,9 +157,9 @@ def demo_llm_wrapper(provider: str) -> None:
     print(f"  timestamp:  {doc.provenance.timestamp_ms}")
     print(f"  nodes:      {len(doc.payload)}")
 
-    SPIFWriter().write(doc, "/tmp/llamaindex_llm.spfx")
-    print("Saved to /tmp/llamaindex_llm.spfx")
-    print("Verify with: spfx validate /tmp/llamaindex_llm.spfx")
+    SPIFWriter().write(doc, "/tmp/llamaindex_llm.spif")
+    print("Saved to /tmp/llamaindex_llm.spif")
+    print("Verify with: spif validate /tmp/llamaindex_llm.spif")
 
 
 def demo_rag_wrapper(provider: str) -> None:
@@ -209,9 +209,9 @@ def demo_rag_wrapper(provider: str) -> None:
     print(f"\nAnswer: {response}")
     print(f"\nSPIF document: {len(doc.payload)} nodes (answer + {len(doc.payload)-1} sources)")
 
-    SPIFWriter().write(doc, "/tmp/llamaindex_rag.spfx")
-    print("Saved to /tmp/llamaindex_rag.spfx")
-    print("Verify with: spfx inspect /tmp/llamaindex_rag.spfx")
+    SPIFWriter().write(doc, "/tmp/llamaindex_rag.spif")
+    print("Saved to /tmp/llamaindex_rag.spif")
+    print("Verify with: spif inspect /tmp/llamaindex_rag.spif")
 
 
 if __name__ == "__main__":

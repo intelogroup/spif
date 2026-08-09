@@ -52,7 +52,7 @@ try:
     _field(_nm, "id",         1, _SF,  _O)
     _field(_nm, "type",       2, _SF,  _O)
     _field(_nm, "value",      3, _SF,  _O)
-    _field(_nm, "confidence", 4, _MSG, _O, ".spfxbench.Distribution")
+    _field(_nm, "confidence", 4, _MSG, _O, ".spifbench.Distribution")
     _field(_nm, "refs",       5, _SF,  _R)
 
     # TraceStep
@@ -61,7 +61,7 @@ try:
     _field(_tm, "id",           1, _SF,  _O)
     _field(_tm, "type",         2, _SF,  _O)
     _field(_tm, "content",      3, _SF,  _O)
-    _field(_tm, "confidence",   4, _MSG, _O, ".spfxbench.Distribution")
+    _field(_tm, "confidence",   4, _MSG, _O, ".spifbench.Distribution")
     _field(_tm, "deps",         5, _SF,  _R)
     _field(_tm, "alternatives", 6, _SF,  _R)
 
@@ -84,16 +84,16 @@ try:
     _am = fp.message_type.add()
     _am.name = "Alternative"
     _field(_am, "weight", 1, _FL,  _O)
-    _field(_am, "nodes",  2, _MSG, _R, ".spfxbench.Node")
+    _field(_am, "nodes",  2, _MSG, _R, ".spifbench.Node")
 
     # SPIFDocument
     _docm = fp.message_type.add()
     _docm.name = "SPIFDocument"
-    _field(_docm, "payload",      1, _MSG, _R, ".spfxbench.Node")
-    _field(_docm, "provenance",   2, _MSG, _O, ".spfxbench.Provenance")
-    _field(_docm, "semantic",     3, _MSG, _O, ".spfxbench.SemanticLayer")
-    _field(_docm, "trace",        4, _MSG, _R, ".spfxbench.TraceStep")
-    _field(_docm, "alternatives", 5, _MSG, _R, ".spfxbench.Alternative")
+    _field(_docm, "payload",      1, _MSG, _R, ".spifbench.Node")
+    _field(_docm, "provenance",   2, _MSG, _O, ".spifbench.Provenance")
+    _field(_docm, "semantic",     3, _MSG, _O, ".spifbench.SemanticLayer")
+    _field(_docm, "trace",        4, _MSG, _R, ".spifbench.TraceStep")
+    _field(_docm, "alternatives", 5, _MSG, _R, ".spifbench.Alternative")
 
     # Add to pool and build message classes
     _messages: dict = {}

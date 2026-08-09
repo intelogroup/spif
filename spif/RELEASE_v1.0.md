@@ -117,10 +117,10 @@ from spif import SPIFReader
 
 # Read with signature enforcement
 reader = SPIFReader.strict()  # Rejects unsigned documents
-doc = reader.read("artifact.spfx")
+doc = reader.read("artifact.spif")
 
 # Verify signature
-is_valid = reader.verify_signature(open("artifact.spfx", "rb").read())
+is_valid = reader.verify_signature(open("artifact.spif", "rb").read())
 if not is_valid:
     raise ValueError("Signature verification failed")
 
@@ -135,7 +135,7 @@ for node in doc.payload:
 from spif.exporters.otel import to_otel_span
 from spif.exporters.prov import to_prov
 
-doc = SPIFReader().read("artifact.spfx")
+doc = SPIFReader().read("artifact.spif")
 
 # Export to OpenTelemetry
 span = to_otel_span(doc)

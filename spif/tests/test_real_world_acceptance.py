@@ -346,7 +346,7 @@ def test_signed_streaming_agent_run_survives_full_lifecycle(tmp_path):
     private_key = Ed25519PrivateKey.generate()
     signer_id = _pub_b64(private_key)
     artifact = _sign_doc(doc, private_key, signer_id, compress=True)
-    artifact_path = tmp_path / "portfolio-review.spfx"
+    artifact_path = tmp_path / "portfolio-review.spif"
     artifact_path.write_bytes(artifact)
 
     restored = SPIFReader.strict().read(artifact_path)

@@ -5,7 +5,7 @@ Unlike lossless JSON, this representation preserves binary fields such as
 multimodal node values and ed25519 signatures without base64 expansion.
 
 Use this when:
-  - You need a compact binary export outside the `.spfx` container
+  - You need a compact binary export outside the `.spif` container
   - Full-fidelity round-trip matters, including raw bytes
   - You want a lightweight integrity check over the exported payload
 

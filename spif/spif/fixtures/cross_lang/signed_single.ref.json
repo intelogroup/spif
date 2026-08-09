@@ -1,6 +1,6 @@
 {
   "name": "signed_single",
-  "filename": "signed_single.spfx",
+  "filename": "signed_single.spif",
   "sha256": "305d1df774d597a04af2fe9eaddb96ab3b9b3dae8a3728c19da471e1f2c6d32d",
   "bytes": 718,
   "payload_count": 1,

@@ -1,6 +1,6 @@
 {
   "name": "tool_chain",
-  "filename": "tool_chain.spfx",
+  "filename": "tool_chain.spif",
   "sha256": "dd9a0b5926403c26c4fabfc0949d763d55e7499723e90092ab2198d8b85ff48c",
   "bytes": 1027,
   "payload_count": 3,

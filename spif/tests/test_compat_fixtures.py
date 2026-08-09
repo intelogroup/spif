@@ -16,8 +16,8 @@ def test_generate_fixtures_is_deterministic(tmp_path):
 
     assert manifest1 == manifest2
 
-    files1 = sorted(p.name for p in out1.glob("*.spfx"))
-    files2 = sorted(p.name for p in out2.glob("*.spfx"))
+    files1 = sorted(p.name for p in out1.glob("*.spif"))
+    files2 = sorted(p.name for p in out2.glob("*.spif"))
     assert files1 == files2
 
     for name in files1:

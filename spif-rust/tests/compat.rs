@@ -129,7 +129,7 @@ fn test_python_signed_fixtures_verify_in_rust() -> Result<()> {
     let (fixture_dir, _) = generate_fixtures()?;
     let reader = SPIFReader::new();
 
-    for filename in ["signed_single.spfx", "multisig.spfx"] {
+    for filename in ["signed_single.spif", "multisig.spif"] {
         let bytes = fs::read(fixture_dir.join(filename))?;
         assert!(reader.verify_signature(&bytes)?, "{filename} should verify");
     }
@@ -141,7 +141,7 @@ fn test_python_signed_fixtures_verify_in_rust() -> Result<()> {
 fn test_tampered_python_signed_fixture_is_rejected() -> Result<()> {
     let (fixture_dir, _) = generate_fixtures()?;
     let reader = SPIFReader::new();
-    let mut bytes = fs::read(fixture_dir.join("signed_single.spfx"))?;
+    let mut bytes = fs::read(fixture_dir.join("signed_single.spif"))?;
 
     let tamper_at = bytes
         .windows("Minimal fixture".len())

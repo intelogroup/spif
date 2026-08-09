@@ -1,6 +1,6 @@
 {
   "name": "multisig",
-  "filename": "multisig.spfx",
+  "filename": "multisig.spif",
   "sha256": "8460524ba37afa25216cb1eb64829b8772919722283627e1bd86871ec96a6922",
   "bytes": 875,
   "payload_count": 1,

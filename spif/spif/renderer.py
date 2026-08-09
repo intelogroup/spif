@@ -78,7 +78,7 @@ class SPIFRenderer:
                 f"\nSIGNATURE\n"
                 f"  algorithm: {doc.signature.algorithm}\n"
                 f"  signer:    {doc.signature.signer}\n"
-                f"  status:    present (run `spfx verify` to cryptographically validate)"
+                f"  status:    present (run `spif verify` to cryptographically validate)"
             )
         else:
             sections.append("\nSIGNATURE  unsigned")

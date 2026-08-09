@@ -2,7 +2,7 @@
 ## Specification v1.0
 
 **MIME type:** `application/x-spif`  
-**File extension:** `.spfx`  
+**File extension:** `.spif`  
 **Status:** v1.0 wire contract is locked and stable. All implementations MUST support reading v0.2 documents for backward compatibility.
 
 ---
@@ -660,7 +660,7 @@ For v0.1 documents, readers MUST default `Distribution.semantics` to `"epistemic
 ## 13. MIME Type and File Association
 
 **MIME type:** `application/x-spif`  
-**File extension:** `.spfx`  
+**File extension:** `.spif`  
 **Magic bytes:** `\x89SPIF\r\n\x1a\n`
 
 HTTP responses serving SPIF documents SHOULD include:

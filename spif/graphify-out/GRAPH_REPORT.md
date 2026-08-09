@@ -1,16 +1,16 @@
-# Graph Report - spif  (2026-08-07)
+# Graph Report - spif  (2026-08-08)
 
 ## Corpus Check
-- 170 files · ~137,880 words
+- 174 files · ~137,945 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 2756 nodes · 7849 edges · 142 communities (138 shown, 4 thin omitted)
+- 2764 nodes · 7843 edges · 160 communities (148 shown, 12 thin omitted)
 - Extraction: 90% EXTRACTED · 10% INFERRED · 0% AMBIGUOUS · INFERRED: 786 edges (avg confidence: 0.53)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `ba6571ab`
+- Built from commit: `42be1806`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -19,7 +19,7 @@
 - SPIFDocument
 - test_model_comprehension.py
 - SPIFDocument
-- from_lossless_json
+- compute_content_id
 - Provenance
 - wrap_text
 - index.ts
@@ -28,7 +28,7 @@
 - test_sidecar.py
 - live_failure_telemetry_bench.py
 - tamper_detection_compare.py
-- gemini_adapter.py
+- TestHelpers
 - test_security.py
 - reader.ts
 - OpenAISPIFAdapter
@@ -38,19 +38,19 @@
 - Distribution
 - full_bench.py
 - AnthropicSPIFAdapter
-- test_dag_validation.py
-- openai_adapter.py
+- TraceStep
+- _build_doc
 - SPIFReader
 - bench_realworld.py
 - otel_vs_spif_bench.py
 - GeminiSPIFAdapter
 - live_api_bench.py
-- SPIFStreamWriter
+- TestStreamWireFormat
 - test_tool_adapters.py
 - audit_chain_bench.py
 - openai.ts
 - test_keystore.py
-- TraceStep
+- from_msgpack
 - _doc_full
 - iter_events
 - ai_native_bench.py
@@ -58,7 +58,7 @@
 - SPIFDocument
 - compilerOptions
 - SPIF v1.0.0 — Semantic Provenance Inference Format
-- _execute_tools
+- claude_to_sif.py
 - test_gemini_adapter.py
 - test_hardening_scenarios.py
 - test_elite_challenges.py
@@ -66,13 +66,13 @@
 - format_comparator.py
 - calibration_bench.py
 - test_hardening.py
-- bench_size.py
+- bench_speed.py
 - cbor-utils.ts
 - compat.test.ts
 - test_real_world_acceptance.py
 - adversarial_resistance_bench.py
-- anthropic_adapter.py
-- ._inject_and_decode
+- _build_doc
+- _make_key
 - test_signature.py
 - langchain_adapter.py
 - llm_judge_runner.py
@@ -81,28 +81,28 @@
 - test_streaming.py
 - test_task_chunk.py
 - Enterprise Readiness — Making Top AI Companies Try SPIF
-- doc_full
+- bench_size.py
 - hard_sif_bench.py
 - streaming.py
-- test_fuzz.py
-- SPIFKeyStore
+- test_roundtrip_property
+- anthropic_adapter.py
 - test_rust_sidecar.py
 - SidecarHTTPHandler
 - eu_ai_act_audit.py
 - hard_bench.py
-- claude_to_sif.py
+- multiagent_handoff.py
 - package.json
 - _write_spif
 - run_full_comparison
 - SPIFStreamWriter
 - TestStreamDocumentFidelity
 - SPIFWriter
-- TestKeyManagement
+- SPIFKeyStore
 - Format Comparison
 - Key Findings
 - Quickstart
 - 6. Chunk Payload Schemas
-- test_c2pa_watermark_edge.py
+- .test_strip_sig_chunk_verify_returns_false
 - _key_slug
 - mlflow_adapter.py
 - adversarial_stress_test.py
@@ -115,7 +115,7 @@
 - _make_demo_file
 - mmlu_bench.py
 - jest
-- _make_doc
+- .verify
 - test_tamper_latency.py
 - bench_speed_percentiles.py
 - SPIF — Semantic Provenance Inference Format
@@ -129,9 +129,9 @@
 - bench_token_cost.py
 - TestStreamResume
 - 10. Streaming Protocol (SSPIF)
-- SPIFStreamReader
+- StreamEvent
 - bench_readability.py
-- dag_dos_safety.py
+- _minimal_doc
 - pytest_collection_modifyitems
 - Quickstart
 - 12. Conformance
@@ -152,6 +152,24 @@
 - manifest.json
 - benmarks.md
 - spif
+- test_exporters.py
+- SPIFDocument
+- TestChecksumCompleteness
+- test_fuzz.py
+- _sign_doc
+- ._inject_and_decode
+- _decode_node
+- proto_compat.py
+- .partial_text
+- .test_checksum_chunk_body_replacement_detected
+- .test_checksum_tamper_raises_not_asserts
+- bench_fn
+- TestOneInput
+- TestOneInput
+- .open
+- .write
+- build.sh
+- .done
 
 ## God Nodes (most connected - your core abstractions)
 1. `SPIFReader` - 315 edges
@@ -159,7 +177,7 @@
 3. `SPIFWriter` - 269 edges
 4. `Distribution` - 244 edges
 5. `SPIFDocument` - 241 edges
-6. `Provenance` - 192 edges
+6. `Provenance` - 191 edges
 7. `TraceStep` - 141 edges
 8. `Signature` - 130 edges
 9. `NodeRef` - 90 edges
@@ -180,35 +198,35 @@
 ## Import Cycles
 - None detected.
 
-## Communities (142 total, 4 thin omitted)
+## Communities (160 total, 12 thin omitted)
 
 ### Community 0 - "SPIFDocument"
-Cohesion: 0.06
-Nodes (39): _d(), _encode_decode(), _n(), _prov(), Distribution, Node, Provenance, slow (+31 more)
+Cohesion: 0.07
+Nodes (33): _d(), _encode_decode(), _n(), _prov(), Distribution, Node, Provenance, slow (+25 more)
 
 ### Community 1 - "SPIFDocument"
-Cohesion: 0.08
-Nodes (16): _node(), SPIFDocument, s0 → s1, s0 → s2, s1+s2 → s3 (two paths converging)., 10 independent roots, 1 sink., 1536-dimension embedding (OpenAI ada-002 size)., When trace is empty, no TRACE chunk is written, so trace_method defaults to…, Flip every byte in body and confirm SIF detects it., Verify the checksum chunk itself is NOT included in the hash body. (+8 more)
+Cohesion: 0.06
+Nodes (21): _node(), SPIFDocument, s0 → s1, s0 → s2, s1+s2 → s3 (two paths converging)., 10 independent roots, 1 sink., 1536-dimension embedding (OpenAI ada-002 size)., normalized=False: weights > 1.0 are valid (they're scores, not probs)., weights that sum to exactly 1.0 must pass., weights summing to 0.999 (within ±0.01) must pass. (+13 more)
 
 ### Community 2 - "test_model_comprehension.py"
 Cohesion: 0.12
 Nodes (27): Exception, SPIFDocument, Raised when a document's (signer, nonce) pair has already been seen., Raise SPIFReplayError if this document's signer+nonce was already seen., SPIFReplayError, _ask(), _json_manual(), _make_doc_safe() (+19 more)
 
 ### Community 3 - "SPIFDocument"
-Cohesion: 0.08
-Nodes (23): _dist(), _encode_decode(), _node(), _prov(), Distribution, parametrize, Provenance, slow (+15 more)
+Cohesion: 0.09
+Nodes (21): _dist(), _encode_decode(), _node(), _prov(), Distribution, parametrize, Provenance, slow (+13 more)
 
-### Community 4 - "from_lossless_json"
-Cohesion: 0.20
-Nodes (11): _dist(), from_lossless_json(), Any, Distribution, SPIFDocument, SPIF → Lossless JSON exporter. Produces a compact canonical JSON representation…, Reconstruct a SPIFDocument from lossless JSON produced by ``to_lossless_json``.…, Serialise a SPIFDocument to compact lossless JSON. Parameters ---------- doc :… (+3 more)
+### Community 4 - "compute_content_id"
+Cohesion: 0.17
+Nodes (10): compute_content_id(), Compute a stable, content-addressed ID for a SIF document. The ID is SHA-256 of…, _doc_with_provenance(), Tests for attempt/task_id Provenance fields and document_status property., Documents written before these fields were added must parse with attempt=0., Retry attempts must produce distinct content IDs., TestProvenanceNewFields, _write_read() (+2 more)
 
 ### Community 5 - "Provenance"
-Cohesion: 0.12
-Nodes (22): Example: SIF document showcasing uncertainty and semantic layer., generate_complex_test_file(), Generate a complex SIF file in Python to be read by Rust., Alternative, Provenance, Origin metadata for a SPIF document., Dense vector representation of the document's meaning., An alternative payload with an associated weight. (+14 more)
+Cohesion: 0.07
+Nodes (50): Example: SIF document showcasing uncertainty and semantic layer., generate_complex_test_file(), Generate a complex SIF file in Python to be read by Rust., _dist(), from_lossless_json(), Any, Distribution, SPIFDocument (+42 more)
 
 ### Community 6 - "wrap_text"
-Cohesion: 0.14
-Nodes (11): _anthropic_response(), _anthropic_thinking_response(), _make_mock_client(), SimpleNamespace, TestCallClaude, TestWrapText, tool, call_claude() (+3 more)
+Cohesion: 0.13
+Nodes (12): _anthropic_response(), _anthropic_thinking_response(), _make_mock_client(), SimpleNamespace, Tests for SPIF MCP server tools (tools/spif_mcp.py). All tests run offline — no…, TestCallClaude, TestWrapText, tool (+4 more)
 
 ### Community 7 - "index.ts"
 Cohesion: 0.11
@@ -234,9 +252,9 @@ Nodes (40): analyze_result(), build_otel_json(), build_spif_from_tool_interactio
 Cohesion: 0.10
 Nodes (32): _b64url(), _b64url_decode(), _flip_bit(), _FormatResult, _gpg_available(), _GPGSigner, _HMACSigner, _inject_value() (+24 more)
 
-### Community 13 - "gemini_adapter.py"
-Cohesion: 0.12
-Nodes (23): _build_doc(), _build_provenance(), _extract_chunk_content(), _input_hash(), _make_legacy_generation_config(), _messages_to_contents(), _messages_to_prompt(), _normalise_messages() (+15 more)
+### Community 13 - "TestHelpers"
+Cohesion: 0.09
+Nodes (23): _build_doc(), _confidence_from_logprobs(), _extract_chunk_content(), _make_legacy_generation_config(), _messages_to_contents(), _messages_to_prompt(), _normalise_messages(), Any (+15 more)
 
 ### Community 14 - "test_security.py"
 Cohesion: 0.10
@@ -251,8 +269,8 @@ Cohesion: 0.11
 Nodes (23): main(), Live demo: OpenAI API → streaming SPIF → terminal + saved file. Run:…, OpenAISPIFAdapter, Wraps an OpenAI client and produces SPIF bytes or SPIFDocuments. Parameters…, _chunk(), _lp(), _make_client(), _make_complete_response() (+15 more)
 
 ### Community 17 - "Signature"
-Cohesion: 0.09
-Nodes (59): SPIF — Semantic Provenance Inference Format v0.2. Cryptographically signed,…, SPIFKeyStore — file-based public-key store for SPIF signature verification. A…, _cbor_load(), _decode_node(), _decode_step(), _find_first_auth_chunk_offset(), _iter_chunks(), CBORTag (+51 more)
+Cohesion: 0.15
+Nodes (35): SPIFChecksumError, SPIFFormatError, SPIFMagicError, Produces a streaming SPIF byte sequence piece by piece. All methods return…, Return all bytes emitted so far (for testing or saving to file). Only valid…, Incremental SPIF stream reader. Call feed(bytes) with however many bytes have…, SPIFStreamReader, SPIFStreamWriter (+27 more)
 
 ### Community 18 - "synthetic_generators.py"
 Cohesion: 0.11
@@ -263,48 +281,48 @@ Cohesion: 0.11
 Nodes (11): SPIFDocument, Convert a SPIFDocument to an OTel GenAI span dict. Returns a dict that matches…, to_otel_span(), Bug 1 fix: status must be ERROR when any tool_result has is_error=True., Bug 2 fix: NODE_TOOL_CALL nodes must produce gen_ai.tool.call events., Bug 2 fix: NODE_TOOL_RESULT nodes must produce gen_ai.tool.result events., Bug 3 fix: call_ids must be queryable from span-level attributes., DAG edges cannot be expressed in OTel spans — verify they are absent. (+3 more)
 
 ### Community 20 - "Distribution"
-Cohesion: 0.07
-Nodes (30): create_target_doc(), Create a document with a critical security-sensitive value., Distribution, A probability distribution — first-class uncertain value., Distribution.semantics field: validation, roundtrip, v0.1 compatibility., from_dict with no 'semantics' key → defaults to epistemic (v0.1 compat)., _roundtrip(), test_all_known_semantics_no_warning() (+22 more)
+Cohesion: 0.08
+Nodes (32): Minimal: one tool call + one error result., spif_tool_failure_minimal(), create_target_doc(), Create a document with a critical security-sensitive value., Distribution, A probability distribution — first-class uncertain value., Distribution.semantics field: validation, roundtrip, v0.1 compatibility., from_dict with no 'semantics' key → defaults to epistemic (v0.1 compat). (+24 more)
 
 ### Community 21 - "full_bench.py"
-Cohesion: 0.08
-Nodes (18): Best-effort JSON encoding using naming conventions., to_json_dict(), bench_fn(), dec_sif(), enc_arrow(), enc_bson(), enc_cbor(), enc_json() (+10 more)
+Cohesion: 0.09
+Nodes (16): Best-effort JSON encoding using naming conventions., to_json_dict(), dec_sif(), enc_arrow(), enc_bson(), enc_cbor(), enc_json(), enc_jsonl() (+8 more)
 
 ### Community 22 - "AnthropicSPIFAdapter"
 Cohesion: 0.13
 Nodes (20): main(), Live demo: Claude API → streaming SPIF → terminal + saved file. Run:…, AnthropicSPIFAdapter, Wraps an Anthropic client and produces SIF bytes or SPIFDocuments. Parameters…, _imports(), slow, Live integration tests — require a real ANTHROPIC_API_KEY in the environment.…, test_chained_calls_link_via_context_ref() (+12 more)
 
-### Community 23 - "test_dag_validation.py"
-Cohesion: 0.19
-Nodes (20): _payload(), DAG validation: cycle detection and dangling dependency detection., A → B → A must be rejected., A → B → C → A must be rejected., A ref to a non-existent node ID must be rejected., Two nodes with the same id must be rejected., A → B is a valid acyclic ref chain., test_dangling_dep_detected() (+12 more)
+### Community 23 - "TraceStep"
+Cohesion: 0.12
+Nodes (28): Full: multi-tool agent task that aborts after 3 failed tool calls., spif_task_abort_full(), A single step in the reasoning trace DAG., TraceStep, _payload(), DAG validation: cycle detection and dangling dependency detection., A → B → A must be rejected., A → B → C → A must be rejected. (+20 more)
 
-### Community 24 - "openai_adapter.py"
-Cohesion: 0.13
-Nodes (18): _build_doc(), _build_provenance(), _confidence_from_logprobs(), _execute_tools_oai(), _input_hash(), _normalise_messages(), Any, Distribution (+10 more)
+### Community 24 - "_build_doc"
+Cohesion: 0.14
+Nodes (15): _build_doc(), _confidence_from_logprobs(), _execute_tools_oai(), _normalise_messages(), Any, Distribution, Node, Provenance (+7 more)
 
 ### Community 25 - "SPIFReader"
-Cohesion: 0.12
-Nodes (19): Deserializes SPIF documents from bytes or files. Parameters ----------…, Return a reader that rejects unsigned documents. Equivalent to…, SPIFReader, _encoded(), _minimal_doc(), test_bad_magic_raises(), test_empty_payload_raises_format_error(), test_missing_payload_raises() (+11 more)
+Cohesion: 0.13
+Nodes (18): Deserializes SPIF documents from bytes or files. Parameters ----------…, Return a reader that rejects unsigned documents. Equivalent to…, SPIFReader, _encoded(), test_bad_magic_raises(), test_empty_payload_raises_format_error(), test_missing_payload_raises(), test_no_checksum_raises() (+10 more)
 
 ### Community 26 - "bench_realworld.py"
 Cohesion: 0.18
 Nodes (29): bandwidth_mb(), bench_compression(), bench_fn(), bench_memory(), bench_pipeline_simulation(), bench_signature_overhead(), bench_streaming_latency(), bench_streaming_throughput() (+21 more)
 
 ### Community 27 - "otel_vs_spif_bench.py"
-Cohesion: 0.16
-Nodes (28): bench(), flip_byte(), _prov(), SPIFDocument, SPIF vs JSON+OTel — AI Failure Telemetry Benchmark…, Full: multi-tool agent task that aborts after 3 failed tool calls., Simulate the JSON+OTel stack: SPIF → OTel span → JSON bytes., OTel span encoded as CBOR (e.g. as sent over OTLP binary). (+20 more)
+Cohesion: 0.18
+Nodes (24): bench(), flip_byte(), _prov(), SPIFDocument, SPIF vs JSON+OTel — AI Failure Telemetry Benchmark…, Simulate the JSON+OTel stack: SPIF → OTel span → JSON bytes., OTel span encoded as CBOR (e.g. as sent over OTLP binary)., OTel span encoded as msgpack (Jaeger wire format). (+16 more)
 
 ### Community 28 - "GeminiSPIFAdapter"
-Cohesion: 0.17
-Nodes (12): GeminiSPIFAdapter, Wraps a Gemini model client and produces SPIF bytes or SPIFDocuments.…, _make_genai_client(), _make_legacy_client(), _make_simple_chunk(), Minimal chunk with a single text part., Mock legacy google-generativeai GenerativeModel client., Mock google-genai Client whose models.generate_content_stream returns an… (+4 more)
+Cohesion: 0.16
+Nodes (14): GeminiSPIFAdapter, Wraps a Gemini model client and produces SPIF bytes or SPIFDocuments.…, _make_genai_client(), _make_legacy_client(), _make_simple_chunk(), _make_thinking_chunk(), Minimal chunk with a single text part., Chunk with both a thinking part and a text part. (+6 more)
 
 ### Community 29 - "live_api_bench.py"
 Cohesion: 0.14
 Nodes (15): AnthropicBench, _available_providers(), main(), _make_provider(), _mean(), OpenAIBench, _print_optional_summary(), _print_summary() (+7 more)
 
-### Community 30 - "SPIFStreamWriter"
-Cohesion: 0.12
-Nodes (9): Produces a streaming SPIF byte sequence piece by piece. All methods return…, Return a resume token encoding the current position in the stream. The token is…, Emit a PARTIAL_TEXT chunk for one text fragment (e.g., one LLM token). May be…, Return all bytes emitted so far (for testing or saving to file). Only valid…, SPIFStreamWriter, commit() with no partial_text() calls must produce valid SIF., resume_token() on the writer., TestResumeTokenFromWriter (+1 more)
+### Community 30 - "TestStreamWireFormat"
+Cohesion: 0.14
+Nodes (5): _prov(), Provenance, commit() with no partial_text() calls must produce valid SIF., A full stream (open + partials + commit) must be readable by SPIFReader., TestStreamWireFormat
 
 ### Community 31 - "test_tool_adapters.py"
 Cohesion: 0.15
@@ -319,20 +337,20 @@ Cohesion: 0.13
 Nodes (14): buildNode(), buildProvenance(), concat(), logprobsToDistribution(), Message, normalizePrompt(), OpenAIAdapterOptions, OpenAISPIFAdapter (+6 more)
 
 ### Community 34 - "test_keystore.py"
-Cohesion: 0.10
-Nodes (17): derive_key_from_mnemonic(), Derive a deterministic ed25519 private key from a BIP39-style mnemonic phrase.…, alice_key(), bob_key(), fixture, Tests for SPIFKeyStore — file-based public key management and verification., tmp_ks(), Same mnemonic always produces the same ed25519 key. (+9 more)
-
-### Community 35 - "TraceStep"
 Cohesion: 0.13
-Nodes (25): _body(), _decode_value(), _dist(), _encode_value(), from_msgpack(), Any, Distribution, SPIFDocument (+17 more)
+Nodes (14): derive_key_from_mnemonic(), Derive a deterministic ed25519 private key from a BIP39-style mnemonic phrase.…, alice_key(), bob_key(), fixture, Tests for SPIFKeyStore — file-based public key management and verification., tmp_ks(), Same mnemonic always produces the same ed25519 key. (+6 more)
+
+### Community 35 - "from_msgpack"
+Cohesion: 0.13
+Nodes (23): _body(), _decode_value(), _dist(), _encode_value(), from_msgpack(), Any, Distribution, SPIFDocument (+15 more)
 
 ### Community 36 - "_doc_full"
-Cohesion: 0.12
-Nodes (16): _ms_to_iso(), SPIFDocument, SIF → W3C PROV-JSON exporter. Maps a SPIFDocument to a PROV-JSON dict per:…, Convert millisecond timestamp to ISO 8601 string., Convert a SPIFDocument to a W3C PROV-JSON dict. Returns a dict suitable for…, to_prov(), _doc_full(), Tests for SIF exporters (OTel, PROV-JSON). (+8 more)
+Cohesion: 0.20
+Nodes (9): SPIFDocument, Convert a SPIFDocument to a W3C PROV-JSON dict. Returns a dict suitable for…, to_prov(), _doc_full(), Distribution is stored as plain attributes — type enforcement lost., SHA-256 checksum has no PROV equivalent — verify it's absent., Signer identity is preserved as prov:Agent, but crypto bytes are dropped., After PROV export, DAG edges lose their type information. (+1 more)
 
 ### Community 37 - "iter_events"
-Cohesion: 0.15
-Nodes (13): iter_events(), Yield StreamEvents from a complete (possibly streaming) SPIF byte sequence.…, _minimal_doc(), _prov(), Provenance, Modifying a PARTIAL_TEXT chunk must invalidate the checksum., Feeding one byte at a time must produce the same events as one bulk feed., A non-streaming SIF file must still fire 'opened' and 'verified'. (+5 more)
+Cohesion: 0.20
+Nodes (10): iter_events(), Yield StreamEvents from a complete (possibly streaming) SPIF byte sequence.…, _minimal_doc(), Modifying a PARTIAL_TEXT chunk must invalidate the checksum., Feeding one byte at a time must produce the same events as one bulk feed., A non-streaming SIF file must still fire 'opened' and 'verified'., Produce a complete streaming SIF document as bytes., _stream_doc() (+2 more)
 
 ### Community 38 - "ai_native_bench.py"
 Cohesion: 0.20
@@ -354,13 +372,13 @@ Nodes (22): compilerOptions, declaration, declarationMap, esModuleInterop, force
 Cohesion: 0.09
 Nodes (22): Acknowledgments, Backward Compatibility, Breaking Changes from Previous Releases, For Consumers (Reading SPIF Documents), For Infrastructure (Audit & Observability), For Producers (Creating SPIF Documents), Future Direction (v1.1 and Beyond), Guidance for Users (+14 more)
 
-### Community 43 - "_execute_tools"
-Cohesion: 0.50
-Nodes (3): _execute_tools(), Execute each tool call node and return NODE_TOOL_RESULT nodes., TestExecuteTools
+### Community 43 - "claude_to_sif.py"
+Cohesion: 0.19
+Nodes (13): _classify_step_type(), claude_response_to_sif(), _extract_tool_content(), _heuristic_confidence_bucket(), main(), Distribution, SPIFDocument, Claude API extended thinking → SIF transformer. Extended thinking blocks are… (+5 more)
 
 ### Community 44 - "test_gemini_adapter.py"
-Cohesion: 0.10
-Nodes (18): _confidence_from_logprobs(), Convert per-token probabilities (already exponentiated) into a Distribution., _lp_entry(), _make_chunk(), _make_complete_response(), _make_logprob_chunk(), _make_part(), _make_thinking_chunk() (+10 more)
+Cohesion: 0.20
+Nodes (13): _lp_entry(), _make_chunk(), _make_complete_response(), _make_logprob_chunk(), _make_part(), Any, SimpleNamespace, Tests for GeminiSPIFAdapter. All tests run offline — no API key required. The… (+5 more)
 
 ### Community 45 - "test_hardening_scenarios.py"
 Cohesion: 0.16
@@ -386,9 +404,9 @@ Nodes (18): ask_with_confidence(), check_correct(), compute_ece(), _fuzzy_match(
 Cohesion: 0.16
 Nodes (18): _make_key(), SPIFDocument, Dedicated unit tests for SPIF security hardening and production gotchas., Test that verify_signature method respects max_signature_age_seconds parameter., Rejects signature age check if provenance is missing but age limit is active., Verify that OpenAISPIFAdapter captures response.model snapshot inside…, Verify fallback to requested model if response.model is empty or None., Verify that derive_key_from_mnemonic warns when passphrase is empty or None. (+10 more)
 
-### Community 51 - "bench_size.py"
-Cohesion: 0.18
-Nodes (14): A2 — Size benchmark: SIF vs JSON vs CBOR vs MessagePack vs Protobuf. Generates…, Raw CBOR without SIF framing — baseline for overhead measurement., run(), to_cbor_raw(), to_msgpack_raw(), to_proto_raw(), bench(), A2 — Speed benchmark: encode/decode throughput. Measures encode + decode time… (+6 more)
+### Community 51 - "bench_speed.py"
+Cohesion: 0.27
+Nodes (10): Raw CBOR without SIF framing — baseline for overhead measurement., run(), to_cbor_raw(), to_msgpack_raw(), to_proto_raw(), bench(), A2 — Speed benchmark: encode/decode throughput. Measures encode + decode time…, Return mean time per call in microseconds. (+2 more)
 
 ### Community 52 - "cbor-utils.ts"
 Cohesion: 0.20
@@ -399,20 +417,20 @@ Cohesion: 0.15
 Nodes (9): cborDecode(), cborLoad(), SPIFStreamReader, findPythonWithSpifDeps(), generateFixtures(), Manifest, ManifestEntry, readHeaderFlags2() (+1 more)
 
 ### Community 54 - "test_real_world_acceptance.py"
-Cohesion: 0.31
-Nodes (13): _agent_doc(), _baseline_doc(), _find_auth_offset(), _find_chunk_offset(), _pub_b64(), Ed25519PrivateKey, SPIFDocument, Acceptance tests for realistic SPIF workflows. These tests are intentionally… (+5 more)
+Cohesion: 0.27
+Nodes (15): _agent_doc(), _baseline_doc(), _dist(), _find_auth_offset(), _find_chunk_offset(), _pub_b64(), Distribution, Ed25519PrivateKey (+7 more)
 
 ### Community 55 - "adversarial_resistance_bench.py"
 Cohesion: 0.14
 Nodes (23): BenchResult, FormatStats, _inject_unknown_chunk(), _mutate(), _mutate_chunk_length_overflow(), _mutate_magic_byte(), _print_results(), _print_structural() (+15 more)
 
-### Community 56 - "anthropic_adapter.py"
-Cohesion: 0.17
-Nodes (18): _build_doc(), _build_provenance(), _build_tool_call_node(), _input_hash(), _normalise_messages(), Any, Distribution, Node (+10 more)
+### Community 56 - "_build_doc"
+Cohesion: 0.14
+Nodes (17): _build_doc(), _build_tool_call_node(), _execute_tools(), _normalise_messages(), Any, Distribution, Node, Provenance (+9 more)
 
-### Community 57 - "._inject_and_decode"
-Cohesion: 0.06
-Nodes (32): _find_chunk_offset(), _find_chunk_offset_unchecked(), _make_key(), _multisign_doc(), Ed25519PrivateKey, SPIFDocument, Return byte offset of first occurrence of chunk_type (or None)., Replace the CBOR payload of chunk_type with new_cbor, recompute the checksum,… (+24 more)
+### Community 57 - "_make_key"
+Cohesion: 0.16
+Nodes (13): _find_chunk_offset(), _make_key(), _multisign_doc(), SPIFDocument, Return byte offset of first occurrence of chunk_type (or None)., Multi-sig document survives encode → decode with all signatures preserved., All-valid multi-sig: verify_signature returns True., If one signature in CHUNK_MULTISIG is wrong, verify raises SPIFSignatureError. (+5 more)
 
 ### Community 58 - "test_signature.py"
 Cohesion: 0.26
@@ -435,8 +453,8 @@ Cohesion: 0.33
 Nodes (11): skipif, _assert_exportable_and_signable(), _consume_stream(), _find_auth_offset(), _pub_b64(), Ed25519PrivateKey, Live provider acceptance tests for real API keys. These tests are broader than…, _sign_bytes() (+3 more)
 
 ### Community 63 - "test_streaming.py"
-Cohesion: 0.19
-Nodes (9): _make_resume_token(), _parse_resume_token(), Encode seq + body_hash as a base64url resume token., Decode a resume token back to (seq, body_hash). Raises ValueError if the token…, Tests for SIF streaming (SSIF protocol)., Unit tests for resume token encode/decode., Token must not contain + or / (urlsafe base64)., The 'resumed' event must carry a valid resume_token string. (+1 more)
+Cohesion: 0.13
+Nodes (11): _make_resume_token(), _parse_resume_token(), Encode seq + body_hash as a base64url resume token., Decode a resume token back to (seq, body_hash). Raises ValueError if the token…, Tests for SIF streaming (SSIF protocol)., Unit tests for resume token encode/decode., Token must not contain + or / (urlsafe base64)., resume_token() on the writer. (+3 more)
 
 ### Community 64 - "test_task_chunk.py"
 Cohesion: 0.22
@@ -446,8 +464,8 @@ Nodes (9): _minimal_doc(), SPIFDocument, Tests for CHUNK_TASK roundtrip, flags2 
 Cohesion: 0.12
 Nodes (15): 10. Benchmarks in the Repo, 1. Zero-Friction First Experience, 2. One-Line Integration into Their Stack, 3. Rich Type Hints & IDE Support, 4. Async Everywhere, 5. Rich Error Messages, 6. Deterministic, Reproducible Output, 7. Minimal Dependency Tree (+7 more)
 
-### Community 66 - "doc_full"
-Cohesion: 0.19
+### Community 66 - "bench_size.py"
+Cohesion: 0.21
 Nodes (15): _make_corpus(), SPIFDocument, Produce n documents evenly spread across complexity levels., _dist(), doc_full(), doc_medium(), doc_minimal(), doc_with_trace() (+7 more)
 
 ### Community 67 - "hard_sif_bench.py"
@@ -455,16 +473,16 @@ Cohesion: 0.19
 Nodes (14): ensure_directories(), generate_markdown_report(), main(), SIF Hard Benchmark - Main Orchestrator Runs the complete hard benchmark: 1.…, Run format comparison benchmark., Run LLM judge on generated files., Generate comprehensive markdown report., Create output directories. (+6 more)
 
 ### Community 68 - "streaming.py"
-Cohesion: 0.06
-Nodes (39): NodeRef, Provenance, SPIFDocument, SPIF Streaming (SSPIF) — incremental delivery protocol. Wire format (strict…, Emit the stream header (magic, version, flags, HEADER chunk, optional…, Finalize the stream. Emits PAYLOAD (and TRACE/ALTS/DELTA/SIG chunks if…, _cbor(), _cbor_fast() (+31 more)
+Cohesion: 0.14
+Nodes (23): NodeRef, SPIFDocument, SPIF Streaming (SSPIF) — incremental delivery protocol. Wire format (strict…, Finalize the stream. Emits PAYLOAD (and TRACE/ALTS/DELTA/SIG chunks if…, _cbor(), _cbor_fast(), _chunk(), _compress_bytes() (+15 more)
 
-### Community 69 - "test_fuzz.py"
-Cohesion: 0.19
-Nodes (14): given, settings, _minimal_sif(), A1 — Fuzz + property-based tests. Claims tested: 1. SPIFReader never raises…, Reader must only raise SPIFError (or subclass) on any input, never crash., Valid magic + version + flags but random body → only SPIFError., Flipping any bit in the body raises SPIFChecksumError., Truncating at any byte in [1, len-1] raises SPIFError, never crashes. (+6 more)
+### Community 69 - "test_roundtrip_property"
+Cohesion: 0.32
+Nodes (8): given, settings, Reader must only raise SPIFError (or subclass) on any input, never crash., Valid magic + version + flags but random body → only SPIFError., For any valid SPIFDocument, write→read must return equal content., test_arbitrary_bytes_never_crash(), test_roundtrip_property(), test_valid_magic_bad_body_never_crash()
 
-### Community 70 - "SPIFKeyStore"
-Cohesion: 0.13
-Nodes (11): Path, Return True if a public key for key_id is registered., Return a list of registered key IDs (unslugged names not preserved)., Mark a key as revoked. Revoked keys will be rejected during verification even…, Remove a key from the revocation list. Returns True if it was revoked., Return True if key_id appears in the revocation list., Return a mapping of {key_id: revoked_at_ms} for all revoked keys., Verify the ed25519 signature(s) on a SPIF document using keys in this store.… (+3 more)
+### Community 70 - "anthropic_adapter.py"
+Cohesion: 0.26
+Nodes (9): Anthropic → SIF adapter. Converts a Claude API streaming response into a…, build_provenance(), input_hash(), Any, Provenance, Shared helpers used identically by every vendor adapter., Stable SHA-256 of the messages list (canonical JSON)., Google Gemini → SPIF adapter. Converts a Gemini API streaming response into a… (+1 more)
 
 ### Community 71 - "test_rust_sidecar.py"
 Cohesion: 0.20
@@ -482,9 +500,9 @@ Nodes (13): audit_artifact(), generate_decision(), Ed25519PrivateKey, Path, SPIF
 Cohesion: 0.23
 Nodes (13): ask_hard_question(), compute_ece(), load_dataset_questions(), main(), _normalize_row(), Anthropic, Path, Hard dataset calibration benchmark: ARC-Challenge, HellaSwag, WinoGrande, BIG-… (+5 more)
 
-### Community 75 - "claude_to_sif.py"
-Cohesion: 0.11
-Nodes (26): cold_start(), get_sif_from_agent_a(), main(), Anthropic, Multi-agent handoff experiment: SIF as the handoff artifact between models.…, Agent B resumes from SIF trace., Agent B resumes from flat JSON dump (same data, no types)., Agent B answers from scratch with no context. (+18 more)
+### Community 75 - "multiagent_handoff.py"
+Cohesion: 0.25
+Nodes (13): cold_start(), get_sif_from_agent_a(), main(), Anthropic, Multi-agent handoff experiment: SIF as the handoff artifact between models.…, Agent B resumes from SIF trace., Agent B resumes from flat JSON dump (same data, no types)., Agent B answers from scratch with no context. (+5 more)
 
 ### Community 76 - "package.json"
 Cohesion: 0.14
@@ -503,16 +521,16 @@ Cohesion: 0.24
 Nodes (7): sha256(), sha256Sync(), concat(), makeChunk(), makeRawChunk(), SPIFStreamWriter, Provenance
 
 ### Community 80 - "TestStreamDocumentFidelity"
-Cohesion: 0.18
-Nodes (9): test_certain_factory_accepts_semantics(), _minimal_node(), Node, SPIFDocument, SPIFStreamReader(require_signature=True) must reject unsigned documents., resumability_study.sif is unsigned — strict reader must reject it via stream., The concatenation of partial_text events must equal the payload value (for…, TestStreamDocumentFidelity (+1 more)
+Cohesion: 0.19
+Nodes (8): _minimal_node(), Node, SPIFDocument, SPIFStreamReader(require_signature=True) must reject unsigned documents., SPIFStreamReader(require_signature=False) (default) must accept unsigned…, resumability_study.sif is unsigned — strict reader must reject it via stream., The concatenation of partial_text events must equal the payload value (for…, TestStreamDocumentFidelity
 
 ### Community 81 - "SPIFWriter"
-Cohesion: 0.13
-Nodes (19): Parameters ---------- compress : If True, compress chunk payloads with zlib.…, SPIFWriter, test_invalid_compression_raises(), Same payload, different provenance.timestamp_ms → different checksums. The…, Any change to payload changes the checksum., The SIF reader stops reading at the CHECKSUM chunk. Appending garbage after it…, Changing the stored checksum bytes to garbage is detected as SPIFChecksumError., Truncating the document at any point must raise a SPIFError subclass, never a… (+11 more)
+Cohesion: 0.12
+Nodes (29): _chain_with_cycle_at(), _check_cycle(), _linear_no_cycle(), main(), Test 4 — DAG DoS Safety. Build large linear trace chains with a cycle spliced…, Linear chain s0 -> s1 -> ... -> s(n-1), with a back-edge closing a cycle whose…, Returns (cycle_detected, no_stack_overflow, elapsed_s)., Parameters ---------- compress : If True, compress chunk payloads with zlib.… (+21 more)
 
-### Community 82 - "TestKeyManagement"
-Cohesion: 0.14
-Nodes (3): _alice_pub(), TestKeyManagement, TestRevocation
+### Community 82 - "SPIFKeyStore"
+Cohesion: 0.09
+Nodes (11): Path, Return a list of registered key IDs (unslugged names not preserved)., Mark a key as revoked. Revoked keys will be rejected during verification even…, Remove a key from the revocation list. Returns True if it was revoked., Return True if key_id appears in the revocation list., Return a mapping of {key_id: revoked_at_ms} for all revoked keys., File-based store of ed25519 public keys for SPIF signature verification.…, SPIFKeyStore (+3 more)
 
 ### Community 83 - "Format Comparison"
 Cohesion: 0.17
@@ -530,13 +548,13 @@ Nodes (11): Error types, License, OpenAI adapter, Python interop, Quickstart, Re
 Cohesion: 0.17
 Nodes (12): 6.10 TASK (`0x09`) — v1.1, 6.11 CHECKSUM (`0xFF`), 6.1 HEADER (`0x00`), 6.2 PROVENANCE (`0x01`), 6.3 SEMANTIC (`0x02`), 6.4 TRACE (`0x03`), 6.5 PAYLOAD (`0x04`), 6.6 ALTS (`0x05`) (+4 more)
 
-### Community 87 - "test_c2pa_watermark_edge.py"
-Cohesion: 0.27
-Nodes (11): _generate_ed25519_key(), Ed25519PrivateKey, SPIFDocument, Advanced C2PA and Watermarking Edge Case Security Tests. Covers state-of-the-…, Verifies the Defense-in-Depth threat model (EU AI Act v2026/C2PA): If an…, Simulates C2PA v2.3 manifest assertions (actions, binding, digital certificate)…, Test that 'Provenance Piggybacking' (where an attacker takes a valid signature…, _sign_document() (+3 more)
+### Community 87 - ".test_strip_sig_chunk_verify_returns_false"
+Cohesion: 0.20
+Nodes (9): _find_chunk_offset_unchecked(), Replace the CBOR payload of chunk_type with new_cbor, recompute the checksum,…, Like _find_chunk_offset but also finds CHUNK_CHECKSUM., Remove CHUNK_SIGNATURE from a signed document, recompute checksum.…, Unsigning a document from the start returns False, not raises., Return body + fresh CHECKSUM chunk., _recompute_checksum(), _replace_chunk_data() (+1 more)
 
 ### Community 88 - "_key_slug"
-Cohesion: 0.20
-Nodes (6): Ed25519PublicKey, _key_slug(), Remove the public key for key_id. Returns True if it existed., Convert a key_id to a safe filename stem., Register a public key under the given key_id. Parameters ---------- key_id : A…, TestKeySlug
+Cohesion: 0.14
+Nodes (8): Ed25519PublicKey, _key_slug(), Return True if a public key for key_id is registered., Remove the public key for key_id. Returns True if it existed., Convert a key_id to a safe filename stem., Register a public key under the given key_id. Parameters ---------- key_id : A…, Return the raw 32-byte public key for key_id, or None if not found., TestKeySlug
 
 ### Community 89 - "mlflow_adapter.py"
 Cohesion: 0.27
@@ -582,9 +600,9 @@ Nodes (9): ask_mmlu(), check_correct(), compute_ece(), load_mmlu(), main(), Anth
 Cohesion: 0.20
 Nodes (10): jest, extensionsToTreatAsEsm, moduleNameMapper, preset, testEnvironment, transform, ^(\\.{1,2}/.*)\\.js$, ^.+\\.tsx?$ (+2 more)
 
-### Community 100 - "_make_doc"
-Cohesion: 0.23
-Nodes (8): SPIFDocument, Verify a SPIF document's signature using the given key store. Convenience…, verify_with_keystore(), _make_doc(), SPIFDocument, Two-pass signing matching the SPIF wire contract. The signature covers all…, _sign_doc(), TestVerification
+### Community 100 - ".verify"
+Cohesion: 0.20
+Nodes (9): SPIFDocument, Verify the ed25519 signature(s) on a SPIF document using keys in this store.…, Verify a SPIF document's signature using the given key store. Convenience…, verify_with_keystore(), _make_doc(), SPIFDocument, Two-pass signing matching the SPIF wire contract. The signature covers all…, _sign_doc() (+1 more)
 
 ### Community 101 - "test_tamper_latency.py"
 Cohesion: 0.38
@@ -638,17 +656,17 @@ Nodes (8): Integration tests for the full resume protocol., Simulate a dropped c
 Cohesion: 0.29
 Nodes (7): 10.1 Stream Wire Format, 10.2 PARTIAL_TEXT Chunk (`0x10`), 10.3 STREAM_RESUME Chunk (`0x12`), 10.4 Resume Token Format, 10.5 Resume Protocol, 10.6 Stream Reader Events, 10. Streaming Protocol (SSPIF)
 
-### Community 114 - "SPIFStreamReader"
-Cohesion: 0.21
-Nodes (7): Incremental SPIF stream reader. Call feed(bytes) with however many bytes have…, Feed bytes. Returns any events emitted during this call. After an "error" or…, True once a "verified" or "error" event has been emitted., An event emitted by SPIFStreamReader as bytes arrive. type values: "opened" —…, SPIFStreamReader, StreamEvent, SPIFStreamReader(require_signature=False) (default) must accept unsigned…
+### Community 114 - "StreamEvent"
+Cohesion: 0.47
+Nodes (3): Feed bytes. Returns any events emitted during this call. After an "error" or…, An event emitted by SPIFStreamReader as bytes arrive. type values: "opened" —…, StreamEvent
 
 ### Community 115 - "bench_readability.py"
 Cohesion: 0.38
 Nodes (10): bench(), make_json_doc(), make_msgpack_doc(), make_spif_doc(), make_xml_doc(), make_yaml_doc(), SPIFDocument, Readability Benchmark — Scenarios A & B… (+2 more)
 
-### Community 116 - "dag_dos_safety.py"
-Cohesion: 0.36
-Nodes (7): _chain_with_cycle_at(), _check_cycle(), _linear_no_cycle(), main(), Test 4 — DAG DoS Safety. Build large linear trace chains with a cycle spliced…, Linear chain s0 -> s1 -> ... -> s(n-1), with a back-edge closing a cycle whose…, Returns (cycle_detected, no_stack_overflow, elapsed_s).
+### Community 116 - "_minimal_doc"
+Cohesion: 0.20
+Nodes (7): _minimal_doc(), Same payload, different provenance.timestamp_ms → different checksums. The…, Any change to payload changes the checksum., Truncating the document at any point must raise a SPIFError subclass, never a…, compute_content_id returns the same value for identical documents., TestReplayAttack, TestTruncation
 
 ### Community 117 - "pytest_collection_modifyitems"
 Cohesion: 0.33
@@ -714,20 +732,60 @@ Nodes (4): _infer_system(), _make_span_id(), SIF → OpenTelemetry GenAI semanti
 Cohesion: 0.40
 Nodes (4): fixtures, generated_at_ms, generated_by, version
 
+### Community 142 - "test_exporters.py"
+Cohesion: 0.20
+Nodes (7): _ms_to_iso(), SIF → W3C PROV-JSON exporter. Maps a SPIFDocument to a PROV-JSON dict per:…, Convert millisecond timestamp to ISO 8601 string., Tests for SIF exporters (OTel, PROV-JSON)., Demonstrate that neither OTel nor PROV can round-trip back to SIF without loss., After OTel export, you cannot tell a Distribution from a plain float., TestRoundTripLoss
+
+### Community 143 - "SPIFDocument"
+Cohesion: 0.40
+Nodes (4): Node, SPIFDocument, One error in multiple results → failed., TestDocumentStatus
+
+### Community 144 - "TestChecksumCompleteness"
+Cohesion: 0.36
+Nodes (4): Flipping each bit before the CHECKSUM chunk must invalidate the checksum. We…, Modifying the checksum payload itself must raise SPIFChecksumError (the stored…, Bytes after the CHECKSUM chunk are outside the checksum scope. A reader MUST…, TestChecksumCompleteness
+
+### Community 145 - "test_fuzz.py"
+Cohesion: 0.38
+Nodes (6): _minimal_sif(), A1 — Fuzz + property-based tests. Claims tested: 1. SPIFReader never raises…, Flipping any bit in the body raises SPIFChecksumError., Truncating at any byte in [1, len-1] raises SPIFError, never crashes., test_single_bit_flip_detected(), test_truncated_at_every_byte()
+
+### Community 146 - "_sign_doc"
+Cohesion: 0.33
+Nodes (5): Ed25519PrivateKey, Sign with key A, but put key B's public key as the signer. verify_signature…, Two-pass signing — mirrors test_signature.py helper., _sign_doc(), TestWrongKeyID
+
+### Community 148 - "_decode_node"
+Cohesion: 0.33
+Nodes (6): _decode_node(), Node, Truncate long ID lists in error messages — a cycle over N nodes would otherwise…, Topological sort over Node.refs to detect cycles and dangling references.…, _summarize_ids(), _validate_payload_dag()
+
+### Community 149 - "proto_compat.py"
+Cohesion: 0.40
+Nodes (3): Protobuf message definitions for SPIF benchmarks — no protoc required. Builds…, Serialize a SPIFDocument to protobuf bytes. Returns None if protobuf…, to_proto_raw()
+
+### Community 151 - ".test_checksum_chunk_body_replacement_detected"
+Cohesion: 0.40
+Nodes (3): The SIF reader stops reading at the CHECKSUM chunk. Appending garbage after it…, Changing the stored checksum bytes to garbage is detected as SPIFChecksumError., TestLengthExtension
+
+### Community 152 - ".test_checksum_tamper_raises_not_asserts"
+Cohesion: 0.40
+Nodes (3): Structural test: the reader module must import hmac and use compare_digest for…, A single-byte flip in the checksum bytes raises SPIFChecksumError specifically…, TestTimingSafety
+
+### Community 153 - "bench_fn"
+Cohesion: 0.67
+Nodes (3): bench_fn(), Mean microseconds per call., run_speed()
+
 ## Knowledge Gaps
-- **235 isolated node(s):** `MAGIC`, `SUPPORTED_VERSIONS`, `CHUNK_NAMES`, `Distribution`, `NodeRef` (+230 more)
+- **236 isolated node(s):** `MAGIC`, `SUPPORTED_VERSIONS`, `CHUNK_NAMES`, `Distribution`, `NodeRef` (+231 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **4 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **12 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `SPIFReader` connect `SPIFReader` to `SPIFDocument`, `SPIFDocument`, `SPIFDocument`, `expressiveness_compare.py`, `Provenance`, `Node`, `test_sidecar.py`, `live_failure_telemetry_bench.py`, `tamper_detection_compare.py`, `test_security.py`, `OpenAISPIFAdapter`, `Signature`, `synthetic_generators.py`, `Distribution`, `full_bench.py`, `AnthropicSPIFAdapter`, `test_dag_validation.py`, `openai_adapter.py`, `bench_realworld.py`, `otel_vs_spif_bench.py`, `GeminiSPIFAdapter`, `live_api_bench.py`, `SPIFStreamWriter`, `audit_chain_bench.py`, `test_keystore.py`, `TraceStep`, `iter_events`, `ai_native_bench.py`, `format.py`, `SPIFDocument`, `test_gemini_adapter.py`, `test_hardening_scenarios.py`, `test_elite_challenges.py`, `generate_compat_fixtures.py`, `format_comparator.py`, `test_hardening.py`, `bench_size.py`, `test_real_world_acceptance.py`, `adversarial_resistance_bench.py`, `._inject_and_decode`, `test_signature.py`, `llm_judge_runner.py`, `test_live_provider_acceptance.py`, `test_streaming.py`, `test_task_chunk.py`, `streaming.py`, `test_fuzz.py`, `SPIFKeyStore`, `test_rust_sidecar.py`, `SidecarHTTPHandler`, `eu_ai_act_audit.py`, `TestStreamDocumentFidelity`, `SPIFWriter`, `test_c2pa_watermark_edge.py`, `mlflow_adapter.py`, `agent_chain_e2e.py`, `test_tamper_latency.py`, `bench_speed_percentiles.py`, `test_cross_language_cbor.py`, `cross_org_handoff.py`, `bench_token_cost.py`, `TestStreamResume`, `SPIFStreamReader`, `bench_readability.py`, `dag_dos_safety.py`, `test_dag_dos_benchmark.py`?**
-  _High betweenness centrality (0.143) - this node is a cross-community bridge._
-- **Why does `Distribution` connect `Distribution` to `SPIFDocument`, `SPIFDocument`, `test_model_comprehension.py`, `SPIFDocument`, `expressiveness_compare.py`, `Provenance`, `from_lossless_json`, `sif_reader.ts`, `Node`, `test_sidecar.py`, `live_failure_telemetry_bench.py`, `tamper_detection_compare.py`, `gemini_adapter.py`, `test_security.py`, `OpenAISPIFAdapter`, `Signature`, `synthetic_generators.py`, `to_otel_span`, `openai_adapter.py`, `SPIFReader`, `bench_realworld.py`, `otel_vs_spif_bench.py`, `GeminiSPIFAdapter`, `test_tool_adapters.py`, `audit_chain_bench.py`, `test_keystore.py`, `TraceStep`, `_doc_full`, `ai_native_bench.py`, `format.py`, `SPIFDocument`, `_execute_tools`, `test_gemini_adapter.py`, `test_hardening_scenarios.py`, `test_elite_challenges.py`, `generate_compat_fixtures.py`, `format_comparator.py`, `calibration_bench.py`, `bench_size.py`, `test_real_world_acceptance.py`, `adversarial_resistance_bench.py`, `anthropic_adapter.py`, `._inject_and_decode`, `test_streaming.py`, `test_task_chunk.py`, `doc_full`, `streaming.py`, `test_fuzz.py`, `test_rust_sidecar.py`, `SidecarHTTPHandler`, `eu_ai_act_audit.py`, `hard_bench.py`, `claude_to_sif.py`, `_write_spif`, `TestStreamDocumentFidelity`, `SPIFWriter`, `test_c2pa_watermark_edge.py`, `mlflow_adapter.py`, `calibration_study.py`, `resumability_study.py`, `tamper_demo.py`, `_make_demo_file`, `mmlu_bench.py`, `_make_doc`, `bench_speed_percentiles.py`, `test_cross_language_cbor.py`, `cross_org_handoff.py`, `bench_token_cost.py`, `bench_readability.py`?**
+- **Why does `SPIFReader` connect `SPIFReader` to `SPIFDocument`, `SPIFDocument`, `SPIFDocument`, `expressiveness_compare.py`, `Provenance`, `compute_content_id`, `Node`, `test_sidecar.py`, `live_failure_telemetry_bench.py`, `tamper_detection_compare.py`, `TestHelpers`, `test_security.py`, `OpenAISPIFAdapter`, `Signature`, `synthetic_generators.py`, `test_fuzz.py`, `Distribution`, `full_bench.py`, `AnthropicSPIFAdapter`, `TraceStep`, `_build_doc`, `.test_checksum_chunk_body_replacement_detected`, `bench_realworld.py`, `otel_vs_spif_bench.py`, `GeminiSPIFAdapter`, `live_api_bench.py`, `.test_checksum_tamper_raises_not_asserts`, `TestStreamWireFormat`, `audit_chain_bench.py`, `test_keystore.py`, `iter_events`, `ai_native_bench.py`, `format.py`, `SPIFDocument`, `test_gemini_adapter.py`, `test_hardening_scenarios.py`, `test_elite_challenges.py`, `generate_compat_fixtures.py`, `format_comparator.py`, `test_hardening.py`, `bench_speed.py`, `test_real_world_acceptance.py`, `adversarial_resistance_bench.py`, `_make_key`, `test_signature.py`, `llm_judge_runner.py`, `test_live_provider_acceptance.py`, `test_streaming.py`, `test_task_chunk.py`, `streaming.py`, `test_roundtrip_property`, `test_rust_sidecar.py`, `SidecarHTTPHandler`, `eu_ai_act_audit.py`, `TestStreamDocumentFidelity`, `SPIFWriter`, `SPIFKeyStore`, `TestChecksumCompleteness`, `.test_strip_sig_chunk_verify_returns_false`, `mlflow_adapter.py`, `_sign_doc`, `agent_chain_e2e.py`, `.verify`, `._inject_and_decode`, `bench_speed_percentiles.py`, `test_tamper_latency.py`, `test_cross_language_cbor.py`, `cross_org_handoff.py`, `bench_token_cost.py`, `TestStreamResume`, `StreamEvent`, `bench_readability.py`, `_minimal_doc`, `test_dag_dos_benchmark.py`?**
+  _High betweenness centrality (0.150) - this node is a cross-community bridge._
+- **Why does `Node` connect `Node` to `SPIFDocument`, `SPIFDocument`, `test_model_comprehension.py`, `SPIFDocument`, `expressiveness_compare.py`, `Provenance`, `compute_content_id`, `wrap_text`, `sif_reader.ts`, `test_sidecar.py`, `live_failure_telemetry_bench.py`, `tamper_detection_compare.py`, `TestHelpers`, `test_security.py`, `test_exporters.py`, `Signature`, `synthetic_generators.py`, `to_otel_span`, `Distribution`, `_decode_node`, `test_fuzz.py`, `TraceStep`, `_build_doc`, `SPIFReader`, `bench_realworld.py`, `otel_vs_spif_bench.py`, `test_tool_adapters.py`, `audit_chain_bench.py`, `test_keystore.py`, `from_msgpack`, `_doc_full`, `ai_native_bench.py`, `format.py`, `SPIFDocument`, `claude_to_sif.py`, `test_hardening_scenarios.py`, `test_elite_challenges.py`, `generate_compat_fixtures.py`, `format_comparator.py`, `calibration_bench.py`, `test_hardening.py`, `test_real_world_acceptance.py`, `adversarial_resistance_bench.py`, `_build_doc`, `test_signature.py`, `langchain_adapter.py`, `test_streaming.py`, `test_task_chunk.py`, `bench_size.py`, `streaming.py`, `anthropic_adapter.py`, `test_rust_sidecar.py`, `SidecarHTTPHandler`, `eu_ai_act_audit.py`, `hard_bench.py`, `_write_spif`, `TestStreamDocumentFidelity`, `SPIFWriter`, `mlflow_adapter.py`, `calibration_study.py`, `resumability_study.py`, `tamper_demo.py`, `agent_chain_e2e.py`, `_make_demo_file`, `mmlu_bench.py`, `.verify`, `test_tamper_latency.py`, `bench_speed_percentiles.py`, `test_cross_language_cbor.py`, `cross_org_handoff.py`, `bench_token_cost.py`, `bench_readability.py`, `_minimal_doc`, `test_dag_dos_benchmark.py`?**
+  _High betweenness centrality (0.104) - this node is a cross-community bridge._
+- **Why does `SPIFWriter` connect `SPIFWriter` to `SPIFDocument`, `SPIFDocument`, `test_model_comprehension.py`, `SPIFDocument`, `compute_content_id`, `Provenance`, `Node`, `test_sidecar.py`, `live_failure_telemetry_bench.py`, `tamper_detection_compare.py`, `TestHelpers`, `test_security.py`, `OpenAISPIFAdapter`, `Signature`, `synthetic_generators.py`, `Distribution`, `full_bench.py`, `AnthropicSPIFAdapter`, `TraceStep`, `_build_doc`, `SPIFReader`, `bench_realworld.py`, `otel_vs_spif_bench.py`, `GeminiSPIFAdapter`, `live_api_bench.py`, `audit_chain_bench.py`, `test_keystore.py`, `iter_events`, `ai_native_bench.py`, `format.py`, `SPIFDocument`, `claude_to_sif.py`, `test_gemini_adapter.py`, `test_hardening_scenarios.py`, `test_elite_challenges.py`, `generate_compat_fixtures.py`, `format_comparator.py`, `test_hardening.py`, `bench_speed.py`, `test_real_world_acceptance.py`, `adversarial_resistance_bench.py`, `_make_key`, `test_signature.py`, `langchain_adapter.py`, `test_live_provider_acceptance.py`, `test_streaming.py`, `test_task_chunk.py`, `bench_size.py`, `hard_sif_bench.py`, `streaming.py`, `test_roundtrip_property`, `anthropic_adapter.py`, `test_rust_sidecar.py`, `SidecarHTTPHandler`, `eu_ai_act_audit.py`, `_write_spif`, `run_full_comparison`, `.test_strip_sig_chunk_verify_returns_false`, `mlflow_adapter.py`, `agent_chain_e2e.py`, `.verify`, `test_tamper_latency.py`, `bench_speed_percentiles.py`, `test_cross_language_cbor.py`, `cross_org_handoff.py`, `bench_token_cost.py`, `bench_readability.py`, `_minimal_doc`, `test_dag_dos_benchmark.py`, `expressiveness_compare.py`, `TestChecksumCompleteness`, `test_fuzz.py`, `_sign_doc`, `._inject_and_decode`, `.test_checksum_chunk_body_replacement_detected`, `.test_checksum_tamper_raises_not_asserts`, `.write`?**
   _High betweenness centrality (0.100) - this node is a cross-community bridge._
-- **Why does `SPIFWriter` connect `SPIFWriter` to `SPIFDocument`, `SPIFDocument`, `test_model_comprehension.py`, `SPIFDocument`, `expressiveness_compare.py`, `Provenance`, `Node`, `test_sidecar.py`, `live_failure_telemetry_bench.py`, `tamper_detection_compare.py`, `test_security.py`, `OpenAISPIFAdapter`, `Signature`, `synthetic_generators.py`, `Distribution`, `full_bench.py`, `AnthropicSPIFAdapter`, `test_dag_validation.py`, `openai_adapter.py`, `SPIFReader`, `bench_realworld.py`, `otel_vs_spif_bench.py`, `GeminiSPIFAdapter`, `live_api_bench.py`, `audit_chain_bench.py`, `test_keystore.py`, `TraceStep`, `iter_events`, `ai_native_bench.py`, `format.py`, `SPIFDocument`, `test_gemini_adapter.py`, `test_hardening_scenarios.py`, `test_elite_challenges.py`, `generate_compat_fixtures.py`, `format_comparator.py`, `test_hardening.py`, `bench_size.py`, `test_real_world_acceptance.py`, `adversarial_resistance_bench.py`, `anthropic_adapter.py`, `._inject_and_decode`, `test_signature.py`, `langchain_adapter.py`, `test_live_provider_acceptance.py`, `test_streaming.py`, `test_task_chunk.py`, `hard_sif_bench.py`, `streaming.py`, `test_fuzz.py`, `test_rust_sidecar.py`, `SidecarHTTPHandler`, `eu_ai_act_audit.py`, `claude_to_sif.py`, `_write_spif`, `run_full_comparison`, `test_c2pa_watermark_edge.py`, `mlflow_adapter.py`, `agent_chain_e2e.py`, `_make_doc`, `test_tamper_latency.py`, `bench_speed_percentiles.py`, `test_cross_language_cbor.py`, `cross_org_handoff.py`, `bench_token_cost.py`, `bench_readability.py`, `dag_dos_safety.py`, `test_dag_dos_benchmark.py`?**
-  _High betweenness centrality (0.096) - this node is a cross-community bridge._
 - **Are the 41 inferred relationships involving `SPIFReader` (e.g. with `AnthropicBench` and `OpenAIBench`) actually correct?**
   _`SPIFReader` has 41 INFERRED edges - model-reasoned connections that need verification._
 - **Are the 30 inferred relationships involving `Node` (e.g. with `SPIFChatModel` and `SPIFLLMWrapper`) actually correct?**
