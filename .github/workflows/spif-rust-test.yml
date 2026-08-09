@@ -10,6 +10,9 @@ on:
       - "spif-rust/**"
       - ".github/workflows/spif-rust-test.yml"
 
+permissions:
+  contents: read
+
 defaults:
   run:
     working-directory: spif-rust
