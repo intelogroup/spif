@@ -479,7 +479,7 @@ Requirements:
         try:
             msg = client.messages.create(
                 model="claude-sonnet-4-6",
-                max_tokens=800,
+                max_tokens=1500,
                 messages=[{"role": "user", "content": prompt}],
             )
             text = msg.content[0].text.strip()
