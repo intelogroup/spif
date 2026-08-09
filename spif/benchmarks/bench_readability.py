@@ -274,7 +274,7 @@ def scenario_b():
     try:
         t0 = time.perf_counter()
         result = subprocess.run(
-            ["python", "-m", "spif", "inspect", tmp, "--layer", "provenance"],
+            [sys.executable, "-m", "spif", "inspect", tmp, "--layer", "provenance"],
             capture_output=True, text=True
         )
         cli_ms = (time.perf_counter() - t0) * 1000
