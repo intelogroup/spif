@@ -91,3 +91,11 @@ spif-desktop/package-lock.json
 experiments/hard_bench_synthetic/
 experiments/**/*.sif
 experiments/**/*.spif
+
+# Generated graph/bench output (not source, regenerate locally)
+spif/graphify-out/
+graphify-out/
+spif/results/*.txt
+
+# Claude agent config
+.claude/
