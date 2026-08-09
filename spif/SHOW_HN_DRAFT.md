@@ -7,15 +7,15 @@ Why
 - Auditability and interoperability for agent/LLM outputs: one file you can sign, stream, replay, export to OTel/PROV, or hand to another model.
 
 What’s new
-- Lossless MsgPack export/import (`to_msgpack`/`from_msgpack`, `spfx export --msgpack`).
+- Lossless MsgPack export/import (`to_msgpack`/`from_msgpack`, `spif export --msgpack`).
 - Live-tested Anthropic/OpenAI adapters (stream + complete, signing, export).
 - Acceptance workflow test: streaming → signed artifact → OTel/PROV export → tamper detection.
 
 Quick start
-- `pip install spfx`
-- `spfx export demo.spif --lossless-json` or `--msgpack`
+- `pip install spif`
+- `spif export demo.spif --lossless-json` or `--msgpack`
 - `python - <<'PY'
-from spfx import SPIFReader, to_msgpack, from_msgpack
+from spif import SPIFReader, to_msgpack, from_msgpack
 doc = SPIFReader().read("demo.spif")
 blob = to_msgpack(doc)
 restored = from_msgpack(blob)
@@ -23,8 +23,8 @@ PY`
 
 Streaming quick start
 - `python - <<'PY'
-from spfx import SPIFDocument, Node
-from spfx.streaming import SPIFStreamWriter, SPIFStreamReader
+from spif import SPIFDocument, Node
+from spif.streaming import SPIFStreamWriter, SPIFStreamReader
 
 sw = SPIFStreamWriter()
 buf  = sw.open()
