@@ -77,7 +77,6 @@ yarn-error.log*
 
 # Rust / Cargo Exclusions
 spif-rust/target/
-spif-rust/Cargo.lock
 
 # Tauri / Desktop Build Exclusions
 spif-desktop/src-tauri/target/
