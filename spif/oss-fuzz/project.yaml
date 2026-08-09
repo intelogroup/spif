@@ -1,6 +1,6 @@
 homepage: "https://github.com/intelogroup/spif"
 language: python
-primary_contact: "jimkalinov@gmail.com"
+primary_contact: "kalinovjim@gmail.com"
 main_repo: "https://github.com/intelogroup/spif"
 fuzzing_engines:
   - libfuzzer
