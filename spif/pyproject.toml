@@ -28,8 +28,8 @@ classifiers = [
 dependencies = [
     "cbor2>=5.9.0,<7",
     "typer>=0.12",
-    "cryptography>=46.0.6",
-    "msgpack>=1.0",
+    "cryptography>=50.0.0",
+    "msgpack>=1.2.1",
 ]
 
 [project.optional-dependencies]
