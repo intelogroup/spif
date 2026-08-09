@@ -94,7 +94,7 @@ This is correct and prevents timing attacks against checksum verification.
 
 **Mechanism**:
 - PBKDF2-HMAC-SHA512 with:
-  - **100,000 iterations** (NIST 2023+ minimum; OWASP grade A)
+  - **600,000 iterations** (OWASP 2026 minimum)
   - **32-byte output** (256 bits, matches ed25519 key size)
   - **Deterministic salt** from `"sif-key-v1:" + passphrase`
 

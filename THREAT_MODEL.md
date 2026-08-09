@@ -1,7 +1,7 @@
 # SPIF Threat Model
 
 **Document version:** 1.0 — July 18, 2026  
-**Scope:** SPIF v1.0 wire format, all reference implementations (Python, Rust, TypeScript), and the sidecar proxy agent  
+**Scope:** SPIF v1.0 wire format, all reference implementations (Python, Rust), and the sidecar proxy agent  
 **Classification:** Public — intended for security review by enterprise adopters
 
 ---
@@ -355,7 +355,7 @@ Model Provider ──▶ Sidecar ──▶ Consumer
 | **Unit tests** | All chunk types, encode/decode roundtrip | ✅ 559 passing, 23 skipped |
 | **Security tests** | 32 signature + checksum test cases | ✅ All passing |
 | **Tamper tests** | Bit flips, truncation, replay, stripping | ✅ All passing |
-| **Cross-language tests** | Python ↔ Rust ↔ TS interop | ✅ All passing |
+| **Cross-language tests** | Python ↔ Rust interop | ✅ All passing |
 | **Sidecar tests** | Policy enforce, strict mode, reject unsigned | ✅ All passing |
 
 ### 8.2 Planned Fuzzing
@@ -364,7 +364,6 @@ Model Provider ──▶ Sidecar ──▶ Consumer
 |---|---|---|---|
 | `cargo-fuzz` + `libfuzzer` | Rust decoder (CBOR + signature) | 🟡 In progress | v1.1 (Aug 2026) |
 | `python-atheris` | Python reader (chunk parsing) | 🟡 In progress | v1.1 (Aug 2026) |
-| `jsfuzz` | TypeScript decoder | 🔴 Planned | v1.2 (Oct 2026) |
 | 24h crash-free requirement | All decoders | 🔴 Planned | v1.1 (Aug 2026) |
 
 ### 8.3 Property-Based Tests
@@ -433,12 +432,12 @@ The MULTISIG chunk stores signatures as a list. There is no threshold BLS aggreg
 
 | File | Line(s) | Function | Security Property |
 |---|---|---|---|
-| `spfx/spif/reader.py` | 325–334 | `_verify_checksum()` | Timing-safe checksum comparison |
-| `spfx/spif/reader.py` | 532–613 | `_verify_signature()` | ed25519 verification |
-| `spfx/spif/reader.py` | 400–420 | `_validate_dag_acyclic()` | DAG cycle detection |
-| `spfx/spif/reader.py` | 200–215 | `_read_chunk_header()` | Bounded chunk size |
-| `spfx/spif/crypto.py` | 20–38 | `derive_key()` | PBKDF2-HMAC-SHA512 key derivation |
-| `spfx/spif/crypto.py` | 70–85 | `sign_document()` | Signature over body bytes |
+| `spif/spif/reader.py` | 325–334 | `_verify_checksum()` | Timing-safe checksum comparison |
+| `spif/spif/reader.py` | 700–763 | `_verify_sig_inner()` | ed25519 verification |
+| `spif/spif/reader.py` | 400–420 | `_validate_dag_acyclic()` | DAG cycle detection |
+| `spif/spif/reader.py` | 200–215 | `_read_chunk_header()` | Bounded chunk size |
+| `spif/spif/crypto.py` | 26–64 | `derive_key_from_mnemonic()` | PBKDF2-HMAC-SHA512 key derivation |
+| `spif/spif/crypto.py` | 70–85 | `sign_document()` | Signature over body bytes |
 | `spif-rust/src/verify.rs` | 45–90 | `verify_signature()` | Rust ed25519 via `ed25519-dalek` |
 | `spif-rust/src/decode.rs` | 120–150 | `decode_chunk()` | Bounded CBOR decode in Rust |
 

@@ -676,11 +676,10 @@ Content-Type: application/x-spif
 | Language   | Location              | Status   |
 |------------|-----------------------|----------|
 | Python     | `spif/`               | Complete (alpha package) |
-| Rust       | `sif-rust/`           | Complete |
-| TypeScript | `packages/spif-js/`   | Complete |
+| Rust       | `spif-rust/`          | Complete |
 
-The Python implementation is authoritative for format questions. Rust and
-TypeScript are validated against the Python-generated compatibility fixtures for
+The Python implementation is authoritative for format questions. Rust is
+validated against the Python-generated compatibility fixtures for
 v0.2 read/write/streaming/signature interoperability. When implementations
 disagree on behavior, Python is correct.
 
