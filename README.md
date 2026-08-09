@@ -2,22 +2,33 @@
 
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Format Specification](https://img.shields.io/badge/Spec-v0.2--Active-success)](spif/SPEC.md)
+[![Rust Tests](https://github.com/intelogroup/spif/actions/workflows/spif-rust-test.yml/badge.svg)](https://github.com/intelogroup/spif/actions/workflows/spif-rust-test.yml)
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/intelogroup/spif/badge)](https://scorecard.dev/viewer/?uri=github.com/intelogroup/spif)
 [![CodeQL](https://github.com/intelogroup/spif/actions/workflows/codeql.yml/badge.svg)](https://github.com/intelogroup/spif/actions/workflows/codeql.yml)
 
 **SPIF** (Semantic Provenance Inference Format) is an open-standard binary serialization format designed for structured, cryptographically signed, and tamper-evident AI outputs. SPIF captures the full lineage of AI inference—including prompts, responses, reasoning traces, uncertainty distributions, tool calls, and multiple signatures—ensuring high auditability and trust in agentic workflows.
 
+## Table of Contents
+
+- [Key Features](#key-features)
+- [Monorepo Project Layout](#monorepo-project-layout)
+- [Programmatic Specification-Compliant Samples](#programmatic-specification-compliant-samples)
+- [Getting Started](#getting-started)
+- [Cryptographic Assurance & Triage](#cryptographic-assurance--triage)
+- [Contributing](#contributing)
+- [License](#license)
+
 ---
 
 ## Key Features
 
-- **🛡️ Tamper-Evident Multi-Signatures**: Dual and multi-signature co-signing supporting sequential client-to-proxy signatures with automatic device-key compromise recovery.
-- **⚡ High-Performance Core Optimizations**:
+- **Tamper-Evident Multi-Signatures**: Dual and multi-signature co-signing supporting sequential client-to-proxy signatures with automatic device-key compromise recovery.
+- **High-Performance Core Optimizations**:
   - $O(N)$ fast-path DAG validation short-circuits bypassing topological sorting for minimal/medium documents.
   - Thread-safe LRU cryptographic key cache (`maxsize=256`) making repetitive DER key reconstruction instantaneous.
   - Configurable zstandard compression levels supporting up to **80%+ speedups in serialization**.
-- **💥 Denial-of-Service / Memory Exhaustion Protection**: Early stream-offset validation preventing pre-allocation buffer out-of-memory exploits (CVE-2026-34665 style) on truncated or malicious payloads.
-- **📊 Rich Metadata & Lineage**: Full support for `task_info` (status, total execution duration, tool counts, error counts) and `provenance` retries.
+- **Denial-of-Service / Memory Exhaustion Protection**: Early stream-offset validation preventing pre-allocation buffer out-of-memory exploits (CVE-2026-34665 style) on truncated or malicious payloads.
+- **Rich Metadata & Lineage**: Full support for `task_info` (status, total execution duration, tool counts, error counts) and `provenance` retries.
 - **Cross-Language Fidelity**: Complete feature parity and validated interoperability between Python, TypeScript/Node.js, and Rust.
 - **Web Verifier**: In-browser, wasm-based `.spif` verification — nothing uploaded. See [`/verify`](verify/).
 
@@ -92,6 +103,12 @@ cargo test
 SPIF implements eager signature verification under **Strict Mode**. Any modification to payload segments or invalid checksums will instantly raise a signature validation error, protecting agent-to-agent and server-to-client pipelines from man-in-the-middle forging.
 
 *For security audits and detailed architectural considerations, see [CRYPTO_AUDIT.md](spif/CRYPTO_AUDIT.md) and [SPEC.md](spif/SPEC.md).*
+
+---
+
+## Contributing
+
+Contributions are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) for dev setup, coding standards, and the PR process across the Python, Rust, and wasm components. Security issues should follow [SECURITY.md](SECURITY.md) instead of a public issue.
 
 ---
 
