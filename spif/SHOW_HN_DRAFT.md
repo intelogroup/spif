@@ -12,7 +12,7 @@ What’s new
 - Acceptance workflow test: streaming → signed artifact → OTel/PROV export → tamper detection.
 
 Quick start
-- `pip install spfx` (and `npm install spfx-js` if you want TS)
+- `pip install spfx`
 - `spfx export demo.spif --lossless-json` or `--msgpack`
 - `python - <<'PY'
 from spfx import SPIFReader, to_msgpack, from_msgpack

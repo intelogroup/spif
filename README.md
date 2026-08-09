@@ -30,7 +30,6 @@ This repository is structured as a monorepo, containing all components of the SP
 | Path | Component | Language / Stack | Description |
 | :--- | :--- | :--- | :--- |
 | [`/spif`](spif/) | **Core Python & CLI** | Python 3.9+ | Main specification (`SPEC.md`), reference compiler, CLI generator, and LLM integrations. |
-| [`/spif/packages/spfx-js`](spif/packages/spfx-js/) | **JS/TS Client Library** | TypeScript | High-performance isomorphic client library for Node.js, Web, and Edge runtimes. |
 | [`/spif-rust`](spif-rust/) | **Rust Engine & CLI** | Rust (2021) | Ultra-fast native core decoder, multi-signer validator, and high-throughput batch signature verifier. |
 | [`/verify`](verify/) | **Web Verifier** | Rust/wasm | Static, in-browser `.spif` verifier — no upload, no GUI viewer, ghost artifact stays binary-only. Live at [intelogroup.github.io/spif](https://intelogroup.github.io/spif/). |
 
@@ -78,16 +77,7 @@ pip install -e ".[dev]"
 spif --help
 ```
 
-### 2. TypeScript / Node.js (`spfx-js`)
-Decode and audit SPIF payloads in JavaScript environments:
-```bash
-cd spif/packages/spfx-js
-npm install
-npm run build
-npm test
-```
-
-### 3. Rust Engine (`spif-rust`)
+### 2. Rust Engine (`spif-rust`)
 Build the ultra-fast Rust encoder/decoder library:
 ```bash
 cd spif-rust
