@@ -445,6 +445,13 @@ class SPIFStreamReader:
                 d = cbor2.loads(payload)
                 node_id = d.get("node_id", "main")
                 seq = d.get("seq", 0)
+                if not isinstance(seq, int) or isinstance(seq, bool):
+                    events.append(StreamEvent(
+                        type="error",
+                        error=f"PARTIAL_TEXT seq must be an int, got {seq!r}",
+                    ))
+                    self._state = "done"
+                    return
                 last = self._last_seq.get(node_id, -1)
                 if seq <= last:
                     events.append(StreamEvent(

@@ -11,7 +11,13 @@ from ..types import Provenance
 
 def input_hash(messages: list[dict[str, Any]]) -> str:
     """Stable SHA-256 of the messages list (canonical JSON)."""
-    canonical = json.dumps(messages, sort_keys=True, ensure_ascii=False)
+    try:
+        canonical = json.dumps(messages, sort_keys=True, ensure_ascii=False)
+    except TypeError as exc:
+        raise ValueError(
+            f"input_hash() requires JSON-serializable message content with "
+            f"string-only keys: {exc}"
+        ) from exc
     return hashlib.sha256(canonical.encode()).hexdigest()
 
 

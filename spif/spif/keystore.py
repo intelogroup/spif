@@ -258,8 +258,10 @@ class SPIFKeyStore:
         try:
             data = json.loads(self._revocation_path.read_text())
             return dict(data.get("revoked", {}))
-        except (json.JSONDecodeError, KeyError):
-            return {}
+        except (json.JSONDecodeError, KeyError, AttributeError) as exc:
+            raise SPIFSignatureError(
+                f"Revocation file {self._revocation_path} is malformed: {exc}"
+            ) from exc
 
     def _save_revoked(self, revoked: dict[str, int]) -> None:
         self._revocation_path.write_text(

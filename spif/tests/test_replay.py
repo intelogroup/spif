@@ -57,39 +57,34 @@ class TestReplayGuardBasic:
             ReplayGuard().check(doc)
 
 
-class TestReplayGuardMultisigBug:
-    """
-    ReplayGuard.check() only reads doc.signature.signer, ignoring
-    doc.signatures (the multisig list) entirely. A multisig-only document
-    (doc.signature is None) is tracked under the empty-string signer for
-    every distinct multisig signer set, so two genuinely different signers'
-    first-ever nonces collide under key ("", nonce) and the second is
-    wrongly treated as a replay of the first.
-    """
-
-    def test_distinct_multisig_signers_collide_under_empty_signer_key(self):
+class TestReplayGuardMultisig:
+    def test_distinct_multisig_signers_same_nonce_both_accepted(self):
         guard = ReplayGuard()
         doc_alice = _doc(nonce="n1", multisig=["alice"])
         doc_bob = _doc(nonce="n1", multisig=["bob"])
 
-        guard.check(doc_alice)  # tracked as ("", "n1")
-        # BUG: bob's distinct multisig signature is rejected as a replay of
-        # alice's, purely because both are multisig-only and share a nonce.
-        with pytest.raises(SPIFReplayError):
-            guard.check(doc_bob)
+        guard.check(doc_alice)
+        guard.check(doc_bob)  # distinct signer set -> distinct key, not a replay
 
-    def test_multisig_signer_identity_not_reflected_in_seen_set(self):
+    def test_multisig_signer_identity_reflected_in_seen_set(self):
         guard = ReplayGuard()
         guard.check(_doc(nonce="n1", multisig=["alice"]))
-        # BUG: internal state has no trace of "alice" — only the empty string.
-        assert ("", "n1") in guard._seen
-        assert not any("alice" in key for key in guard._seen)
+        assert ("alice", "n1") in guard._seen
+        assert ("", "n1") not in guard._seen
 
-
-class TestReplayGuardUnboundedGrowth:
-    def test_seen_set_grows_without_bound_or_eviction(self):
-        # ponytail: documents the missing TTL/eviction, not a full DoS repro.
+    def test_repeat_same_multisig_set_and_nonce_raises(self):
         guard = ReplayGuard()
+        doc = _doc(nonce="n1", multisig=["alice", "bob"])
+        guard.check(doc)
+        with pytest.raises(SPIFReplayError):
+            guard.check(_doc(nonce="n1", multisig=["bob", "alice"]))  # order-independent
+
+
+class TestReplayGuardBoundedGrowth:
+    def test_seen_set_is_capped_with_fifo_eviction(self):
+        guard = ReplayGuard(max_entries=10)
         for i in range(1000):
             guard.check(_doc(nonce=f"n{i}", signer="alice"))
-        assert len(guard._seen) == 1000  # no cap, no eviction — grows linearly forever
+        assert len(guard._seen) == 10
+        # oldest entries evicted -> re-using an old nonce is no longer flagged as replay
+        guard.check(_doc(nonce="n0", signer="alice"))

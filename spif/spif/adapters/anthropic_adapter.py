@@ -55,6 +55,7 @@ import time as _time_mod
 from typing import Callable
 from ._common import input_hash as _input_hash, build_provenance as _build_provenance
 from ..format import NODE_TEXT, NODE_TOOL_CALL, NODE_TOOL_RESULT
+from ..reader import SPIFFormatError
 from ..streaming import SPIFStreamWriter
 from ..types import (
     Distribution, Node, Provenance, SPIFDocument, TraceStep,
@@ -469,6 +470,12 @@ class AnthropicSPIFAdapter:
                 thinking_blocks.append(block.thinking)
             elif block.type == "tool_use":
                 tool_call_nodes.append(_build_tool_call_node(block, confidence))
+
+        seen_ids: set[str] = set()
+        for n in tool_call_nodes:
+            if n.id in seen_ids:
+                raise SPIFFormatError(f"Duplicate vendor tool_use id produced Node id {n.id!r}")
+            seen_ids.add(n.id)
 
         tool_result_nodes: list[Node] = []
         pending = False

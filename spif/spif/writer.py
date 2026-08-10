@@ -278,11 +278,9 @@ class SPIFWriter:
 
         # ALTS chunk — compressed
         if doc.alternatives:
+            if any(math.isnan(a.weight) for a in doc.alternatives):
+                raise ValueError("Alternative weights must not be nan")
             if doc.alternatives and doc.alternatives[0].normalized:
-                if any(math.isnan(a.weight) for a in doc.alternatives):
-                    raise ValueError(
-                        "Alternative weights must not be nan when normalized=True"
-                    )
                 total = sum(a.weight for a in doc.alternatives)
                 if abs(total - 1.0) > 0.01:
                     raise ValueError(
