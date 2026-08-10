@@ -1,6 +1,8 @@
 # SPIF Performance Benchmarks
 
-This report details the execution speed of the **Semantic Provenance Inference Format (SPIF)** reference Python implementation (`spfx`) across various document complexity levels. 
+This report details the execution speed of the **Semantic Provenance Inference Format (SPIF)** reference Python implementation (`spfx`) across various document complexity levels.
+
+**This is a serialization-speed comparison against JSON/CBOR/MsgPack — it is not the competitive benchmark.** SPIF's actual claim is provenance, not encode speed. For a comparison against real provenance/attestation systems (Sigstore, C2PA, in-toto) see [`spif/benchmarks/provenance_comparison_matrix.md`](spif/benchmarks/provenance_comparison_matrix.md) and [`spif/results/provenance_comparison_bench.txt`](spif/results/provenance_comparison_bench.txt).
 
 ---
 
