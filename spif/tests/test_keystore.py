@@ -317,3 +317,62 @@ class TestKeySlug:
         key_id = "https://keys.example.com/alice?v=1"
         tmp_ks.add_key(key_id, _alice_pub(alice_key))
         assert tmp_ks.get_key(key_id) == _alice_pub(alice_key)
+
+
+# ---------------------------------------------------------------------------
+# Role authorization
+# ---------------------------------------------------------------------------
+
+class TestRoleAuthorization:
+    def test_unregistered_role_is_not_enforced(self, tmp_ks):
+        doc = SPIFDocument(payload=[
+            Node(id="n1", type="text", value="hi", confidence=Distribution(mean=0.9, var=0.01))
+        ], signer_roles={"model-key": "model"})
+        tmp_ks.check_roles(doc)  # must not raise
+
+    def test_unauthorized_signer_for_registered_role_rejected(self, tmp_ks):
+        tmp_ks.authorize_role("human_reviewer", "reviewer-key-42")
+        doc = SPIFDocument(payload=[
+            Node(id="n1", type="text", value="hi", confidence=Distribution(mean=0.9, var=0.01))
+        ], signer_roles={"model-key": "human_reviewer"})
+        with pytest.raises(SPIFSignatureError, match="not authorized"):
+            tmp_ks.check_roles(doc)
+
+    def test_authorized_signer_accepted(self, tmp_ks):
+        tmp_ks.authorize_role("human_reviewer", "reviewer-key-42")
+        doc = SPIFDocument(payload=[
+            Node(id="n1", type="text", value="hi", confidence=Distribution(mean=0.9, var=0.01))
+        ], signer_roles={"reviewer-key-42": "human_reviewer"})
+        tmp_ks.check_roles(doc)  # must not raise
+
+    def test_deauthorize_revokes_access(self, tmp_ks):
+        tmp_ks.authorize_role("human_reviewer", "reviewer-key-42")
+        assert tmp_ks.deauthorize_role("human_reviewer", "reviewer-key-42") is True
+        assert tmp_ks.deauthorize_role("human_reviewer", "reviewer-key-42") is False
+        doc = SPIFDocument(payload=[
+            Node(id="n1", type="text", value="hi", confidence=Distribution(mean=0.9, var=0.01))
+        ], signer_roles={"reviewer-key-42": "human_reviewer"})
+        with pytest.raises(SPIFSignatureError, match="not authorized"):
+            tmp_ks.check_roles(doc)
+
+    def test_corrupted_roles_file_fails_closed(self, tmp_ks):
+        doc = SPIFDocument(payload=[
+            Node(id="n1", type="text", value="hi", confidence=Distribution(mean=0.9, var=0.01))
+        ], signer_roles={"model-key": "model"})
+        tmp_ks._roles_path.write_text("{not valid json")
+        with pytest.raises(SPIFSignatureError, match="malformed"):
+            tmp_ks.check_roles(doc)
+
+    def test_role_claims_survive_sign_and_verify_roundtrip(self, tmp_ks, alice_key):
+        signer_id = "alice@example.com"
+        tmp_ks.add_key(signer_id, _alice_pub(alice_key))
+        tmp_ks.authorize_role("model", signer_id)
+
+        doc = _make_doc()
+        doc.signer_roles = {signer_id: "model"}
+        signed_bytes = _sign_doc(doc, alice_key, signer_id)
+
+        decoded = SPIFReader().decode(signed_bytes)
+        assert decoded.signer_roles == {signer_id: "model"}
+        assert tmp_ks.verify(signed_bytes) is True
+        tmp_ks.check_roles(decoded)  # must not raise
