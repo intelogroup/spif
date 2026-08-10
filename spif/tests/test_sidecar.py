@@ -17,7 +17,7 @@ import urllib
 import pytest
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 
-from spif import SPIFDocument, Node, Distribution, Provenance, SPIFWriter, Signature, SPIFReader
+from spif import SPIFDocument, Node, Distribution, Provenance, SPIFWriter, Signature, SPIFReader, SPIFError
 from spif.crypto import derive_key_from_mnemonic
 from spif.sidecar import CRLClient, PolicyEvaluator, SidecarHTTPHandler, generate_fpr_document, start_sidecar
 
@@ -122,9 +122,14 @@ def policy_file(tmp_path, keys):
 
 
 def test_crl_client():
-    # Test JSON dict parsing
+    # _parse_crl() + manually marking a successful fetch (bypasses network);
+    # get_revoked_keys() would otherwise re-fetch from "http://dummy" since
+    # _last_fetch starts at 0.0.
     client = CRLClient("http://dummy")
+
+    # Test JSON dict parsing
     client._parse_crl(json.dumps({"revoked": {"key1": 1234, "key2": 5678}}))
+    client._last_fetch = time.time()
     assert client.get_revoked_keys() == {"key1", "key2"}
 
     # Test JSON list parsing
@@ -136,17 +141,25 @@ def test_crl_client():
     assert client.get_revoked_keys() == {"key5", "key6", "key7"}
 
 
-def test_crl_fetch_failure_fails_open_silently():
-    """BUG: _fetch_crl() catches every exception from the CRL HTTP fetch and
-    falls back to the cached (here, never-populated) _revoked_keys with no
-    signal to the caller. A network partition or DNS failure against the CRL
-    endpoint silently disables revocation checking instead of failing closed
-    — get_revoked_keys() returns an empty set indistinguishable from "nobody
-    is revoked", with no exception and no way to detect the outage."""
+def test_crl_fetch_failure_fails_closed_on_first_fetch():
+    """A network partition or DNS failure against the CRL endpoint on the
+    *first* fetch (no cached CRL yet) now raises instead of silently
+    returning an empty set indistinguishable from "nobody is revoked"."""
     unreachable_port = get_free_port()  # nothing listens here
     client = CRLClient(f"http://127.0.0.1:{unreachable_port}/crl", cache_ttl=0)
-    # Should have surfaced a connection error; instead fails open.
-    assert client.get_revoked_keys() == set()
+    with pytest.raises(SPIFError, match="CRL fetch"):
+        client.get_revoked_keys()
+
+
+def test_crl_fetch_failure_falls_back_to_stale_cache():
+    """A fetch failure *after* a CRL was already successfully cached still
+    falls back to the stale cache instead of raising — only the first,
+    never-cached fetch should fail closed."""
+    unreachable_port = get_free_port()
+    client = CRLClient(f"http://127.0.0.1:{unreachable_port}/crl", cache_ttl=0)
+    client._parse_crl(json.dumps(["key1"]))
+    client._last_fetch = time.time() - 1000  # force TTL expiry, but cache is non-empty
+    assert client.get_revoked_keys() == {"key1"}
 
 
 def test_policy_evaluator(keys, tmp_keystore, policy_file):

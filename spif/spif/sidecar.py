@@ -61,6 +61,11 @@ class CRLClient:
                 self._parse_crl(content)
                 self._last_fetch = time.time()
         except Exception as e:
+            if self._last_fetch == 0.0:
+                raise SPIFError(
+                    f"Initial CRL fetch from {self.url} failed and no cached CRL "
+                    f"is available: {e}"
+                ) from e
             logger.warning("Failed to fetch CRL from %s: %s. Using cached list.", self.url, e)
 
     def _parse_crl(self, content: str) -> None:
