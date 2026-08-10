@@ -5,51 +5,48 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>SPIF Verifier</title>
 <style>
-  :root { color-scheme: light dark; }
-  body {
-    font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    max-width: 720px; margin: 4rem auto; padding: 0 1.5rem;
-  }
-  h1 { font-size: 1.3rem; margin-bottom: 0.25rem; }
-  p.sub { color: #888; margin-top: 0; }
-  #drop {
-    border: 2px dashed #888; border-radius: 8px; padding: 3rem 1rem;
-    text-align: center; cursor: pointer; margin: 1.5rem 0;
-  }
-  #drop.hover { border-color: #4a9; }
-  #result { display: none; }
-  .badge {
-    display: inline-block; padding: 0.2rem 0.6rem; border-radius: 4px;
-    font-weight: 600; font-size: 0.85rem;
-  }
-  .ok { background: #1a7f37; color: #fff; }
-  .bad { background: #cf222e; color: #fff; }
-  .warn { background: #9a6700; color: #fff; }
-  pre {
-    background: #1112; border-radius: 6px; padding: 1rem;
-    overflow-x: auto; font-size: 0.8rem; max-height: 400px;
-  }
-  #err { color: #cf222e; display: none; }
+  :root { color-scheme: dark; --ink: #f8fafc; --muted: #9aa9bd; --line: #2d4058; --cyan: #22d3ee; --green: #34d399; --red: #fb7185; }
+  * { box-sizing: border-box; }
+  body { min-height: 100vh; margin: 0; padding: 3rem 1.5rem; color: var(--ink); background: radial-gradient(circle at 10% 0%, #182a45 0, transparent 34rem), #0b1220; font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+  main { max-width: 920px; margin: 0 auto; }
+  .brand { display: flex; align-items: center; gap: 0.85rem; margin-bottom: 3rem; }
+  .brand img { width: 3rem; height: 3rem; border-radius: 0.8rem; }
+  .brand strong { display: block; font-size: 1.1rem; letter-spacing: 0.12em; }
+  .brand span { color: var(--muted); font-size: 0.78rem; letter-spacing: 0.08em; text-transform: uppercase; }
+  .hero { max-width: 680px; margin-bottom: 2rem; }
+  h1 { font-size: clamp(2rem, 5vw, 3.6rem); line-height: 1; letter-spacing: -0.05em; margin: 0 0 1rem; }
+  p.sub { color: var(--muted); margin: 0; font-size: 1.05rem; }
+  #drop { border: 1px dashed #4a6383; border-radius: 1.25rem; padding: 3.5rem 1rem; text-align: center; cursor: pointer; margin: 2rem 0; background: linear-gradient(135deg, #111c2e, #0e192a); box-shadow: 0 1.5rem 4rem #03071266; transition: border-color 160ms ease, transform 160ms ease, box-shadow 160ms ease; }
+  #drop:hover, #drop.hover { border-color: var(--cyan); transform: translateY(-2px); box-shadow: 0 1.5rem 4rem #03071299; }
+  #drop strong { display: block; margin-bottom: 0.35rem; font-size: 1.05rem; }
+  #drop span { color: var(--muted); }
+  #result { display: none; padding: 1.25rem; border: 1px solid var(--line); border-radius: 1.25rem; background: #0f1a2b; box-shadow: 0 1.5rem 4rem #03071266; }
+  .result-head { display: flex; align-items: start; justify-content: space-between; gap: 1rem; margin-bottom: 1rem; }
+  .result-head h2 { margin: 0; font-size: 1.1rem; }
+  #filename { display: block; color: var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.8rem; }
+  .badge { display: inline-flex; padding: 0.35rem 0.7rem; border-radius: 999px; font-weight: 700; font-size: 0.78rem; letter-spacing: 0.02em; }
+  .ok { background: #34d39922; color: var(--green); border: 1px solid #34d39966; }
+  .bad { background: #fb718522; color: var(--red); border: 1px solid #fb718566; }
+  .warn { background: #fbbf2422; color: #fbbf24; border: 1px solid #fbbf2466; }
+  pre { margin: 1rem 0 0; background: #080e18; border: 1px solid #203149; border-radius: 0.8rem; padding: 1rem; overflow-x: auto; font-size: 0.78rem; max-height: 400px; color: #d4deeb; }
+  #err { color: var(--red); display: none; padding: 0.85rem 1rem; border: 1px solid #fb718566; border-radius: 0.75rem; background: #fb718514; }
   input[type=file] { display: none; }
+  .foot { margin-top: 2rem; color: var(--muted); font-size: 0.82rem; }
+  .foot a { color: var(--cyan); }
+  @media (max-width: 620px) { body { padding-top: 1.5rem; } .brand { margin-bottom: 2.5rem; } .result-head { display: block; } #filename { margin-top: 0.4rem; } }
 </style>
 </head>
 <body>
-
-<h1>SPIF Verifier</h1>
-<p class="sub">Drop a .spif file below. Verification runs entirely in your browser — nothing is uploaded.</p>
-
-<div id="drop">Drop .spif file here, or click to choose<input type="file" id="file" accept=".spif"></div>
-
+<main>
+<div class="brand"><img src="./spif-mark.svg" alt="SPIF mark"><div><strong>SPIF</strong><span>Local provenance verifier</span></div></div>
+<section class="hero"><h1>Verify the chain.</h1><p class="sub">Inspect a signed <code>.spif</code> artifact in your browser. Your file never leaves this page.</p></section>
+<div id="drop"><strong>Drop a SPIF artifact here</strong><span>or click to choose a <code>.spif</code> file</span><input type="file" id="file" accept=".spif"></div>
 <div id="err"></div>
-
-<div id="result">
-  <p><span id="signed-badge" class="badge"></span> <span id="verified-badge" class="badge"></span></p>
-  <pre id="json"></pre>
-</div>
-
+<div id="result"><div class="result-head"><div><h2>Verification result</h2><span id="filename"></span></div><div><span id="signed-badge" class="badge"></span> <span id="verified-badge" class="badge"></span></div></div><pre id="json"></pre></div>
+<p class="foot">SPIF is an open format for signed provenance across AI models, tools, and agents. <a href="https://github.com/intelogroup/spif">View the project</a>.</p>
+</main>
 <script type="module">
 import init, { verify } from "./pkg/spif_rust.js";
-
 const drop = document.getElementById("drop");
 const fileInput = document.getElementById("file");
 const result = document.getElementById("result");
@@ -57,47 +54,30 @@ const errBox = document.getElementById("err");
 const jsonBox = document.getElementById("json");
 const signedBadge = document.getElementById("signed-badge");
 const verifiedBadge = document.getElementById("verified-badge");
-
 let ready = init();
-
 drop.addEventListener("click", () => fileInput.click());
 drop.addEventListener("dragover", (e) => { e.preventDefault(); drop.classList.add("hover"); });
 drop.addEventListener("dragleave", () => drop.classList.remove("hover"));
-drop.addEventListener("drop", (e) => {
-  e.preventDefault();
-  drop.classList.remove("hover");
-  if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
-});
-fileInput.addEventListener("change", () => {
-  if (fileInput.files[0]) handleFile(fileInput.files[0]);
-});
-
+drop.addEventListener("drop", (e) => { e.preventDefault(); drop.classList.remove("hover"); if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]); });
+fileInput.addEventListener("change", () => { if (fileInput.files[0]) handleFile(fileInput.files[0]); });
 async function handleFile(file) {
   await ready;
   errBox.style.display = "none";
   result.style.display = "none";
   try {
     const bytes = new Uint8Array(await file.arrayBuffer());
-    const jsonStr = verify(bytes);
-    const doc = JSON.parse(jsonStr);
-
+    const doc = JSON.parse(verify(bytes));
+    document.getElementById("filename").textContent = file.name;
     signedBadge.textContent = doc._signed ? "signed" : "unsigned";
     signedBadge.className = "badge " + (doc._signed ? "ok" : "warn");
-
     if (doc._signed) {
       verifiedBadge.textContent = doc._verified ? "signature verified" : "signature INVALID";
       verifiedBadge.className = "badge " + (doc._verified ? "ok" : "bad");
-      verifiedBadge.style.display = "inline-block";
-    } else {
-      verifiedBadge.style.display = "none";
-    }
-
-    jsonBox.textContent = jsonStr;
+      verifiedBadge.style.display = "inline-flex";
+    } else { verifiedBadge.style.display = "none"; }
+    jsonBox.textContent = JSON.stringify(doc, null, 2);
     result.style.display = "block";
-  } catch (e) {
-    errBox.textContent = "Parse failed: " + e.message;
-    errBox.style.display = "block";
-  }
+  } catch (e) { errBox.textContent = "Parse failed: " + e.message; errBox.style.display = "block"; }
 }
 </script>
 </body>
