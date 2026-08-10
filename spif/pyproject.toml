@@ -35,7 +35,7 @@ dependencies = [
 [project.optional-dependencies]
 verify = []                             # verify-only: all deps already in core (cbor2 + cryptography)
 anthropic = ["anthropic>=0.36"]
-openai = ["openai>=1.0"]
+openai = ["openai>=1.45"]
 gemini = ["google-generativeai>=0.8"]
 mcp = ["anthropic>=0.36", "fastmcp>=2.0"]
 dev = ["pytest>=8", "pytest-cov", "hypothesis>=6"]
