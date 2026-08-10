@@ -561,3 +561,38 @@ class TestStreamResume:
     def test_invalid_resume_token_raises_on_construction(self):
         with pytest.raises(ValueError):
             SPIFStreamWriter(resume_from="not-a-valid-token!!!")
+
+
+class TestStreamDecoderOrderingGaps:
+    """SPIFStreamReader._dispatch() now enforces per-node_id seq
+    monotonicity for PARTIAL_TEXT chunks — out-of-order and duplicate seq
+    values raise a StreamEvent(type="error") and end the stream, instead
+    of being accepted silently."""
+
+    @staticmethod
+    def _chunk(chunk_type: int, payload: bytes) -> bytes:
+        import struct
+        return struct.pack(">BI", chunk_type, len(payload)) + payload
+
+    def test_out_of_order_seq_rejected(self):
+        import cbor2
+
+        data = MAGIC + bytes([1, 0])
+        data += self._chunk(CHUNK_PARTIAL_TEXT, cbor2.dumps({"node_id": "main", "text": "B", "seq": 5}))
+        data += self._chunk(CHUNK_PARTIAL_TEXT, cbor2.dumps({"node_id": "main", "text": "A", "seq": 1}))
+
+        events = SPIFStreamReader().feed(data)
+        assert [e.type for e in events] == ["opened", "partial_text", "error"]
+        assert "out-of-order" in events[-1].error
+
+    def test_duplicate_seq_chunk_rejected(self):
+        import cbor2
+
+        data = MAGIC + bytes([1, 0])
+        data += self._chunk(CHUNK_PARTIAL_TEXT, cbor2.dumps({"node_id": "main", "text": "A", "seq": 1}))
+        data += self._chunk(CHUNK_PARTIAL_TEXT, cbor2.dumps({"node_id": "main", "text": "A", "seq": 1}))
+
+        events = SPIFStreamReader().feed(data)
+        texts = [e.text for e in events if e.type == "partial_text"]
+        assert texts == ["A"]
+        assert events[-1].type == "error"
