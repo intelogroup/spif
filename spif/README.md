@@ -198,9 +198,9 @@ You can bolt an HMAC onto any JSON response. SPIF is different in three ways:
 
 ## Specification
 
-Full wire format specification: [`SPEC.md`](SPEC.md)
+Full wire format specification: [`docs/SPEC.md`](../docs/SPEC.md)
 
-Cryptographic implementation audit: [`CRYPTO_AUDIT.md`](CRYPTO_AUDIT.md)
+Cryptographic implementation audit: [`docs/CRYPTO_AUDIT.md`](../docs/CRYPTO_AUDIT.md)
 
 ---
 
