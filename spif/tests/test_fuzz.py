@@ -27,14 +27,24 @@ from spif.format import MAGIC, FORMAT_VERSION
 floats_01 = st.floats(min_value=0.0, max_value=1.0, allow_nan=False, allow_infinity=False)
 small_floats = st.floats(min_value=0.0, max_value=0.5, allow_nan=False, allow_infinity=False)
 
-dist_strategy = st.builds(
-    Distribution,
-    mean=floats_01,
-    var=small_floats,
-    shape=st.sampled_from(["gaussian", "beta", "bimodal", "uniform", "point"]),
-    p5=st.one_of(st.none(), floats_01),
-    p95=st.one_of(st.none(), floats_01),
-)
+@st.composite
+def _ordered_percentiles(draw):
+    if draw(st.booleans()):
+        return None, None
+    a, b = draw(floats_01), draw(floats_01)
+    return (a, b) if a <= b else (b, a)
+
+
+@st.composite
+def dist_strategy(draw):
+    p5, p95 = draw(_ordered_percentiles())
+    return Distribution(
+        mean=draw(floats_01),
+        var=draw(small_floats),
+        shape=draw(st.sampled_from(["gaussian", "beta", "bimodal", "uniform", "point"])),
+        p5=p5,
+        p95=p95,
+    )
 
 node_id_strategy = st.text(
     alphabet=st.characters(whitelist_categories=("Lu", "Ll", "Nd"), whitelist_characters="_-"),
@@ -49,7 +59,7 @@ node_strategy = st.builds(
         st.text(max_size=200),
         st.integers(min_value=0, max_value=10**6),
     ),
-    confidence=dist_strategy,
+    confidence=dist_strategy(),
     refs=st.just([]),  # no cross-refs in generated docs (avoids dangling ref complexity)
 )
 
@@ -58,7 +68,7 @@ step_strategy = st.builds(
     id=node_id_strategy,
     type=st.sampled_from(["hypothesis", "evidence", "inference", "conclusion"]),
     content=st.text(max_size=200),
-    confidence=dist_strategy,
+    confidence=dist_strategy(),
     deps=st.just([]),
     alternatives=st.lists(st.text(max_size=50), max_size=3),
 )

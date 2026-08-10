@@ -23,6 +23,12 @@ class Distribution:
             raise ValueError(f"Distribution.mean must be in [0, 1], got {self.mean}")
         if self.var < 0:
             raise ValueError(f"Distribution.var must be >= 0, got {self.var}")
+        if self.p5 is not None and not 0.0 <= self.p5 <= 1.0:
+            raise ValueError(f"Distribution.p5 must be in [0, 1], got {self.p5}")
+        if self.p95 is not None and not 0.0 <= self.p95 <= 1.0:
+            raise ValueError(f"Distribution.p95 must be in [0, 1], got {self.p95}")
+        if self.p5 is not None and self.p95 is not None and self.p5 > self.p95:
+            raise ValueError(f"Distribution.p5 ({self.p5}) must be <= p95 ({self.p95})")
         if not self.semantics:
             raise ValueError("Distribution.semantics must not be empty")
         if self.semantics not in KNOWN_DIST_SEMANTICS and not self.semantics.startswith("custom:"):
@@ -116,6 +122,9 @@ class Provenance:
     human_oversight: str = ""     # v1.1+: EU AI Act Art. 14 — "none"/"human-in-loop"/"human-on-loop"
     nonce: str = ""                # v1.1+: unique per-signing value; verifiers use this for replay rejection
 
+    def __post_init__(self):
+        if self.timestamp_ms < 0:
+            raise ValueError(f"Provenance.timestamp_ms must be >= 0, got {self.timestamp_ms}")
 
 
 @dataclass

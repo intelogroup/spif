@@ -199,11 +199,6 @@ def _validate_payload_dag(nodes: list[Node]) -> None:
     A cycle (e.g. A → B → A) would prevent safe traversal of the payload DAG
     and indicates a malformed or adversarially crafted document.
     """
-    if len(nodes) > MAX_PAYLOAD_NODES:
-        raise SPIFFormatError(
-            f"Payload has {len(nodes)} nodes, exceeding the limit of {MAX_PAYLOAD_NODES}"
-        )
-
     # Duplicate ID check
     seen: set[str] = set()
     for n in nodes:
@@ -481,6 +476,10 @@ class SPIFReader:
                                  compressed=compressed, zstd_compressed=zstd_compressed)
         if not isinstance(raw_payload, list):
             raise SPIFFormatError("PAYLOAD chunk must decode to a list")
+        if len(raw_payload) > MAX_PAYLOAD_NODES:
+            raise SPIFFormatError(
+                f"Payload has {len(raw_payload)} nodes, exceeding the limit of {MAX_PAYLOAD_NODES}"
+            )
         payload = [_decode_node(n) for n in raw_payload]
         if not payload:
             raise SPIFFormatError("PAYLOAD must contain at least one node")
@@ -592,16 +591,15 @@ class SPIFReader:
                     ))
                 # Validate weights if normalized
                 if normalized and alternatives:
-                    if any(math.isnan(a.weight) for a in alternatives):
-                        raise SPIFFormatError(
-                            "ALTS normalized=True but a weight is nan"
-                        )
                     total = sum(a.weight for a in alternatives)
                     if abs(total - 1.0) > 0.01:
                         raise SPIFFormatError(
                             f"ALTS normalized=True but weights sum to {total:.4f}, "
                             f"expected 1.0 ± 0.01"
                         )
+
+            if alternatives and any(math.isnan(a.weight) for a in alternatives):
+                raise SPIFFormatError("ALTS weight must not be nan")
 
         # 10. DELTA — compressed if flag set
         delta = None

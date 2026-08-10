@@ -723,17 +723,18 @@ class TestProvenanceEdgeCases:
         r = _rtrip(doc)
         assert r.provenance.timestamp_ms == ts
 
-    def test_negative_timestamp_ms_not_rejected(self):
-        """BUG: Provenance.timestamp_ms has no validation anywhere (types.py
-        has no __post_init__ check, reader.py's signature-age math just
-        subtracts without a sign check), so a negative timestamp round-trips
-        silently instead of being rejected."""
+    def test_negative_timestamp_ms_rejected(self):
+        """A negative timestamp_ms is now rejected at Provenance construction."""
+        with pytest.raises(ValueError, match="timestamp_ms"):
+            Provenance(source_model="m", temperature=0.0, timestamp_ms=-1)
+
+    def test_zero_timestamp_ms_accepted(self):
         doc = SPIFDocument(
             payload=[_node()],
-            provenance=Provenance(source_model="m", temperature=0.0, timestamp_ms=-1),
+            provenance=Provenance(source_model="m", temperature=0.0, timestamp_ms=0),
         )
         r = _rtrip(doc)
-        assert r.provenance.timestamp_ms == -1
+        assert r.provenance.timestamp_ms == 0
 
     def test_decode_str_input_raises_clean_magic_error(self):
         """SPIFReader.decode() now type-checks input up front — a str
