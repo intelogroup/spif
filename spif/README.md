@@ -57,14 +57,12 @@ SPIFWriter().write(doc, "response.spif")
 ### Sign the output
 
 ```python
-from spif.crypto import derive_key_from_mnemonic
-from spif.writer import SPIFWriter
+from pathlib import Path
+from spif.crypto import derive_key_from_mnemonic, sign_document
 
 # Always supply a non-empty passphrase for production-grade keys.
 # Leaving passphrase empty ("") works but triggers a UserWarning about PBKDF2 precomputation risk.
 key = derive_key_from_mnemonic("your twelve word mnemonic phrase here", passphrase="strong-passphrase")
-
-from spif.crypto import sign_document
 signed_bytes = sign_document(doc, key, signer_id="https://yourorg.com/keys/signing-key-1")
 Path("signed.spif").write_bytes(signed_bytes)
 ```
@@ -72,6 +70,7 @@ Path("signed.spif").write_bytes(signed_bytes)
 Or use a PEM private key:
 
 ```python
+from pathlib import Path
 from spif.crypto import load_pem_private_key, sign_document
 
 key = load_pem_private_key("private_key.pem")

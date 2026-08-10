@@ -440,8 +440,15 @@ def start_sidecar(
             p = Path(policy_path)
             if p.exists():
                 policy_data = json.loads(p.read_text(encoding="utf-8"))
-                crl_conf = policy_data.get("crl_check", {})
-                crl_cache_ttl = crl_conf.get("cache_ttl", 300)
+                crl_conf = policy_data.get("crl_check") or {}
+                if not isinstance(crl_conf, dict):
+                    logger.warning("crl_check policy field must be an object, got %r; ignoring", crl_conf)
+                    crl_conf = {}
+                ttl = crl_conf.get("cache_ttl", 300)
+                if isinstance(ttl, bool) or not isinstance(ttl, int) or ttl < 0:
+                    logger.warning("crl_check.cache_ttl must be a non-negative integer, got %r; using default 300", ttl)
+                else:
+                    crl_cache_ttl = ttl
         except Exception as e:
             logger.warning("Failed to parse CRL config from policy: %s", e)
 
