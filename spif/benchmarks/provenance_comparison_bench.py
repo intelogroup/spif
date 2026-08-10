@@ -241,6 +241,23 @@ def c2pa_verify(path: Path) -> bool:
     return True
 
 
+def _is_expected_c2pa_cert_rejection(error: Exception) -> bool:
+    """Return whether C2PA rejected the self-signed certificate as expected."""
+    try:
+        import c2pa
+    except ImportError:
+        return False
+
+    if not isinstance(error, c2pa.C2paError):
+        return False
+
+    message = str(error).lower()
+    return (
+        "certificate was self-signed" in message
+        or "certificate is invalid" in message
+    )
+
+
 # ---------------------------------------------------------------------------
 
 def main():
@@ -285,13 +302,15 @@ def main():
     import tempfile
     with tempfile.TemporaryDirectory() as td:
         tmpdir = Path(td)
-        cert_path, key_path = _c2pa_setup(tmpdir)
         try:
+            cert_path, key_path = _c2pa_setup(tmpdir)
             c2pa_build_and_sign(cert_path, key_path, tmpdir)
         except Exception as e:
-            results["C2PA (signed manifest)"] = {
-                "error": f"requires CA-issued cert, not measured — {e}"
-            }
+            if _is_expected_c2pa_cert_rejection(e):
+                message = f"requires CA-issued cert, not measured — {e}"
+            else:
+                message = f"not measured — C2PA setup/signing failed: {e}"
+            results["C2PA (signed manifest)"] = {"error": message}
         else:
             # Self-signed cert was unexpectedly accepted — this is a real
             # result worth reporting, not the documented rejection case.
