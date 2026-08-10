@@ -33,13 +33,17 @@
   input[type=file] { display: none; }
   .foot { margin-top: 2rem; color: var(--muted); font-size: 0.82rem; }
   .foot a { color: var(--cyan); }
-  @media (max-width: 620px) { body { padding-top: 1.5rem; } .brand { margin-bottom: 2.5rem; } .result-head { display: block; } #filename { margin-top: 0.4rem; } }
+  .ghost-banner { display: flex; align-items: center; gap: 0.75rem; padding: 0.8rem 1rem; border: 1px solid #22d3ee55; border-radius: 0.8rem; background: #22d3ee0d; color: var(--muted); font-size: 0.82rem; }
+  .ghost-banner strong { color: var(--cyan); letter-spacing: 0.08em; text-transform: uppercase; }
+  .ghost-banner a { margin-left: auto; color: var(--cyan); white-space: nowrap; }
+  @media (max-width: 620px) { body { padding-top: 1.5rem; } .brand { margin-bottom: 2.5rem; } .result-head { display: block; } #filename { margin-top: 0.4rem; } .ghost-banner { align-items: flex-start; flex-wrap: wrap; } .ghost-banner a { margin-left: 0; width: 100%; } }
 </style>
 </head>
 <body>
 <main>
 <div class="brand"><img src="./spif-mark.svg" alt="SPIF mark"><div><strong>SPIF</strong><span>Local provenance verifier</span></div></div>
 <section class="hero"><h1>Verify the chain.</h1><p class="sub">Inspect a signed <code>.spif</code> artifact in your browser. Your file never leaves this page.</p></section>
+<aside class="ghost-banner" aria-label="Ghost Verify local-only guarantee"><strong>Ghost Verify</strong><span>100% local. No upload. WASM in your browser.</span><a href="./pkg/spif_rust.js" target="_blank" rel="noreferrer">Code: spif_rust.js</a></aside>
 <div id="drop"><strong>Drop a SPIF artifact here</strong><span>or click to choose a <code>.spif</code> file</span><input type="file" id="file" accept=".spif"></div>
 <div id="err"></div>
 <div id="result"><div class="result-head"><div><h2>Verification result</h2><span id="filename"></span></div><div><span id="signed-badge" class="badge"></span> <span id="verified-badge" class="badge"></span></div></div><pre id="json"></pre></div>
@@ -65,7 +69,12 @@ async function handleFile(file) {
   errBox.style.display = "none";
   result.style.display = "none";
   try {
-    const bytes = new Uint8Array(await file.arrayBuffer());
+    const bytes = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(new Uint8Array(reader.result));
+      reader.onerror = () => reject(reader.error || new Error("Could not read the local file"));
+      reader.readAsArrayBuffer(file);
+    });
     const doc = JSON.parse(verify(bytes));
     document.getElementById("filename").textContent = file.name;
     signedBadge.textContent = doc._signed ? "signed" : "unsigned";

@@ -8,7 +8,7 @@ SPIF is an open binary format for carrying signed, tamper-evident provenance acr
 tools, agents, and organizational boundaries.
 
 <p>
-  <a href="https://intelogroup.github.io/spif/">Try the browser verifier</a> ·
+  <a href="https://intelogroup.github.io/spif/">Open Ghost Verifier</a> ·
   <a href="spif/README.md">Install the Python package</a> ·
   <a href="docs/SPEC.md">Read the specification</a>
 </p>
@@ -36,7 +36,7 @@ separated from the response, it becomes difficult to answer:
 > What produced this output? Was it changed? Can I prove it?
 
 SPIF packages the answer into a portable `.spif` artifact that can be checked locally without
-uploading the file anywhere.
+network verification or a server-side upload.
 
 ## Trace · Seal · Verify
 
@@ -79,11 +79,12 @@ cargo build --release
 cargo test
 ```
 
-### Verify in the browser
+### Verify with Ghost Verifier
 
-Open the [SPIF Web Verifier](https://intelogroup.github.io/spif/), drop in a `.spif` file, and
-inspect its signature status and decoded JSON locally in your browser. The verifier is the
-project's GUI inspection tool; there is no standalone desktop viewer or upload API.
+Open [Ghost Verifier](https://intelogroup.github.io/spif/), choose a `.spif` file, and inspect
+its signature status and decoded JSON locally in your browser. The flow is
+`FileReader.readAsArrayBuffer()` → WASM verification → result. There is no verification API and
+the file is never uploaded.
 
 ### The proof is visible
 
@@ -120,7 +121,7 @@ magic → version → header → provenance → payload → signature → checks
 
 | You want to... | Start here |
 | --- | --- |
-| Verify a `.spif` file | [Browser verifier](https://intelogroup.github.io/spif/) |
+| Verify a `.spif` file | [Ghost Verifier](https://intelogroup.github.io/spif/) — local-only WASM, no upload |
 | Add provenance to a Python app | [Python implementation](spif/README.md) |
 | Build an interoperable reader or writer | [Wire specification](docs/SPEC.md) |
 | Review the threat model | [Cryptographic audit](docs/CRYPTO_AUDIT.md) |

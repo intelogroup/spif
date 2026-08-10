@@ -32,6 +32,14 @@ jobs:
         with:
           targets: wasm32-unknown-unknown
 
+      - name: Assert Ghost Verifier is local-only
+        working-directory: verify
+        run: |
+          if rg -n 'fetch\\(|XMLHttpRequest|sendBeacon|/api/verify|/api/validate' index.html; then
+            echo "Ghost Verifier must not contain network verification APIs"
+            exit 1
+          fi
+
       - name: Install wasm-pack
         run: cargo install wasm-pack --locked --version 0.13.1
 

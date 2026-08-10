@@ -43,6 +43,6 @@ they are not uploaded to a server.
 
 ## Web verifier
 
-`.spif` files can be verified in-browser (no upload, wasm-only) at
-https://intelogroup.github.io/spif/ — source in [`../verify`](../verify),
+`.spif` files can be verified in-browser with [Ghost Verifier](https://intelogroup.github.io/spif/)
+(local-only, no upload, WASM-only) — source in [`../verify`](../verify),
 built from this crate's `wasm` module via `wasm-pack build --target web`.
