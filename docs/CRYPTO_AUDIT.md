@@ -308,6 +308,32 @@ Execution time: ~0.3s (all pass)
 
 ---
 
+## Post-Audit Addendum (2026-08-10)
+
+Edge-case testing found and fixed 3 gaps this audit missed — none were caught
+by the original 62-test suite because they lived in code paths the audit
+didn't separately cover (`keystore.py`'s independent verify path, `rotate_key`'s
+counter-signature, and IEEE-754 `nan` behavior in the ALTS weight check).
+
+| Gap | File | Fix |
+|---|---|---|
+| `SPIFKeyStore.verify()` never checked `sig.algorithm` — a signature mislabeled with a non-ed25519 algorithm string verified successfully via keystore even though `SPIFReader.strict()` correctly rejected it. Asymmetric trust: which check ran determined whether a forged-algorithm doc was accepted. | `spif/keystore.py` | Added the same `algorithm != "ed25519"` guard `reader.py` already had, before `pub.verify()`. |
+| `rotate_key()` had only `old_key` sign the rotation record. No counter-signature from `new_key`, and no `verify_rotation()` function existed anywhere — a compromised/malicious old key could name an attacker-controlled `new_signer_id` with nothing checking the attacker actually holds that key. | `spif/crypto.py` | `new_key` now counter-signs the same payload (`new_key_proof`); added `verify_rotation(record, old_pub, new_pub)` checking both signatures against a payload bound to `{old_signer, superseded_by, ts}`. |
+| `abs(total - 1.0) > 0.01` is `False` when `total` is `nan` (all `nan` comparisons are `False` per IEEE-754), so `nan` weights silently bypassed the `normalized=True` sum check on both encode and decode. | `spif/writer.py`, `spif/reader.py` | Explicit `math.isnan()` check on each weight before summing, in both files. |
+
+All 3 fixes verified via dry-run + characterization tests before/after
+(`tests/test_keystore.py::TestAlgorithmDowngrade`,
+`tests/test_crypto.py::TestRotateKeyVerification`,
+`tests/test_edge_cases.py::test_nan_weights_rejected_by_normalized_sum_check`).
+Full suite: 634 passed, 17 skipped, 0 regressions.
+
+`rotate_key()`/`verify_rotation()` remain **write-only** in the codebase —
+no consumer (`sidecar.py` or elsewhere) currently calls `verify_rotation()`
+before trusting a `rotation.jsonl` entry. Wiring that in is a separate,
+not-yet-requested change.
+
+---
+
 ## Final Assessment
 
 **VERDICT: ✅ APPROVED FOR v1.0 RELEASE**
