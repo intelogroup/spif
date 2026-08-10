@@ -14,7 +14,7 @@ import sys
 import time
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "spif"))
 
 import anthropic
 
@@ -359,7 +359,7 @@ if __name__ == "__main__":
         input_dir = Path(args.input_dir)
     else:
         input_dir = (
-            Path(__file__).parent.parent / "experiments" / "hard_bench_synthetic"
+            Path(__file__).resolve().parents[1] / "spif" / "experiments" / "hard_bench_synthetic"
         )
 
     categories = args.categories.split(",") if args.categories else None

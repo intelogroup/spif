@@ -6,7 +6,7 @@ Pass: cycle detected at every position, decode time stays O(N) (not
 exponential/quadratic), no stack overflow, no OOM (bounded memory growth).
 Also confirms scaling holds at N=50k, not just N=10k.
 
-Usage: python spif/benchmarks/dag_dos_safety.py
+Usage: PYTHONPATH=spif python benchmarks/dag_dos_safety.py
 """
 from __future__ import annotations
 

@@ -50,7 +50,7 @@ import time
 import zlib
 import os
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "spif"))
 
 import cbor2
 import msgpack

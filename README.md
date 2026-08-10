@@ -48,27 +48,27 @@ This repository is structured as a monorepo, containing all components of the SP
 
 ## Programmatic Specification-Compliant Samples
 
-The workspace root includes verified specification-compliant SPIF sample binaries demonstrating bidirectional interoperability (generated programmatically via [`generate_root_samples.py`](generate_root_samples.py)):
+The examples directory includes verified specification-compliant SPIF sample binaries demonstrating bidirectional interoperability (generated programmatically via [`examples/generate_samples.py`](examples/generate_samples.py)):
 
-- [`sample_valid.spif`](sample_valid.spif): A valid, dual cryptographically signed, complete document with full `task_info` and `provenance` metadata.
-- [`sample_tampered.spif`](sample_tampered.spif): Structural CBOR content has been altered while maintaining signature values to demonstrate cryptographic tamper-detection.
-- [`sample_corrupted.spif`](sample_corrupted.spif): Bit flipped in the checksum chunk, triggering early-stage checksum failure.
+- [`sample_valid.spif`](examples/fixtures/sample_valid.spif): A valid, dual cryptographically signed, complete document with full `task_info` and `provenance` metadata.
+- [`sample_tampered.spif`](examples/fixtures/sample_tampered.spif): Structural CBOR content has been altered while maintaining signature values to demonstrate cryptographic tamper-detection.
+- [`sample_corrupted.spif`](examples/fixtures/sample_corrupted.spif): Bit flipped in the checksum chunk, triggering early-stage checksum failure.
 
 ### Programmatic Verification
 
 **Using Python CLI (`spif`):**
 ```bash
 # Verify the valid sample
-$ python3 -m spif.cli validate sample_valid.spif && python3 -m spif.cli verify sample_valid.spif
+$ PYTHONPATH=spif python3 -m spif.cli validate examples/fixtures/sample_valid.spif && PYTHONPATH=spif python3 -m spif.cli verify examples/fixtures/sample_valid.spif
 OK  sample_valid.spif
 VALID  sample_valid.spif  (signer: DoZuYeLW80Gu8Vr9mAOHVosMPYHe3rT7S50fuK+D)
 
 # Verify the tampered sample (Fails Cryptographically)
-$ python3 -m spif.cli verify sample_tampered.spif
+$ PYTHONPATH=spif python3 -m spif.cli verify examples/fixtures/sample_tampered.spif
 INVALID  signature verification failed for sample_tampered.spif
 
 # Verify the corrupted sample (Fails Checksum)
-$ python3 -m spif.cli validate sample_corrupted.spif
+$ PYTHONPATH=spif python3 -m spif.cli validate examples/fixtures/sample_corrupted.spif
 FAIL  sample_corrupted.spif: Checksum mismatch
 ```
 
@@ -115,4 +115,3 @@ Contributions are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) for dev set
 ## License
 
 This monorepo is licensed under **Apache-2.0** — see [LICENSE](LICENSE).
-

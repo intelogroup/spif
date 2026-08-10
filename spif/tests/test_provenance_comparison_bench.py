@@ -1,6 +1,11 @@
+import sys
+from pathlib import Path
+
 import pytest
 
-from benchmarks.provenance_comparison_bench import _is_expected_c2pa_cert_rejection
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "benchmarks"))
+
+from provenance_comparison_bench import _is_expected_c2pa_cert_rejection
 
 
 c2pa = pytest.importorskip("c2pa")

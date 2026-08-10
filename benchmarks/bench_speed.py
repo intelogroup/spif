@@ -16,11 +16,11 @@ import msgpack
 
 import sys
 import os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "spif"))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from spif import SPIFWriter, SPIFReader
-from benchmarks.bench_size import doc_minimal, doc_medium, doc_with_trace, doc_full, to_json_dict, to_cbor_raw, to_msgpack_raw
+from bench_size import doc_minimal, doc_medium, doc_with_trace, doc_full, to_json_dict, to_cbor_raw, to_msgpack_raw
 
 try:
     from proto_compat import to_proto_raw, HAVE_PROTOBUF, Proto_SPIFDocument

@@ -18,7 +18,7 @@ import time as time_mod
 import zlib
 from pathlib import Path
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "spif"))
 
 import bson
 import cbor2
@@ -434,7 +434,7 @@ if __name__ == "__main__":
     print_report(results)
 
     # Save results
-    output_dir = Path(__file__).parent.parent / "experiments"
+    output_dir = Path(__file__).resolve().parents[1] / "spif" / "experiments"
     output_dir.mkdir(exist_ok=True)
     import json
 

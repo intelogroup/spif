@@ -23,7 +23,7 @@ from pathlib import Path
 import cbor2
 import msgpack
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "spif"))
 
 import struct
 import zlib
@@ -32,7 +32,7 @@ from spif import SPIFDocument, SPIFWriter, SPIFReader, Node
 from spif.types import Distribution, Provenance, TraceStep
 from spif import SemanticLayer
 from spif.format import MAGIC
-from benchmarks.bench_size import (
+from bench_size import (
     doc_minimal, doc_medium, doc_with_trace, doc_full,
     to_json_dict, to_cbor_raw, to_msgpack_raw,
 )
