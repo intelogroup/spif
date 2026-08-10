@@ -11,7 +11,7 @@ use std::panic;
 fn main() {
     let path = std::env::args()
         .nth(1)
-        .unwrap_or_else(|| "../sample_valid.spif".to_string());
+        .unwrap_or_else(|| "../examples/fixtures/sample_valid.spif".to_string());
     let original = fs::read(&path).expect("read fixture");
     let reader = SPIFReader::strict();
 

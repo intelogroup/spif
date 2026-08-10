@@ -32,7 +32,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "spif"))
 
 from spif.reader import SPIFReader
 from spif.streaming import SPIFStreamReader

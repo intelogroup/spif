@@ -69,7 +69,7 @@ htmlcov/
 node_modules/
 /node_modules/
 package-lock.json
-/spfx/packages/spfx-js/dist/
+/spif/packages/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*

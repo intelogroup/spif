@@ -4,8 +4,8 @@ import hashlib
 import struct
 import base64
 
-# Insert spif path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "spif"))
+# Insert the source package path when run from the repository root.
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "spif"))
 
 from spif import SPIFDocument, Node, NodeRef, Distribution, TraceStep, TaskInfo, Provenance, Signature, SPIFWriter, SPIFReader
 from spif.crypto import derive_key_from_mnemonic
@@ -14,6 +14,8 @@ from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 
 def create_samples():
     print("Generating fresh SIF/SPIF sample files...")
+    output_dir = os.path.join(os.path.dirname(__file__), "fixtures")
+    os.makedirs(output_dir, exist_ok=True)
     
     # 1. Create a premium SPIF Document with all new fields: task_info, multi-signatures, and provenance
     doc = SPIFDocument(
@@ -119,7 +121,7 @@ def create_samples():
 
     # Write valid output
     valid_bytes = writer.encode(doc)
-    with open("sample_valid.spif", "wb") as f:
+    with open(os.path.join(output_dir, "sample_valid.spif"), "wb") as f:
         f.write(valid_bytes)
     print("Created sample_valid.spif")
 
@@ -128,7 +130,7 @@ def create_samples():
     doc.payload[0].value = "The Pfhrp2/3 gene deletions are present in Haitian P. falciparum populations."
     tampered_bytes = writer.encode(doc)
 
-    with open("sample_tampered.spif", "wb") as f:
+    with open(os.path.join(output_dir, "sample_tampered.spif"), "wb") as f:
         f.write(tampered_bytes)
     print("Created sample_tampered.spif")
 
@@ -136,7 +138,7 @@ def create_samples():
     corrupted_bytes = bytearray(valid_bytes)
     # Corrupt the checksum byte
     corrupted_bytes[-1] ^= 0xFF
-    with open("sample_corrupted.spif", "wb") as f:
+    with open(os.path.join(output_dir, "sample_corrupted.spif"), "wb") as f:
         f.write(corrupted_bytes)
     print("Created sample_corrupted.spif")
 

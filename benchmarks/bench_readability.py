@@ -21,7 +21,7 @@ import sys
 import tempfile
 import time
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "spif"))
 
 import cbor2
 import msgpack

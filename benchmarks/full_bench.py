@@ -21,7 +21,7 @@ import sys
 import time as time_mod
 import zlib
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "spif"))
 
 import bson
 import cbor2
@@ -31,7 +31,7 @@ import ujson
 from lxml import etree
 
 from spif import SPIFWriter, SPIFReader
-from benchmarks.bench_size import (
+from bench_size import (
     doc_minimal, doc_medium, doc_with_trace, doc_full,
     to_json_dict,
 )

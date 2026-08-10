@@ -4,16 +4,16 @@
 
 int main() {
     // 1. Read the valid sample spif file
-    const char* filepath = "../sample_valid.spif";
+    const char* filepath = "../../examples/fixtures/sample_valid.spif";
     FILE* file = fopen(filepath, "rb");
     if (!file) {
         // Fallback for running from parent directory or other contexts
-        filepath = "sample_valid.spif";
+        filepath = "../../examples/fixtures/sample_valid.spif";
         file = fopen(filepath, "rb");
     }
     
     if (!file) {
-        fprintf(stderr, "Error: Could not open sample_valid.spif\n");
+        fprintf(stderr, "Error: Could not open examples/fixtures/sample_valid.spif\n");
         return 1;
     }
     

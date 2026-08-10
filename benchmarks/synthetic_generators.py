@@ -14,7 +14,7 @@ import sys
 import time
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "spif"))
 
 from spif import (
     SPIFDocument,
@@ -632,7 +632,7 @@ if __name__ == "__main__":
     print("Generating synthetic test data...")
     docs = generate_all(50)
 
-    experiments_dir = Path(__file__).parent.parent / "experiments"
+    experiments_dir = Path(__file__).resolve().parents[1] / "spif" / "experiments"
     output_dir = experiments_dir / "hard_bench_synthetic"
     save_generated(docs, output_dir)
 

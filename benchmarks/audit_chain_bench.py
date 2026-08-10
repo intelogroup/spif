@@ -26,7 +26,7 @@ import sys
 import time as _time
 from dataclasses import dataclass
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "spif"))
 
 from spif import SPIFDocument, SPIFWriter, SPIFReader, Node, compute_content_id
 from spif.types import Distribution, Provenance

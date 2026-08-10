@@ -10,7 +10,7 @@ architecture it's invoked on (Apple Silicon here). Run this same script on
 an x86 box to get the other data point; don't publish "verified on x86"
 without actually doing that.
 
-Usage: python spif/benchmarks/bench_speed_percentiles.py
+Usage: PYTHONPATH=spif python benchmarks/bench_speed_percentiles.py
 """
 from __future__ import annotations
 

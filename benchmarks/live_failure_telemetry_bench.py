@@ -49,7 +49,7 @@ import zlib
 from dataclasses import dataclass, field
 from typing import Any
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "spif"))
 
 import anthropic
 from openai import OpenAI
