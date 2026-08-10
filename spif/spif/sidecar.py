@@ -429,21 +429,26 @@ def start_sidecar(
     crl_url: str | None = None,
 ) -> None:
     """Start the sidecar HTTP proxy server."""
-    # Setup CRL client
+    # Setup CRL client. cache_ttl is read from policy's crl_check.cache_ttl
+    # (default 300s) regardless of whether the endpoint comes from --crl-url
+    # or the policy file, so --crl-url can still be tuned via policy.
     crl_client = None
-    if crl_url:
-        crl_client = CRLClient(crl_url)
-    elif policy_path:
-        # Check if policy defines crl_endpoint
+    crl_cache_ttl = 300
+    crl_conf: dict[str, Any] = {}
+    if policy_path:
         try:
             p = Path(policy_path)
             if p.exists():
                 policy_data = json.loads(p.read_text(encoding="utf-8"))
                 crl_conf = policy_data.get("crl_check", {})
-                if crl_conf.get("enabled", False) and crl_conf.get("endpoint"):
-                    crl_client = CRLClient(crl_conf.get("endpoint"))
+                crl_cache_ttl = crl_conf.get("cache_ttl", 300)
         except Exception as e:
             logger.warning("Failed to parse CRL config from policy: %s", e)
+
+    if crl_url:
+        crl_client = CRLClient(crl_url, cache_ttl=crl_cache_ttl)
+    elif crl_conf.get("enabled", False) and crl_conf.get("endpoint"):
+        crl_client = CRLClient(crl_conf["endpoint"], cache_ttl=crl_cache_ttl)
 
     evaluator = PolicyEvaluator(policy_path, keystore_dir, crl_client)
 
