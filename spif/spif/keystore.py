@@ -31,6 +31,8 @@ from __future__ import annotations
 
 import base64
 import json
+import os
+import tempfile
 import time
 from pathlib import Path
 from typing import Union
@@ -351,9 +353,16 @@ class SPIFKeyStore:
             ) from exc
 
     def _save_roles(self, roles: dict[str, list[str]]) -> None:
-        self._roles_path.write_text(
-            json.dumps({"roles": roles}, indent=2)
-        )
+        # Atomic write: a crash/interruption mid-write must never leave a
+        # truncated or partially-written roles.json for _load_roles to trip on.
+        fd, tmp_path = tempfile.mkstemp(dir=self._roles_path.parent, suffix=".tmp")
+        try:
+            with os.fdopen(fd, "w") as f:
+                json.dump({"roles": roles}, f, indent=2)
+            os.replace(tmp_path, self._roles_path)
+        except BaseException:
+            os.unlink(tmp_path)
+            raise
 
 
 # ---------------------------------------------------------------------------

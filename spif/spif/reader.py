@@ -678,7 +678,9 @@ class SPIFReader:
             r = _cbor_load(chunks[CHUNK_ROLES][0], "ROLES")
             if not isinstance(r, dict):
                 raise SPIFFormatError("ROLES chunk must decode to a dict")
-            signer_roles = {str(k): str(v) for k, v in r.items()}
+            if not all(isinstance(k, str) and isinstance(v, str) for k, v in r.items()):
+                raise SPIFFormatError("ROLES chunk keys and values must all be strings")
+            signer_roles = dict(r)
 
         doc = SPIFDocument(
             payload=payload,
