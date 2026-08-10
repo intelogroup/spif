@@ -18,7 +18,7 @@ from .format import (
     MAGIC,
     CHUNK_HEADER, CHUNK_PROVENANCE, CHUNK_SEMANTIC, CHUNK_TRACE,
     CHUNK_PAYLOAD, CHUNK_ALTS, CHUNK_DELTA, CHUNK_SIGNATURE, CHUNK_MULTISIG,
-    CHUNK_TASK, CHUNK_CHECKSUM,
+    CHUNK_TASK, CHUNK_ROLES, CHUNK_CHECKSUM,
     TAG_DISTRIBUTION, TAG_NODEREF, TAG_EMBEDDING,
     TRACE_POSTHOC, FLAG_COMPRESSED, FLAG_ZSTD,
 )
@@ -658,6 +658,14 @@ class SPIFReader:
                 error_count=t.get("error_count", 0),
             )
 
+        # 14. ROLES chunk (v1.1+) — signer_id -> claimed role, never compressed
+        signer_roles: dict[str, str] = {}
+        if CHUNK_ROLES in chunks:
+            r = _cbor_load(chunks[CHUNK_ROLES][0], "ROLES")
+            if not isinstance(r, dict):
+                raise SPIFFormatError("ROLES chunk must decode to a dict")
+            signer_roles = {str(k): str(v) for k, v in r.items()}
+
         doc = SPIFDocument(
             payload=payload,
             provenance=provenance,
@@ -669,6 +677,7 @@ class SPIFReader:
             signature=signature,
             signatures=signatures,
             task_info=task_info,
+            signer_roles=signer_roles,
         )
 
         # Signature enforcement — must come after full parse so that the

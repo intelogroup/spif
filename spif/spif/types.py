@@ -186,6 +186,7 @@ class SPIFDocument:
     delta: Delta | None = None
     signature: Signature | None = None     # v0.2: optional single ed25519 signature
     signatures: list[Signature] = field(default_factory=list)  # v0.2: multi-signature list
+    signer_roles: dict[str, str] = field(default_factory=dict)  # v1.1+: signer_id -> claimed role, bound into the signed body
     task_info: "TaskInfo | None" = field(default=None)          # v1.1+: task/run envelope
     pending_tool_results: bool = field(                          # runtime only — not serialized
         default=False, compare=False, repr=False
