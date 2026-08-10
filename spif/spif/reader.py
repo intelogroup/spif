@@ -4,6 +4,7 @@ from __future__ import annotations
 from functools import lru_cache
 import hashlib
 import hmac
+import math
 import os
 import struct
 import zlib
@@ -28,6 +29,7 @@ from .types import (
 
 SUPPORTED_VERSIONS = {0x01, 0x02}
 MAX_DECOMPRESSED_SIZE = 10 * 1024 * 1024  # 10MB safety limit
+MAX_PAYLOAD_NODES = 20_000  # ponytail: flat cap, raise if legit docs hit it
 
 _CHUNK_STRUCT = struct.Struct(">BI")
 
@@ -197,6 +199,11 @@ def _validate_payload_dag(nodes: list[Node]) -> None:
     A cycle (e.g. A → B → A) would prevent safe traversal of the payload DAG
     and indicates a malformed or adversarially crafted document.
     """
+    if len(nodes) > MAX_PAYLOAD_NODES:
+        raise SPIFFormatError(
+            f"Payload has {len(nodes)} nodes, exceeding the limit of {MAX_PAYLOAD_NODES}"
+        )
+
     # Duplicate ID check
     seen: set[str] = set()
     for n in nodes:
@@ -400,6 +407,10 @@ class SPIFReader:
         return cls(require_signature=True)
 
     def decode(self, data: bytes) -> SPIFDocument:
+        if not isinstance(data, (bytes, bytearray, memoryview)):
+            raise SPIFMagicError(
+                f"decode() requires bytes-like input, got {type(data).__name__}"
+            )
         # 1. Magic
         if len(data) < len(MAGIC) + 2:
             raise SPIFMagicError("File too short to be a SPIF document")
@@ -581,6 +592,10 @@ class SPIFReader:
                     ))
                 # Validate weights if normalized
                 if normalized and alternatives:
+                    if any(math.isnan(a.weight) for a in alternatives):
+                        raise SPIFFormatError(
+                            "ALTS normalized=True but a weight is nan"
+                        )
                     total = sum(a.weight for a in alternatives)
                     if abs(total - 1.0) > 0.01:
                         raise SPIFFormatError(

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 import hashlib
+import math
 import struct
 import time
 import zlib
@@ -21,6 +22,7 @@ from .format import (
 from .types import (
     SPIFDocument, Distribution, NodeRef, Node, TraceStep,
 )
+from .reader import SPIFFormatError
 
 
 _CHUNK_STRUCT = struct.Struct(">BI")
@@ -92,16 +94,29 @@ def _compress_bytes(data: bytes, *, method: str, level: int | None = None) -> by
     return zlib.compress(data, level=comp_level)
 
 
+_MAX_CHUNK_LEN = 2**32 - 1
+
+
+def _check_chunk_len(chunk_type: int, length: int) -> None:
+    if length > _MAX_CHUNK_LEN:
+        raise SPIFFormatError(
+            f"Chunk 0x{chunk_type:02x} payload is {length} bytes, exceeding "
+            f"the format's max chunk length of {_MAX_CHUNK_LEN}"
+        )
+
+
 def _chunk(chunk_type: int, data: object, *, fast: bool = False,
            compress: bool = False, compression: str = "zlib", compression_level: int | None = None) -> bytes:
     payload = _cbor_fast(data) if fast else _cbor(data)
     if compress:
         payload = _compress_bytes(payload, method=compression, level=compression_level)
+    _check_chunk_len(chunk_type, len(payload))
     header = _CHUNK_STRUCT.pack(chunk_type, len(payload))
     return header + payload
 
 
 def _raw_chunk(chunk_type: int, raw: bytes) -> bytes:
+    _check_chunk_len(chunk_type, len(raw))
     header = _CHUNK_STRUCT.pack(chunk_type, len(raw))
     return header + raw
 
@@ -264,6 +279,10 @@ class SPIFWriter:
         # ALTS chunk — compressed
         if doc.alternatives:
             if doc.alternatives and doc.alternatives[0].normalized:
+                if any(math.isnan(a.weight) for a in doc.alternatives):
+                    raise ValueError(
+                        "Alternative weights must not be nan when normalized=True"
+                    )
                 total = sum(a.weight for a in doc.alternatives)
                 if abs(total - 1.0) > 0.01:
                     raise ValueError(
