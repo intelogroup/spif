@@ -1,17 +1,12 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240" role="img" aria-labelledby="title desc">
   <title id="title">SPIF provenance mark</title>
-  <desc id="desc">An angular provenance path ending in a verified node.</desc>
+  <desc id="desc">A minimal angular provenance path ending in a verified node.</desc>
   <rect width="240" height="240" rx="48" fill="#0B1220"/>
   <g fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-width="14">
-    <path d="M47 61h58l31 31-31 31H72" stroke="#22D3EE"/>
-    <path d="M72 123l28 28h47" stroke="#8B5CF6"/>
-    <path d="M47 181h53l25-30" stroke="#34D399"/>
+    <path d="M45 58h62l34 34-34 34H82" stroke="#22D3EE"/>
+    <path d="M82 126l35 35h45" stroke="#8B5CF6"/>
   </g>
-  <g fill="#0B1220" stroke-width="10">
-    <circle cx="47" cy="61" r="15" stroke="#22D3EE"/>
-    <circle cx="72" cy="123" r="15" stroke="#8B5CF6"/>
-    <circle cx="47" cy="181" r="15" stroke="#34D399"/>
-    <circle cx="147" cy="151" r="29" stroke="#34D399"/>
-  </g>
-  <path d="m133 151 10 10 19-22" fill="none" stroke="#34D399" stroke-linecap="round" stroke-linejoin="round" stroke-width="9"/>
+  <circle cx="45" cy="58" r="10" fill="#0B1220" stroke="#22D3EE" stroke-width="8"/>
+  <circle cx="162" cy="161" r="27" fill="#0B1220" stroke="#34D399" stroke-width="9"/>
+  <path d="m150 161 8 8 16-18" fill="none" stroke="#34D399" stroke-linecap="round" stroke-linejoin="round" stroke-width="8"/>
 </svg>
