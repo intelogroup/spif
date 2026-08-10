@@ -102,3 +102,4 @@ spif/results/*.txt
 
 # Claude agent config
 .claude/
+AGENTS.md
