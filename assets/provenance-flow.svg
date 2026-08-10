@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 300" role="img" aria-labelledby="title desc">
+  <title id="title">SPIF provenance flow</title>
+  <desc id="desc">A prompt flows through a model, tools, and an agent into a signed output.</desc>
+  <rect width="1200" height="300" rx="28" fill="#0B1220"/>
+  <g fill="#111C2E" stroke="#2D4058" stroke-width="2">
+    <rect x="48" y="92" width="174" height="116" rx="18"/>
+    <rect x="284" y="92" width="174" height="116" rx="18"/>
+    <rect x="520" y="92" width="174" height="116" rx="18"/>
+    <rect x="756" y="92" width="174" height="116" rx="18"/>
+    <rect x="992" y="68" width="160" height="164" rx="22" stroke="#34D399"/>
+  </g>
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-width="8">
+    <path d="M222 150h62" stroke="#22D3EE"/>
+    <path d="m268 136 16 14-16 14" stroke="#22D3EE"/>
+    <path d="M458 150h62" stroke="#8B5CF6"/>
+    <path d="m506 136 16 14-16 14" stroke="#8B5CF6"/>
+    <path d="M694 150h62" stroke="#8B5CF6"/>
+    <path d="m742 136 16 14-16 14" stroke="#8B5CF6"/>
+    <path d="M930 150h62" stroke="#34D399"/>
+    <path d="m978 136 16 14-16 14" stroke="#34D399"/>
+  </g>
+  <g fill="#F8FAFC" font-family="Arial, Helvetica, sans-serif" text-anchor="middle">
+    <text x="135" y="139" font-size="22" font-weight="700">PROMPT</text>
+    <text x="135" y="174" fill="#9CAAC0" font-size="15">input context</text>
+    <text x="371" y="139" font-size="22" font-weight="700">MODEL</text>
+    <text x="371" y="174" fill="#9CAAC0" font-size="15">generation</text>
+    <text x="607" y="139" font-size="22" font-weight="700">TOOLS</text>
+    <text x="607" y="174" fill="#9CAAC0" font-size="15">retrieval + actions</text>
+    <text x="843" y="139" font-size="22" font-weight="700">AGENT</text>
+    <text x="843" y="174" fill="#9CAAC0" font-size="15">handoffs + decisions</text>
+    <text x="1072" y="128" font-size="20" font-weight="700">SIGNED</text>
+    <text x="1072" y="158" font-size="20" font-weight="700">OUTPUT</text>
+    <text x="1072" y="190" fill="#34D399" font-size="15">.spif artifact</text>
+  </g>
+  <circle cx="1072" cy="94" r="14" fill="#34D399"/>
+  <path d="m1065 94 5 5 10-12" fill="none" stroke="#0B1220" stroke-linecap="round" stroke-linejoin="round" stroke-width="4"/>
+</svg>

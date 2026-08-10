@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240" role="img" aria-labelledby="title desc">
+  <title id="title">SPIF monochrome provenance mark</title>
+  <desc id="desc">An angular provenance path ending in a verified node.</desc>
+  <g fill="none" stroke="#111827" stroke-linecap="round" stroke-linejoin="round" stroke-width="14">
+    <path d="M47 61h58l31 31-31 31H72"/>
+    <path d="M72 123l28 28h47"/>
+    <path d="M47 181h53l25-30"/>
+  </g>
+  <g fill="#FFFFFF" stroke="#111827" stroke-width="10">
+    <circle cx="47" cy="61" r="15"/>
+    <circle cx="72" cy="123" r="15"/>
+    <circle cx="47" cy="181" r="15"/>
+    <circle cx="147" cy="151" r="29"/>
+  </g>
+  <path d="m133 151 10 10 19-22" fill="none" stroke="#111827" stroke-linecap="round" stroke-linejoin="round" stroke-width="9"/>
+</svg>
