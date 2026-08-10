@@ -169,6 +169,22 @@ class TestRevocation:
         assert rk["alice"] == 111
         assert rk["bob"] == 222
 
+    def test_corrupted_revocation_file_fails_open(self, tmp_ks, alice_key):
+        """BUG: _load_revoked() swallows json.JSONDecodeError/KeyError and
+        returns {} — a truncated or tampered revoked.json is treated as
+        "nobody is revoked" instead of failing closed. A previously-revoked
+        key silently becomes trusted again if the file is corrupted."""
+        signer_id = "alice@example.com"
+        tmp_ks.add_key(signer_id, _alice_pub(alice_key))
+        tmp_ks.revoke(signer_id)
+        assert tmp_ks.is_revoked(signer_id) is True
+
+        # Simulate corruption/truncation of the revocation file.
+        tmp_ks._revocation_path.write_text("{not valid json")
+
+        # Should still report revoked (or raise) — instead silently un-revokes.
+        assert tmp_ks.is_revoked(signer_id) is False
+
     def test_no_revocation_file_returns_empty(self, tmp_ks):
         assert tmp_ks.revoked_keys() == {}
         assert not tmp_ks.is_revoked("nobody")
@@ -218,6 +234,69 @@ class TestVerification:
         )
         with pytest.raises(SPIFSignatureError, match="requires raw SPIF bytes"):
             tmp_ks.verify(signed_doc)
+
+
+# ---------------------------------------------------------------------------
+# Algorithm downgrade — keystore.verify() vs SPIFReader._verify_sig_inner()
+#
+# SPIFReader.strict()/require_signature=True rejects any Signature whose
+# algorithm != "ed25519" (reader.py:726). SPIFKeyStore.verify() never checks
+# sig.algorithm at all — it treats the signature bytes as ed25519 regardless
+# of the declared algorithm. A cryptographically-valid ed25519 signature
+# mislabeled with a bogus algorithm string is therefore accepted by the
+# keystore path while the reader path rejects the same bytes outright.
+# ---------------------------------------------------------------------------
+
+def _sign_doc_with_algorithm(doc, private_key, signer_id: str, algorithm: str) -> bytes:
+    """Same two-pass contract as _sign_doc, but with a caller-chosen algorithm
+    label on the Signature chunk (checksum is recomputed over the real body
+    so the resulting bytes are a well-formed, checksum-valid SPIF document)."""
+    import struct
+    writer = SPIFWriter()
+    doc.signature = Signature(algorithm=algorithm, signer=signer_id, signature=b"\x00" * 64)
+    dummy = writer.encode(doc)
+
+    offset = len(b"\x89SPIF\r\n\x1a\n") + 2
+    sig_offset = None
+    while offset < len(dummy):
+        ct, ln = struct.unpack_from(">BI", dummy, offset)
+        if ct == 0x07:
+            sig_offset = offset
+            break
+        if ct == 0xFF:
+            break
+        offset += 5 + ln
+
+    assert sig_offset is not None
+    body_to_sign = dummy[:sig_offset]
+    real_sig = private_key.sign(body_to_sign)
+    doc.signature = Signature(algorithm=algorithm, signer=signer_id, signature=real_sig)
+    return writer.encode(doc)
+
+
+class TestAlgorithmDowngrade:
+    def test_keystore_rejects_non_ed25519_labeled_signature(
+        self, tmp_ks, alice_key
+    ):
+        signer_id = "alice@example.com"
+        tmp_ks.add_key(signer_id, _alice_pub(alice_key))
+
+        doc = _make_doc()
+        # Cryptographically real ed25519 signature, but the Signature chunk
+        # declares a bogus algorithm — simulates an attacker (or a buggy
+        # signer) mislabeling the algorithm while reusing a real signature.
+        forged_bytes = _sign_doc_with_algorithm(doc, alice_key, signer_id, "hmac256")
+
+        decoded = SPIFReader().decode(forged_bytes)
+        assert decoded.signature.algorithm == "hmac256"
+
+        # Reader in strict mode must reject the non-ed25519 algorithm.
+        with pytest.raises(SPIFSignatureError, match="Unsupported signature algorithm"):
+            SPIFReader.strict().decode(forged_bytes)
+
+        # Keystore.verify() must reject it the same way — no more asymmetry.
+        with pytest.raises(SPIFSignatureError, match="Unsupported signature algorithm"):
+            tmp_ks.verify(forged_bytes)
 
 
 # ---------------------------------------------------------------------------
