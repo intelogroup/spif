@@ -31,6 +31,7 @@
 - **Rich Metadata & Lineage**: Full support for `task_info` (status, total execution duration, tool counts, error counts) and `provenance` retries.
 - **Cross-Language Fidelity**: Complete feature parity and validated interoperability between Python, TypeScript/Node.js, and Rust.
 - **Web Verifier**: In-browser, wasm-based `.spif` verification — nothing uploaded. See [`/verify`](verify/).
+- **No upload verifier API**: server-side sidecars do not accept standalone `.spif` uploads; they only inspect provenance attached to proxied responses. Local files stay local.
 
 ---
 

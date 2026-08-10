@@ -290,7 +290,12 @@ def generate_fpr_document(
 
 
 class SidecarHTTPHandler(BaseHTTPRequestHandler):
-    """HTTP Handler for verification endpoint and reverse proxy verification."""
+    """HTTP handler for reverse-proxy verification only.
+
+    Direct document-upload verification is intentionally disabled. Use the
+    local/browser WASM verifier for standalone files; the sidecar only checks
+    SPIF metadata attached to responses flowing through the configured proxy.
+    """
 
     # Set by server initializer
     evaluator: PolicyEvaluator = PolicyEvaluator()
@@ -300,13 +305,12 @@ class SidecarHTTPHandler(BaseHTTPRequestHandler):
         logger.info(format, *args)
 
     def do_POST(self) -> None:
+        if self.path in ("/validate", "/verify"):
+            self.send_error(410, "Direct upload verification is disabled; use the local WASM verifier")
+            return
+
         content_length = int(self.headers.get("Content-Length", 0))
         body = self.rfile.read(content_length)
-
-        # Handle direct validate/verify endpoint
-        if self.path in ("/validate", "/verify"):
-            self._handle_direct_validate(body)
-            return
 
         # Forward request to upstream in reverse proxy mode
         if self.upstream_url:
@@ -320,37 +324,6 @@ class SidecarHTTPHandler(BaseHTTPRequestHandler):
             self._handle_proxy_request("GET", b"")
             return
         self.send_error(404, "Not Found")
-
-    def _handle_direct_validate(self, body: bytes) -> None:
-        try:
-            # Handle JSON body wrapping base64 payload, or raw SPIF bytes
-            raw_spif = body
-            is_json = "application/json" in self.headers.get("Content-Type", "")
-            if is_json:
-                data = json.loads(body.decode("utf-8"))
-                if "spif" in data:
-                    raw_spif = base64.b64decode(data["spif"])
-                elif "payload" in data:
-                    raw_spif = base64.b64decode(data["payload"])
-
-            res = self.evaluator.validate_document(raw_spif)
-
-            if res["status"] == "valid":
-                self.send_response(200)
-                self.send_header("Content-Type", "application/json")
-                self.end_headers()
-                self.wfile.write(json.dumps(res).encode("utf-8"))
-            else:
-                self.send_response(403)
-                self.send_header("Content-Type", "application/json")
-                self.end_headers()
-                self.wfile.write(json.dumps(res).encode("utf-8"))
-
-        except Exception as e:
-            self.send_response(400)
-            self.send_header("Content-Type", "application/json")
-            self.end_headers()
-            self.wfile.write(json.dumps({"error": str(e)}).encode("utf-8"))
 
     def _handle_proxy_request(self, method: str, body: bytes) -> None:
         # Build target upstream URL
