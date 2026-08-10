@@ -27,6 +27,7 @@ htmlcov/
 
 # Generated benchmark data
 experiments/hard_bench_synthetic/
+experiments/**/*.json
 experiments/**/*.sif
 experiments/**/*.spif
 

@@ -69,7 +69,6 @@ htmlcov/
 node_modules/
 /node_modules/
 package-lock.json
-/spif/packages/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
@@ -82,14 +81,7 @@ spif-rust/target/
 # not committed (Scorecard Binary-Artifacts)
 verify/pkg/
 
-# Tauri / Desktop Build Exclusions
-spif-desktop/src-tauri/target/
-spif-desktop/node_modules/
-spif-desktop/package-lock.json
-
 # Temporary / Sandbox Files
-/sample_corrupted.spif
-/sample_tampered.spif
 .bin/
 experiments/hard_bench_synthetic/
 experiments/**/*.sif
