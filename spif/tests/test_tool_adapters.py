@@ -223,14 +223,11 @@ class TestAnthropicAdapterToolCalls:
         assert doc.pending_tool_results is False
         assert all(n.type == NODE_TEXT for n in doc.payload)
 
-    def test_duplicate_vendor_tool_call_ids_not_caught_by_adapter(self):
-        """BUG: _build_tool_call_node() assumes block.id is unique within a
-        response and builds Node.id = f"tool_call_{block.id}" directly with
-        no dedup/validation. Two tool_use blocks sharing an id (a vendor SDK
-        bug, or a mocked/replayed response) produce duplicate Node ids in
-        doc.payload — the adapter doesn't catch it; it only surfaces much
-        later as SPIFFormatError on decode after a write/read round trip."""
-        from spif import SPIFWriter, SPIFReader
+    def test_duplicate_vendor_tool_call_ids_caught_by_adapter(self):
+        """Two tool_use blocks sharing a vendor id (a vendor SDK bug, or a
+        mocked/replayed response) would produce duplicate Node ids in
+        doc.payload — the adapter now catches this immediately in
+        complete() instead of letting it surface later on decode."""
         from spif.reader import SPIFFormatError
 
         blocks = [
@@ -239,13 +236,9 @@ class TestAnthropicAdapterToolCalls:
         ]
         resp = _FakeMessage(model="claude-sonnet-4-6", content=blocks)
         adapter = AnthropicSPIFAdapter(_FakeAnthropicClient(resp))
-        doc = adapter.complete("weather and time in Paris?")
 
-        tool_call_ids = [n.id for n in doc.payload if n.type == NODE_TOOL_CALL]
-        assert tool_call_ids == ["tool_call_dup", "tool_call_dup"]  # adapter let it through
-
-        with pytest.raises(SPIFFormatError, match="Duplicate Node id"):
-            SPIFReader().decode(SPIFWriter().encode(doc))
+        with pytest.raises(SPIFFormatError, match="Duplicate vendor tool_use id"):
+            adapter.complete("weather and time in Paris?")
 
     def test_tool_call_nodes_precede_text_nodes(self):
         """Tool interaction sequence: tool_call, tool_result, then text."""
