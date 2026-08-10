@@ -38,11 +38,6 @@ cargo fmt --check
 .spif artifact → Rust reader → checksum + signature verification → trusted payload
 ```
 
-The crate also provides the engine behind the WebAssembly verifier. Files stay in the browser;
-they are not uploaded to a server.
-
-## Web verifier
-
-`.spif` files can be verified in-browser with [Ghost Verifier](https://intelogroup.github.io/spif/)
-(local-only, no upload, WASM-only) — source in [`../verify`](../verify),
-built from this crate's `wasm` module via `wasm-pack build --target web`.
+The crate also exposes a WebAssembly verification module in `wasm.rs`, built with
+`wasm-pack build --target web`. It is a library artifact, not a hosted web page or verification
+API.

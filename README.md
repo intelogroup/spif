@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="assets/spif-logo.svg" alt="SPIF — signed provenance for AI outputs" width="760" />
+<img src="assets/spif-logo.svg" alt="SPIF — signed provenance" width="680" />
 
 ### Record where an AI output came from. Prove what influenced it. Detect when it changes.
 
@@ -8,7 +8,7 @@ SPIF is an open binary format for carrying signed, tamper-evident provenance acr
 tools, agents, and organizational boundaries.
 
 <p>
-  <a href="https://intelogroup.github.io/spif/">Open Ghost Verifier</a> ·
+  <a href="spif-rust/README.md">Use the Rust engine</a> ·
   <a href="spif/README.md">Install the Python package</a> ·
   <a href="docs/SPEC.md">Read the specification</a>
 </p>
@@ -36,7 +36,7 @@ separated from the response, it becomes difficult to answer:
 > What produced this output? Was it changed? Can I prove it?
 
 SPIF packages the answer into a portable `.spif` artifact that can be checked locally without
-network verification or a server-side upload.
+a network verification service.
 
 ## Trace · Seal · Verify
 
@@ -44,7 +44,7 @@ network verification or a server-side upload.
 | --- | --- | --- |
 | **01** | **Trace** | Prompts, responses, model metadata, tool calls, retries, handoffs, and linked context |
 | **02** | **Seal** | Checksums, Ed25519 signatures, multi-signature workflows, and strict validation |
-| **03** | **Verify** | Offline inspection from Python, Rust, WebAssembly, or the browser |
+| **03** | **Verify** | Offline inspection from Python, Rust, or the WebAssembly module |
 
 ## Try it in under a minute
 
@@ -79,28 +79,6 @@ cargo build --release
 cargo test
 ```
 
-### Verify with Ghost Verifier
-
-Open [Ghost Verifier](https://intelogroup.github.io/spif/), choose a `.spif` file, and inspect
-its signature status and decoded JSON locally in your browser. The flow is
-`FileReader.readAsArrayBuffer()` → WASM verification → result. There is no verification API and
-the file is never uploaded.
-
-### The proof is visible
-
-The same verifier catches a valid artifact and a modified payload locally:
-
-<table>
-  <tr>
-    <td align="center"><strong>Valid artifact</strong></td>
-    <td align="center"><strong>Tampered artifact</strong></td>
-  </tr>
-  <tr>
-    <td><img src="assets/verifier-valid.png" alt="SPIF verifier showing signed and signature verified" width="100%" /></td>
-    <td><img src="assets/verifier-tampered.png" alt="SPIF verifier showing signed and signature invalid" width="100%" /></td>
-  </tr>
-</table>
-
 ## What travels inside a SPIF artifact?
 
 ```text
@@ -121,7 +99,7 @@ magic → version → header → provenance → payload → signature → checks
 
 | You want to... | Start here |
 | --- | --- |
-| Verify a `.spif` file | [Ghost Verifier](https://intelogroup.github.io/spif/) — local-only WASM, no upload |
+| Verify a `.spif` file | [Rust engine and WASM module](spif-rust/README.md) |
 | Add provenance to a Python app | [Python implementation](spif/README.md) |
 | Build an interoperable reader or writer | [Wire specification](docs/SPEC.md) |
 | Review the threat model | [Cryptographic audit](docs/CRYPTO_AUDIT.md) |
@@ -134,7 +112,7 @@ magic → version → header → provenance → payload → signature → checks
 | --- | --- |
 | [`spif/`](spif/) | Python reference implementation, CLI, streaming support, and provider adapters |
 | [`spif-rust/`](spif-rust/) | Native Rust engine, CLI, sidecar, and cross-language validation |
-| [`verify/`](verify/) | Static WebAssembly verifier for `.spif` files |
+| [`verify/`](verify/) | Generated WebAssembly package and sample artifact |
 | [`examples/`](examples/) | Programmatically generated, specification-compliant fixtures |
 | [`docs/`](docs/) | Wire specification, security audit, benchmarks, and integration guidance |
 
