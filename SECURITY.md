@@ -84,6 +84,12 @@ replayed/stale provenance, dependency vulnerabilities in the crate itself.
 **Status: dependency-level auditing only. No cross-artifact binding
 mechanism exists yet — not claimed here.**
 
+The EU-readiness matrix (`spif/tests/test_eu_readiness.py`) keeps this boundary
+explicit: SPIF signatures and content hashes are not C2PA hard binding or
+trust, and a detached sidecar is not an Article 50 content mark. Deployers
+remain responsible for transport preservation, replay state, tenant isolation,
+and applicable privacy controls.
+
 ## 5. Resource exhaustion / DoS
 
 Vectors: very large DAGs, deeply nested structures, large compressed
