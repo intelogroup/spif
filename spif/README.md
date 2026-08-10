@@ -6,7 +6,7 @@
 
 ### Sign, inspect, and verify AI provenance from Python.
 
-[Back to the project overview](../README.md) · [Read the specification](../docs/SPEC.md) · [Try the browser verifier](https://intelogroup.github.io/spif/)
+[Back to the project overview](../README.md) · [Read the specification](../docs/SPEC.md) · [Rust/WASM implementation](../spif-rust/README.md)
 
 </div>
 

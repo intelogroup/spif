@@ -1,17 +1,17 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 220" role="img" aria-labelledby="title desc">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 164" role="img" aria-labelledby="title desc">
   <title id="title">SPIF logo</title>
-  <desc id="desc">SPIF wordmark beside an angular provenance path ending in a verified node.</desc>
-  <rect width="760" height="220" rx="32" fill="#0B1220"/>
-  <g transform="translate(24 24) scale(.72)">
-    <g fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-width="14">
-      <path d="M45 58h62l34 34-34 34H82" stroke="#22D3EE"/>
-      <path d="M82 126l35 35h45" stroke="#8B5CF6"/>
-    </g>
-    <circle cx="45" cy="58" r="10" fill="#0B1220" stroke="#22D3EE" stroke-width="8"/>
-    <circle cx="162" cy="161" r="27" fill="#0B1220" stroke="#34D399" stroke-width="9"/>
-    <path d="m150 161 8 8 16-18" fill="none" stroke="#34D399" stroke-linecap="round" stroke-linejoin="round" stroke-width="8"/>
+  <desc id="desc">SPIF wordmark beside a single folded provenance path.</desc>
+  <defs>
+    <linearGradient id="path" x1="30" y1="36" x2="174" y2="132" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#22D3EE"/>
+      <stop offset="1" stop-color="#8B5CF6"/>
+    </linearGradient>
+  </defs>
+  <rect width="760" height="164" rx="28" fill="#0B1220"/>
+  <g transform="translate(30 30)">
+    <path d="M18 24h58l30 30-30 30H52l30 30h58" fill="none" stroke="url(#path)" stroke-linecap="round" stroke-linejoin="round" stroke-width="14"/>
+    <circle cx="140" cy="114" r="9" fill="#34D399"/>
   </g>
-  <text x="190" y="108" fill="#F8FAFC" font-family="Arial, Helvetica, sans-serif" font-size="78" font-weight="800" letter-spacing="8">SPIF</text>
-  <text x="197" y="151" fill="#A7B0C0" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="700" letter-spacing="3">SIGNED PROVENANCE</text>
-  <text x="197" y="180" fill="#34D399" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="700" letter-spacing="3">FOR AI OUTPUTS</text>
+  <text x="212" y="103" fill="#F8FAFC" font-family="Arial, Helvetica, sans-serif" font-size="76" font-weight="800" letter-spacing="7">SPIF</text>
+  <text x="218" y="134" fill="#A7B0C0" font-family="Arial, Helvetica, sans-serif" font-size="15" font-weight="700" letter-spacing="3">SIGNED PROVENANCE</text>
 </svg>
