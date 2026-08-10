@@ -42,6 +42,7 @@ from .crypto import (
     export_pem_private_key,
     export_pem_public_key,
 )
+from .eu_ai_act import DeployerOutput, build_deployer_output
 
 __all__ = [
     "Distribution", "NodeRef", "Node", "TraceStep",
@@ -62,4 +63,5 @@ __all__ = [
     "to_msgpack", "from_msgpack",
     "derive_key_from_mnemonic", "load_pem_private_key",
     "generate_key", "export_pem_private_key", "export_pem_public_key",
+    "DeployerOutput", "build_deployer_output",
 ]

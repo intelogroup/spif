@@ -83,6 +83,7 @@ verify/pkg/
 
 # Temporary / Sandbox Files
 .bin/
+scratch/
 experiments/hard_bench_synthetic/
 experiments/**/*.sif
 experiments/**/*.spif
@@ -91,6 +92,7 @@ experiments/**/*.spif
 spif/graphify-out/
 graphify-out/
 spif/results/*.txt
+spif/results/
 
 # Claude agent config
 .claude/

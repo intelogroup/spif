@@ -35,8 +35,6 @@ fn find_python_with_spif_deps() -> Result<PathBuf> {
     let candidates = [
         "python3",
         "python",
-        "/Users/kalinovdameus/miniforge3/bin/python3",
-        "/Users/kalinovdameus/miniforge3/bin/python",
         "/opt/homebrew/bin/python3",
         "/usr/bin/python3",
     ];

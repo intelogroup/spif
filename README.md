@@ -36,24 +36,25 @@
 
 ---
 
-## EU AI Act integration boundaries
+## EU AI Act integration
 
-SPIF is an infrastructure/provenance component. It is not an AI-system
-provider or deployer, and SPIF alone is not EU AI Act compliant. A deployer
-must provide the user-facing disclosure, visible label, machine-readable mark,
-and transport path that keeps the mark attached to the generated content.
+SPIF provides signed, tamper-evident provenance for AI outputs. It can support
+a deployer’s Article 50 implementation by carrying provenance alongside the
+output, but it is not an AI-system provider, deployer, or standalone compliance
+solution.
 
-The readiness tests in [`spif/tests/test_eu_readiness.py`](spif/tests/test_eu_readiness.py)
-measure the following boundary:
+The deployer remains responsible for the user-facing disclosure, visible label,
+machine-readable marking, content binding, and preservation of those signals
+through the output’s lifecycle. SPIF does not generate or validate those
+signals. See the [EU AI Act integration documentation](docs/README.md#eu-ai-act-integration)
+for the integration model and limitations.
 
-| Requirement area | SPIF evidence | Integrator responsibility | Not provided by SPIF |
+| Requirement area | SPIF provides | Deployer or provider provides |
 |---|---|---|---|
-| Article 50 workflow | Signed per-output identity, timestamp, input hash, and chain | Content-carried machine mark, visible label, disclosure, and detection after export | Standalone Article 50 compliance |
-| C2PA interoperability | SPIF integrity and content-hash evidence | C2PA manifest, hard binding, credential trust, and lifecycle handling | C2PA conformance or trust-list membership |
-| Privacy/security | Hash-based input reference, signatures, bounded parsing, trace integrity | Data-minimisation policy, retention, access control, replay store, and tenant isolation | Legal basis or complete privacy compliance |
-| GPAI evidence | Per-output model and generation metadata | Model documentation, training-data summary, copyright policy, and systemic-risk controls | GPAI Code of Practice obligations |
-
-Use the test results as integration evidence, not as a legal certification.
+| Article 50 | Signed per-output identity, timestamp, input hash, and chain | Content-carried marking, visible disclosure, detection, and lifecycle preservation |
+| C2PA workflows | Signed provenance and content-hash evidence | C2PA manifest, hard binding, credential trust, and lifecycle handling |
+| Privacy and security | Hash-based input reference, signatures, bounded parsing, and trace integrity | Lawful processing, retention, access control, replay protection, and tenant isolation |
+| GPAI evidence | Per-output model and generation metadata | Model documentation, training-data summary, copyright policy, and systemic-risk controls |
 
 ---
 

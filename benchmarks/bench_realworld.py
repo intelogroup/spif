@@ -28,7 +28,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "spif"))
 
 from spif import SPIFDocument, Node, Distribution, TraceStep, Provenance, SemanticLayer, SPIFWriter, SPIFReader
-from spif.crypto import derive_key_from_mnemonic
+from spif.crypto import generate_key
 from spif.streaming import SPIFStreamWriter, SPIFStreamReader
 from spif.types import Signature
 
@@ -240,7 +240,9 @@ def bench_signature_overhead():
           f"{'unsigned dec':>13} {'signed dec':>11} {'overhead':>10}")
     print("-" * 105)
 
-    private_key = derive_key_from_mnemonic("benchmark test key")
+    # Benchmarks must not use a deterministic signing identity.  The key is
+    # generated for this process only and must never be trusted outside it.
+    private_key = generate_key()
     writer = SPIFWriter()
     reader = SPIFReader()
 
