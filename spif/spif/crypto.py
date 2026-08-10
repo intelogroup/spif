@@ -191,14 +191,15 @@ def verify_rotation(
     on a bad signature — callers decide how to treat an unverified record).
     """
     import base64
+    import binascii
 
-    payload = _rotation_payload(
-        record["old_signer"], record["superseded_by"], record["timestamp_ms"]
-    )
     try:
+        payload = _rotation_payload(
+            record["old_signer"], record["superseded_by"], record["timestamp_ms"]
+        )
         old_pubkey.verify(base64.b64decode(record["proof"]), payload)
         new_pubkey.verify(base64.b64decode(record["new_key_proof"]), payload)
-    except (InvalidSignature, KeyError):
+    except (InvalidSignature, KeyError, TypeError, ValueError, binascii.Error):
         return False
     return True
 
