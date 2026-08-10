@@ -184,10 +184,8 @@ def sign(
 ):
     """Sign a SPIF file with an ed25519 private key."""
     from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-    from cryptography.hazmat.primitives.serialization import (
-        load_pem_private_key, Encoding, PublicFormat,
-    )
-    from .types import Signature
+    from cryptography.hazmat.primitives.serialization import load_pem_private_key
+    from .crypto import sign_document
     from .writer import SPIFWriter
 
     # Load private key
@@ -209,44 +207,11 @@ def sign(
         typer.echo(f"ERROR reading file: {e}", err=True)
         raise typer.Exit(1)
 
-    pub_bytes = private_key.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
-    pub_b64 = base64.b64encode(pub_bytes).decode()
-    final_signer = signer_id if signer_id != "local" else pub_b64
+    final_signer = None if signer_id == "local" else signer_id
+    signed_bytes = sign_document(doc, private_key, signer_id=final_signer)
 
-    writer = SPIFWriter()
-
-    # Pass 1: dummy 64-byte sig to lock in final body structure (header flags etc.)
-    doc.signature = Signature(algorithm="ed25519", signer=final_signer, signature=b"\x00" * 64)
-    dummy = writer.encode(doc)
-
-    # Find SIGNATURE chunk offset in dummy encoding
-    from .format import MAGIC as _MAGIC
-    offset = len(_MAGIC) + 2
-    sig_offset = None
-    while offset < len(dummy):
-        ct, ln = struct.unpack_from(">BI", dummy, offset)
-        if ct == 0x07:  # CHUNK_SIGNATURE
-            sig_offset = offset
-            break
-        if ct == 0xFF:
-            break
-        offset += 5 + ln
-
-    if sig_offset is None:
-        typer.echo("ERROR: could not locate SIGNATURE chunk in encoded document", err=True)
-        raise typer.Exit(1)
-
-    body_to_sign = dummy[:sig_offset]
-
-    # Pass 2: real signature, re-encode
-    raw_sig = private_key.sign(body_to_sign)
-    doc.signature = Signature(
-        algorithm="ed25519",
-        signer=final_signer,
-        signature=raw_sig,
-    )
     out_path = output or path
-    writer.write(doc, out_path)
+    out_path.write_bytes(signed_bytes)
     typer.echo(f"Signed  {out_path}  (signer: {doc.signature.signer[:32]}{'...' if len(doc.signature.signer) > 32 else ''})")
 
 

@@ -13,6 +13,9 @@ import time
 import warnings
 from pathlib import Path
 
+import base64
+import struct
+
 import cbor2
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.serialization import (
@@ -21,6 +24,7 @@ from cryptography.hazmat.primitives.serialization import (
 )
 
 from .reader import SPIFSignatureError
+from .types import SPIFDocument, Signature
 
 
 def derive_key_from_mnemonic(mnemonic: str, passphrase: str = "") -> Ed25519PrivateKey:
@@ -79,7 +83,7 @@ def load_pem_private_key(path: str | Path, password: bytes | None = None) -> Ed2
         password: Decryption password if the PEM is encrypted, else None.
 
     Returns:
-        Ed25519PrivateKey ready for use with SPIFWriter(sign_key=...).
+        Ed25519PrivateKey ready for use with sign_document().
     """
     data = Path(path).read_bytes()
     key = _load_pem_private_key(data, password=password)
@@ -160,6 +164,56 @@ def rotate_key(
         "timestamp_ms": ts,
         "proof": base64.b64encode(proof).decode("ascii"),
     }
+
+
+def sign_document(
+    doc: SPIFDocument,
+    private_key: Ed25519PrivateKey,
+    signer_id: str | None = None,
+) -> bytes:
+    """
+    Sign a SPIFDocument with an ed25519 key and return the encoded bytes.
+
+    signer_id defaults to the base64-encoded raw public key, which lets a
+    verifier self-check the signature with no external key lookup via
+    ``SPIFReader().verify_signature(data)``. Pass a URL to publish the key
+    elsewhere instead (see export_pem_public_key()).
+
+    Two-pass encode: the SIGNATURE chunk's position depends on document
+    structure, so a dummy signature is written first to lock that structure
+    in place, then the real signature covers exactly the bytes preceding it.
+    """
+    from .format import MAGIC as _MAGIC
+    from .writer import SPIFWriter
+
+    if signer_id is None:
+        pub_bytes = private_key.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
+        signer_id = base64.b64encode(pub_bytes).decode("ascii")
+
+    writer = SPIFWriter()
+    doc.signature = Signature(algorithm="ed25519", signer=signer_id, signature=b"\x00" * 64)
+    dummy = writer.encode(doc)
+
+    offset = len(_MAGIC) + 2
+    sig_offset = None
+    while offset < len(dummy):
+        chunk_type, length = struct.unpack_from(">BI", dummy, offset)
+        if chunk_type == 0x07:  # CHUNK_SIGNATURE
+            sig_offset = offset
+            break
+        if chunk_type == 0xFF:
+            break
+        offset += 5 + length
+    if sig_offset is None:
+        raise RuntimeError("could not locate SIGNATURE chunk in encoded document")
+
+    body_to_sign = dummy[:sig_offset]
+    doc.signature = Signature(
+        algorithm="ed25519",
+        signer=signer_id,
+        signature=private_key.sign(body_to_sign),
+    )
+    return writer.encode(doc)
 
 
 def load_revocation_list(path: str | Path) -> set[str]:
