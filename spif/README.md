@@ -1,6 +1,7 @@
 <div align="center">
 
-<img src="../assets/spif-mark.svg" alt="SPIF provenance mark" width="112" />
+<img src="../assets/spif-mark.svg#gh-light-mode-only" alt="SPIF provenance mark" width="112" />
+<img src="../assets/spif-mark-dark.svg#gh-dark-mode-only" alt="SPIF provenance mark" width="112" />
 
 # SPIF Python
 

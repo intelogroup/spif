@@ -1,6 +1,7 @@
 <div align="center">
 
-<img src="assets/spif-logo.svg" alt="SPIF — signed provenance" width="680" />
+<img src="assets/spif-logo.svg#gh-light-mode-only" alt="SPIF — signed provenance" width="420" />
+<img src="assets/spif-logo-dark.svg#gh-dark-mode-only" alt="SPIF — signed provenance" width="420" />
 
 ### Record where an AI output came from. Prove what influenced it. Detect when it changes.
 
@@ -13,18 +14,19 @@ tools, agents, and organizational boundaries.
   <a href="docs/SPEC.md">Read the specification</a>
 </p>
 
-[![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
-[![Spec: v0.2](https://img.shields.io/badge/spec-v0.2--active-success.svg)](docs/SPEC.md)
-[![Rust tests](https://github.com/intelogroup/spif/actions/workflows/spif-rust-test.yml/badge.svg)](https://github.com/intelogroup/spif/actions/workflows/spif-rust-test.yml)
-[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/intelogroup/spif/badge)](https://scorecard.dev/viewer/?uri=github.com/intelogroup/spif)
-[![CodeQL](https://github.com/intelogroup/spif/actions/workflows/codeql.yml/badge.svg)](https://github.com/intelogroup/spif/actions/workflows/codeql.yml)
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-000000?style=flat-square)](LICENSE)
+[![Spec: v0.2](https://img.shields.io/badge/spec-v0.2--active-000000?style=flat-square)](docs/SPEC.md)
+[![Rust tests](https://img.shields.io/github/actions/workflow/status/intelogroup/spif/spif-rust-test.yml?style=flat-square&label=rust%20tests&labelColor=000000)](https://github.com/intelogroup/spif/actions/workflows/spif-rust-test.yml)
+[![OpenSSF Scorecard](https://img.shields.io/ossf-scorecard/github.com/intelogroup/spif?style=flat-square&label=scorecard&labelColor=000000)](https://scorecard.dev/viewer/?uri=github.com/intelogroup/spif)
+[![CodeQL](https://img.shields.io/github/actions/workflow/status/intelogroup/spif/codeql.yml?style=flat-square&label=codeql&labelColor=000000)](https://github.com/intelogroup/spif/actions/workflows/codeql.yml)
 
 </div>
 
 <br />
 
 <div align="center">
-  <img src="assets/provenance-flow.svg" alt="Prompt flows through a model, tools, and an agent into a signed SPIF output" width="100%" />
+  <img src="assets/provenance-flow.svg#gh-light-mode-only" alt="Prompt flows through a model, tools, and an agent into a signed SPIF output" width="100%" />
+  <img src="assets/provenance-flow-dark.svg#gh-dark-mode-only" alt="Prompt flows through a model, tools, and an agent into a signed SPIF output" width="100%" />
 </div>
 
 ## Why SPIF?
@@ -46,6 +48,24 @@ a network verification service.
 | **02** | **Seal** | Checksums, Ed25519 signatures, multi-signature workflows, and strict validation |
 | **03** | **Verify** | Offline inspection from Python, Rust, or the WebAssembly module |
 
+## Install
+
+### Python CLI
+
+```bash
+cd spif
+pip install -e ".[dev]"
+spif --help
+```
+
+### Rust engine
+
+```bash
+cd spif-rust
+cargo build --release
+cargo test
+```
+
 ## Try it in under a minute
 
 The repository includes valid, tampered, and corrupted fixtures so the trust model is easy to
@@ -61,22 +81,6 @@ PYTHONPATH=spif python3 -m spif.cli verify examples/fixtures/sample_valid.spif
 # A changed payload is rejected
 PYTHONPATH=spif python3 -m spif.cli verify examples/fixtures/sample_tampered.spif
 # INVALID signature verification failed
-```
-
-### Install the Python CLI
-
-```bash
-cd spif
-pip install -e ".[dev]"
-spif --help
-```
-
-### Build the Rust engine
-
-```bash
-cd spif-rust
-cargo build --release
-cargo test
 ```
 
 ## What travels inside a SPIF artifact?
