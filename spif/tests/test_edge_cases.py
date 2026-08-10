@@ -11,6 +11,7 @@ from spif import (
     SPIFDocument, Node, TraceStep, SPIFWriter, SPIFReader,
     SPIFFormatError, SPIFChecksumError,
 )
+from spif.reader import SPIFMagicError
 from spif.types import (
     Distribution, SemanticLayer, Alternative, Delta, Provenance, NodeRef,
 )
@@ -343,6 +344,20 @@ class TestAlternativesEdgeCases:
         doc = SPIFDocument(payload=[_node()], alternatives=alts)
         r = _rtrip(doc)
         assert r.alternatives[0].weight == pytest.approx(1.0)
+
+    def test_nan_weights_rejected_by_normalized_sum_check(self):
+        """abs(total - 1.0) > 0.01 is False when total is nan (all nan
+        comparisons are False), so the sum check alone can't catch nan
+        weights — writer/reader both explicitly reject nan weights before
+        summing when normalized=True."""
+        import math
+        alts = [
+            Alternative(weight=math.nan, nodes=[Node(id="a0", type="fact", value="A")]),
+            Alternative(weight=math.nan, nodes=[Node(id="a1", type="fact", value="B")]),
+        ]
+        doc = SPIFDocument(payload=[_node()], alternatives=alts)
+        with pytest.raises(ValueError, match="nan"):
+            SPIFWriter().encode(doc)
 
     def test_many_alternatives(self):
         alts = [
@@ -707,6 +722,44 @@ class TestProvenanceEdgeCases:
         )
         r = _rtrip(doc)
         assert r.provenance.timestamp_ms == ts
+
+    def test_negative_timestamp_ms_not_rejected(self):
+        """BUG: Provenance.timestamp_ms has no validation anywhere (types.py
+        has no __post_init__ check, reader.py's signature-age math just
+        subtracts without a sign check), so a negative timestamp round-trips
+        silently instead of being rejected."""
+        doc = SPIFDocument(
+            payload=[_node()],
+            provenance=Provenance(source_model="m", temperature=0.0, timestamp_ms=-1),
+        )
+        r = _rtrip(doc)
+        assert r.provenance.timestamp_ms == -1
+
+    def test_decode_str_input_raises_clean_magic_error(self):
+        """SPIFReader.decode() now type-checks input up front — a str
+        raises a clean SPIFMagicError instead of an unhandled
+        AttributeError from the bad-magic formatting path."""
+        with pytest.raises(SPIFMagicError, match="bytes-like"):
+            SPIFReader().decode("not bytes but a string" * 5)
+
+    def test_payload_node_count_cap_enforced(self):
+        """reader.py now caps payload node count at MAX_PAYLOAD_NODES on
+        decode — previously only bounded indirectly via
+        MAX_DECOMPRESSED_SIZE (10MB), letting tens of thousands of tiny
+        nodes through unchecked."""
+        nodes = [_node(i) for i in range(50_000)]
+        doc = SPIFDocument(payload=nodes)
+        data = SPIFWriter().encode(doc)  # encode has no node-count check
+        with pytest.raises(SPIFFormatError, match="exceeding the limit"):
+            SPIFReader().decode(data)
+
+    def test_chunk_length_over_4gib_raises_clean_format_error(self):
+        """writer.py now pre-checks chunk length against the format's max
+        ('>I' → 4294967295) and raises SPIFFormatError instead of leaking
+        a raw struct.error."""
+        from spif.writer import _check_chunk_len
+        with pytest.raises(SPIFFormatError, match="exceeding the format's max"):
+            _check_chunk_len(0x01, 2**32)
 
     def test_signature_without_provenance(self):
         import base64

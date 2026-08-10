@@ -379,6 +379,7 @@ class SPIFStreamReader:
         self._pos = 0               # parse cursor into self._buf
         self._state = "header"      # "header" | "chunks" | "done"
         self._require_signature = require_signature
+        self._last_seq: dict[str, int] = {}  # node_id -> highest seq seen
 
     def feed(self, data: bytes | bytearray) -> list[StreamEvent]:
         """
@@ -442,11 +443,23 @@ class SPIFStreamReader:
         if chunk_type == CHUNK_PARTIAL_TEXT:
             try:
                 d = cbor2.loads(payload)
+                node_id = d.get("node_id", "main")
+                seq = d.get("seq", 0)
+                last = self._last_seq.get(node_id, -1)
+                if seq <= last:
+                    events.append(StreamEvent(
+                        type="error",
+                        error=f"PARTIAL_TEXT seq {seq} for node '{node_id}' is not "
+                              f"greater than last seen seq {last} (out-of-order or duplicate)",
+                    ))
+                    self._state = "done"
+                    return
+                self._last_seq[node_id] = seq
                 events.append(StreamEvent(
                     type="partial_text",
-                    node_id=d.get("node_id", "main"),
+                    node_id=node_id,
                     text=d.get("text", ""),
-                    seq=d.get("seq", 0),
+                    seq=seq,
                 ))
             except Exception as exc:
                 events.append(StreamEvent(type="error",

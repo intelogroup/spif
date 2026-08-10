@@ -233,6 +233,10 @@ class SPIFKeyStore:
                 raise SPIFSignatureError(
                     f"No public key for signer '{signer}' in keystore at {self._root}"
                 )
+            if sig.algorithm != "ed25519":
+                raise SPIFSignatureError(
+                    f"Unsupported signature algorithm '{sig.algorithm}'; only ed25519 is supported"
+                )
             # Cryptographic verification
             pub = Ed25519PublicKey.from_public_bytes(raw_key)
             try:

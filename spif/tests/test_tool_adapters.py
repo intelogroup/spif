@@ -152,6 +152,22 @@ class TestAnthropicAdapterToolCalls:
         assert doc.provenance.source_model == "claude-opus-5"
         assert "temperature" not in client.messages.last_kwargs
 
+    def test_future_claude_model_not_in_hardcoded_allowlist_still_gets_temperature(self):
+        """BUG: _temperature_is_deprecated() hardcodes an exact allowlist of
+        model prefixes ("claude-opus-5", "claude-sonnet-5", "claude-fable-5").
+        A next-generation model name that doesn't match (e.g. "claude-opus-6")
+        silently falls through as if temperature were still accepted — if the
+        live API actually rejects it there, this raises a 400 in production
+        with no adapter-level warning."""
+        from spif.adapters.anthropic_adapter import _temperature_is_deprecated
+        assert _temperature_is_deprecated("claude-opus-6") is False
+
+        response = _FakeMessage(model="claude-opus-6", content=[_FakeBlock(type="text", text="ok")])
+        client = _FakeAnthropicClient(response)
+        adapter = AnthropicSPIFAdapter(client, model="claude-opus-6", temperature=0.2)
+        adapter.complete("test")
+        assert "temperature" in client.messages.last_kwargs  # unverified assumption
+
     def test_complete_pending_when_no_executor(self):
         resp = self._make_response_with_tool_call()
         adapter = AnthropicSPIFAdapter(_FakeAnthropicClient(resp))
@@ -207,6 +223,30 @@ class TestAnthropicAdapterToolCalls:
         assert doc.pending_tool_results is False
         assert all(n.type == NODE_TEXT for n in doc.payload)
 
+    def test_duplicate_vendor_tool_call_ids_not_caught_by_adapter(self):
+        """BUG: _build_tool_call_node() assumes block.id is unique within a
+        response and builds Node.id = f"tool_call_{block.id}" directly with
+        no dedup/validation. Two tool_use blocks sharing an id (a vendor SDK
+        bug, or a mocked/replayed response) produce duplicate Node ids in
+        doc.payload — the adapter doesn't catch it; it only surfaces much
+        later as SPIFFormatError on decode after a write/read round trip."""
+        from spif import SPIFWriter, SPIFReader
+        from spif.reader import SPIFFormatError
+
+        blocks = [
+            _FakeBlock(type="tool_use", id="dup", name="get_weather", input={"city": "Paris"}),
+            _FakeBlock(type="tool_use", id="dup", name="get_time", input={"city": "Paris"}),
+        ]
+        resp = _FakeMessage(model="claude-sonnet-4-6", content=blocks)
+        adapter = AnthropicSPIFAdapter(_FakeAnthropicClient(resp))
+        doc = adapter.complete("weather and time in Paris?")
+
+        tool_call_ids = [n.id for n in doc.payload if n.type == NODE_TOOL_CALL]
+        assert tool_call_ids == ["tool_call_dup", "tool_call_dup"]  # adapter let it through
+
+        with pytest.raises(SPIFFormatError, match="Duplicate Node id"):
+            SPIFReader().decode(SPIFWriter().encode(doc))
+
     def test_tool_call_nodes_precede_text_nodes(self):
         """Tool interaction sequence: tool_call, tool_result, then text."""
         resp = self._make_response_with_tool_call()
@@ -257,6 +297,16 @@ class TestOpenAIAdapterToolCalls:
         adapter = OpenAISPIFAdapter(_FakeOAIClient(resp))
         doc = adapter.complete("Search")
         assert doc.pending_tool_results is True
+
+    def test_future_reasoning_model_not_in_heuristic_misdetected(self):
+        """BUG: _is_reasoning_model() hardcodes {"o1","o3","o4"} plus a
+        _REASONING_MODEL_PREFIXES=("gpt-5.6",) allowlist. A next-generation
+        reasoning model like "o5-preview" doesn't match either check, so it's
+        silently treated as a non-reasoning model — sending max_tokens instead
+        of max_completion_tokens, which the live API rejects for o-series-style
+        models."""
+        adapter = OpenAISPIFAdapter(_FakeOAIClient(_FakeOAIResponse(model="o5-preview", choices=[])))
+        assert adapter._is_reasoning_model("o5-preview") is False  # unverified assumption
 
     def test_complete_with_executor(self):
         resp = self._make_oai_response_with_tool_call()
