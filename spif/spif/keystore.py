@@ -6,6 +6,7 @@ A keystore is a directory with the following layout::
     keystore/
         <key_id>.pub    — raw 32-byte ed25519 public key per signer
         revoked.json    — {"revoked": {"<key_id>": <revoked_at_ms>}}
+        roles.json      — {"roles": {"<role>": ["<authorized_key_id>", ...]}}
         rotation.jsonl  — newline-delimited rotation records (from crypto.rotate_key)
 
 Usage::
@@ -30,6 +31,8 @@ from __future__ import annotations
 
 import base64
 import json
+import os
+import tempfile
 import time
 from pathlib import Path
 from typing import Union
@@ -66,6 +69,7 @@ class SPIFKeyStore:
         elif not self._root.exists():
             raise FileNotFoundError(f"Keystore directory not found: {self._root}")
         self._revocation_path = self._root / "revoked.json"
+        self._roles_path = self._root / "roles.json"
 
     # ------------------------------------------------------------------
     # Key management
@@ -157,6 +161,67 @@ class SPIFKeyStore:
     def revoked_keys(self) -> dict[str, int]:
         """Return a mapping of {key_id: revoked_at_ms} for all revoked keys."""
         return dict(self._load_revoked())
+
+    # ------------------------------------------------------------------
+    # Role authorization
+    #
+    # A document's ``signer_roles`` (see types.SPIFDocument) is a claim, bound
+    # into the signed body, of the form {signer_id: role}. This section lets a
+    # deployer restrict which signer_ids are actually allowed to make a given
+    # role claim (e.g. only a designated human reviewer's key may sign as
+    # "human_reviewer"). A role with no registered authorization list is not
+    # enforced — this is opt-in per role, existing single-signer callers are
+    # unaffected unless they explicitly call authorize_role.
+    # ------------------------------------------------------------------
+
+    def authorize_role(self, role: str, signer_id: str) -> None:
+        """Grant signer_id permission to sign documents claiming the given role."""
+        roles = self._load_roles()
+        signers = roles.setdefault(role, [])
+        if signer_id not in signers:
+            signers.append(signer_id)
+        self._save_roles(roles)
+
+    def deauthorize_role(self, role: str, signer_id: str) -> bool:
+        """Revoke signer_id's permission for role. Returns True if it was granted."""
+        roles = self._load_roles()
+        signers = roles.get(role, [])
+        if signer_id not in signers:
+            return False
+        signers.remove(signer_id)
+        self._save_roles(roles)
+        return True
+
+    def is_authorized_for_role(self, role: str, signer_id: str) -> bool:
+        """Return True if signer_id may sign as role, or role has no registered list."""
+        signers = self._load_roles().get(role)
+        return signers is None or signer_id in signers
+
+    def check_roles(self, doc: SPIFDocument) -> None:
+        """
+        Verify every role claim in doc.signer_roles against this store's policy.
+
+        Raises SPIFSignatureError if a signer_id claims a role it is not
+        authorized for, or if the claimed signer_id is not among the document's
+        declared signers (an unbound claim — anyone could attach that name).
+        Roles with no registered authorization list are not enforced. Does not
+        check signature validity or key revocation — call verify() for that;
+        this is a separate, explicit policy check.
+        """
+        declared_signers = {s.signer for s in doc.signatures}
+        if doc.signature:
+            declared_signers.add(doc.signature.signer)
+
+        for signer_id, role in doc.signer_roles.items():
+            if signer_id not in declared_signers:
+                raise SPIFSignatureError(
+                    f"Role claim for {signer_id!r} does not match any declared "
+                    f"signer on this document"
+                )
+            if not self.is_authorized_for_role(role, signer_id):
+                raise SPIFSignatureError(
+                    f"Signer {signer_id!r} is not authorized for role {role!r}"
+                )
 
     # ------------------------------------------------------------------
     # Verification
@@ -267,6 +332,37 @@ class SPIFKeyStore:
         self._revocation_path.write_text(
             json.dumps({"revoked": revoked}, indent=2)
         )
+
+    def _load_roles(self) -> dict[str, list[str]]:
+        if not self._roles_path.exists():
+            return {}
+        try:
+            data = json.loads(self._roles_path.read_text())
+            roles = data.get("roles", {})
+            if not isinstance(roles, dict):
+                raise ValueError("'roles' must be an object")
+            for role, signers in roles.items():
+                if not isinstance(role, str):
+                    raise ValueError(f"role key {role!r} must be a string")
+                if not isinstance(signers, list) or not all(isinstance(s, str) for s in signers):
+                    raise ValueError(f"role {role!r} value must be a list of strings")
+            return roles
+        except (json.JSONDecodeError, KeyError, AttributeError, ValueError) as exc:
+            raise SPIFSignatureError(
+                f"Roles file {self._roles_path} is malformed: {exc}"
+            ) from exc
+
+    def _save_roles(self, roles: dict[str, list[str]]) -> None:
+        # Atomic write: a crash/interruption mid-write must never leave a
+        # truncated or partially-written roles.json for _load_roles to trip on.
+        fd, tmp_path = tempfile.mkstemp(dir=self._roles_path.parent, suffix=".tmp")
+        try:
+            with os.fdopen(fd, "w") as f:
+                json.dump({"roles": roles}, f, indent=2)
+            os.replace(tmp_path, self._roles_path)
+        except BaseException:
+            os.unlink(tmp_path)
+            raise
 
 
 # ---------------------------------------------------------------------------

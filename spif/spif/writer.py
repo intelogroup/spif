@@ -14,7 +14,7 @@ from .format import (
     MAGIC, FORMAT_VERSION,
     CHUNK_HEADER, CHUNK_PROVENANCE, CHUNK_SEMANTIC, CHUNK_TRACE,
     CHUNK_PAYLOAD, CHUNK_ALTS, CHUNK_DELTA, CHUNK_SIGNATURE, CHUNK_MULTISIG,
-    CHUNK_TASK, CHUNK_CHECKSUM,
+    CHUNK_TASK, CHUNK_ROLES, CHUNK_CHECKSUM,
     FLAG_PROVENANCE, FLAG_SEMANTIC, FLAG_TRACE, FLAG_ALTS, FLAG_DELTA, FLAG_SIGNATURE,
     FLAG_MULTISIG, FLAG_COMPRESSED, FLAG_ZSTD, FLAG_HAS_TASK,
     TAG_DISTRIBUTION, TAG_NODEREF, TAG_EMBEDDING,
@@ -301,6 +301,12 @@ class SPIFWriter:
                 "base_hash": doc.delta.base_hash,
                 "changes":   doc.delta.changes,
             }, fast=fast, compress=compress, compression=compression, compression_level=self._compression_level))
+
+        # ROLES chunk — must precede SIGNATURE/MULTISIG so role claims are covered
+        # by the signed body (never compressed, same as auth chunks)
+        if doc.signer_roles:
+            parts.append(_chunk(CHUNK_ROLES, dict(doc.signer_roles),
+                                 fast=fast, compress=False))
 
         # SIGNATURE chunk — never compressed (always canonical, integrity-critical)
         if doc.signature:

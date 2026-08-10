@@ -317,3 +317,112 @@ class TestKeySlug:
         key_id = "https://keys.example.com/alice?v=1"
         tmp_ks.add_key(key_id, _alice_pub(alice_key))
         assert tmp_ks.get_key(key_id) == _alice_pub(alice_key)
+
+
+# ---------------------------------------------------------------------------
+# Role authorization
+# ---------------------------------------------------------------------------
+
+def _dummy_sig(signer_id: str) -> Signature:
+    return Signature(algorithm="ed25519", signer=signer_id, signature=b"\x00" * 64)
+
+
+class TestRoleAuthorization:
+    def test_unregistered_role_is_not_enforced(self, tmp_ks):
+        doc = SPIFDocument(payload=[
+            Node(id="n1", type="text", value="hi", confidence=Distribution(mean=0.9, var=0.01))
+        ], signer_roles={"model-key": "model"}, signature=_dummy_sig("model-key"))
+        tmp_ks.check_roles(doc)  # must not raise
+
+    def test_unauthorized_signer_for_registered_role_rejected(self, tmp_ks):
+        tmp_ks.authorize_role("human_reviewer", "reviewer-key-42")
+        doc = SPIFDocument(payload=[
+            Node(id="n1", type="text", value="hi", confidence=Distribution(mean=0.9, var=0.01))
+        ], signer_roles={"model-key": "human_reviewer"}, signature=_dummy_sig("model-key"))
+        with pytest.raises(SPIFSignatureError, match="not authorized"):
+            tmp_ks.check_roles(doc)
+
+    def test_authorized_signer_accepted(self, tmp_ks):
+        tmp_ks.authorize_role("human_reviewer", "reviewer-key-42")
+        doc = SPIFDocument(payload=[
+            Node(id="n1", type="text", value="hi", confidence=Distribution(mean=0.9, var=0.01))
+        ], signer_roles={"reviewer-key-42": "human_reviewer"}, signature=_dummy_sig("reviewer-key-42"))
+        tmp_ks.check_roles(doc)  # must not raise
+
+    def test_deauthorize_revokes_access(self, tmp_ks):
+        tmp_ks.authorize_role("human_reviewer", "reviewer-key-42")
+        assert tmp_ks.deauthorize_role("human_reviewer", "reviewer-key-42") is True
+        assert tmp_ks.deauthorize_role("human_reviewer", "reviewer-key-42") is False
+        doc = SPIFDocument(payload=[
+            Node(id="n1", type="text", value="hi", confidence=Distribution(mean=0.9, var=0.01))
+        ], signer_roles={"reviewer-key-42": "human_reviewer"}, signature=_dummy_sig("reviewer-key-42"))
+        with pytest.raises(SPIFSignatureError, match="not authorized"):
+            tmp_ks.check_roles(doc)
+
+    def test_corrupted_roles_file_fails_closed(self, tmp_ks):
+        doc = SPIFDocument(payload=[
+            Node(id="n1", type="text", value="hi", confidence=Distribution(mean=0.9, var=0.01))
+        ], signer_roles={"model-key": "model"}, signature=_dummy_sig("model-key"))
+        tmp_ks._roles_path.write_text("{not valid json")
+        with pytest.raises(SPIFSignatureError, match="malformed"):
+            tmp_ks.check_roles(doc)
+
+    def test_unbound_role_claim_rejected(self, tmp_ks):
+        """A role claim for a signer_id that never actually signed the doc must be rejected."""
+        tmp_ks.authorize_role("human_reviewer", "reviewer-key-42")
+        doc = SPIFDocument(payload=[
+            Node(id="n1", type="text", value="hi", confidence=Distribution(mean=0.9, var=0.01))
+        ], signer_roles={"reviewer-key-42": "human_reviewer"})  # no signature at all
+        with pytest.raises(SPIFSignatureError, match="declared signer"):
+            tmp_ks.check_roles(doc)
+
+    def test_roles_json_null_value_rejected(self, tmp_ks):
+        tmp_ks._roles_path.write_text('{"roles": {"human_reviewer": null}}')
+        doc = SPIFDocument(payload=[
+            Node(id="n1", type="text", value="hi", confidence=Distribution(mean=0.9, var=0.01))
+        ], signer_roles={"model-key": "human_reviewer"}, signature=_dummy_sig("model-key"))
+        with pytest.raises(SPIFSignatureError, match="malformed"):
+            tmp_ks.check_roles(doc)
+
+    def test_role_claims_survive_sign_and_verify_roundtrip(self, tmp_ks, alice_key):
+        signer_id = "alice@example.com"
+        tmp_ks.add_key(signer_id, _alice_pub(alice_key))
+        tmp_ks.authorize_role("model", signer_id)
+
+        doc = _make_doc()
+        doc.signer_roles = {signer_id: "model"}
+        signed_bytes = _sign_doc(doc, alice_key, signer_id)
+
+        decoded = SPIFReader().decode(signed_bytes)
+        assert decoded.signer_roles == {signer_id: "model"}
+        assert tmp_ks.verify(signed_bytes) is True
+        tmp_ks.check_roles(decoded)  # must not raise
+
+    def test_roles_chunk_after_signature_rejected(self, tmp_ks, alice_key):
+        """A ROLES chunk appended after SIGNATURE (post-sign tamper) must be rejected,
+        even with a recomputed checksum — it's outside the signed body."""
+        import hashlib
+        import struct
+        from spif.format import CHUNK_ROLES, CHUNK_CHECKSUM
+        from spif import SPIFChecksumError
+        from spif.reader import SPIFFormatError
+
+        signer_id = "alice@example.com"
+        tmp_ks.add_key(signer_id, _alice_pub(alice_key))
+        doc = _make_doc()
+        signed_bytes = _sign_doc(doc, alice_key, signer_id)  # no signer_roles yet
+
+        _chunk_struct = struct.Struct(">BI")
+        roles_payload = __import__("cbor2").dumps({signer_id: "human_reviewer"})
+        roles_chunk = _chunk_struct.pack(CHUNK_ROLES, len(roles_payload)) + roles_payload
+
+        # strip the trailing CHECKSUM chunk, append ROLES after it (i.e. after SIGNATURE),
+        # then recompute the checksum over the new body
+        checksum_marker = signed_bytes.rfind(_chunk_struct.pack(CHUNK_CHECKSUM, 32))
+        body_without_checksum = signed_bytes[:checksum_marker]
+        new_body = body_without_checksum + roles_chunk
+        new_checksum = hashlib.sha256(new_body).digest()
+        tampered = new_body + _chunk_struct.pack(CHUNK_CHECKSUM, len(new_checksum)) + new_checksum
+
+        with pytest.raises((SPIFFormatError, SPIFChecksumError)):
+            SPIFReader().decode(tampered)

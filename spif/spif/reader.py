@@ -18,7 +18,7 @@ from .format import (
     MAGIC,
     CHUNK_HEADER, CHUNK_PROVENANCE, CHUNK_SEMANTIC, CHUNK_TRACE,
     CHUNK_PAYLOAD, CHUNK_ALTS, CHUNK_DELTA, CHUNK_SIGNATURE, CHUNK_MULTISIG,
-    CHUNK_TASK, CHUNK_CHECKSUM,
+    CHUNK_TASK, CHUNK_ROLES, CHUNK_CHECKSUM,
     TAG_DISTRIBUTION, TAG_NODEREF, TAG_EMBEDDING,
     TRACE_POSTHOC, FLAG_COMPRESSED, FLAG_ZSTD,
 )
@@ -449,6 +449,9 @@ class SPIFReader:
 
         # 4. Parse all chunks up to CHECKSUM
         chunks: dict[int, list[bytes]] = {}
+        roles_offset = None
+        auth_offset = None
+        scan_offset = len(MAGIC) + 2
         for chunk_type, chunk_data in _iter_chunks(data, len(MAGIC) + 2):
             if chunk_type == CHUNK_CHECKSUM:
                 break
@@ -456,7 +459,18 @@ class SPIFReader:
                 raise SPIFFormatError(
                     f"Duplicate chunk of type 0x{chunk_type:02x} is not allowed"
                 )
+            if chunk_type == CHUNK_ROLES and roles_offset is None:
+                roles_offset = scan_offset
+            if chunk_type in (CHUNK_SIGNATURE, CHUNK_MULTISIG) and auth_offset is None:
+                auth_offset = scan_offset
             chunks.setdefault(chunk_type, []).append(chunk_data)
+            scan_offset += 5 + len(chunk_data)
+
+        if roles_offset is not None and auth_offset is not None and roles_offset >= auth_offset:
+            raise SPIFFormatError(
+                "ROLES chunk must precede SIGNATURE/MULTISIG so role claims "
+                "are covered by the signature"
+            )
 
         # 4a. Detect compression from HEADER chunk (flags2 field)
         compressed = False
@@ -658,6 +672,16 @@ class SPIFReader:
                 error_count=t.get("error_count", 0),
             )
 
+        # 14. ROLES chunk (v1.1+) — signer_id -> claimed role, never compressed
+        signer_roles: dict[str, str] = {}
+        if CHUNK_ROLES in chunks:
+            r = _cbor_load(chunks[CHUNK_ROLES][0], "ROLES")
+            if not isinstance(r, dict):
+                raise SPIFFormatError("ROLES chunk must decode to a dict")
+            if not all(isinstance(k, str) and isinstance(v, str) for k, v in r.items()):
+                raise SPIFFormatError("ROLES chunk keys and values must all be strings")
+            signer_roles = dict(r)
+
         doc = SPIFDocument(
             payload=payload,
             provenance=provenance,
@@ -669,6 +693,7 @@ class SPIFReader:
             signature=signature,
             signatures=signatures,
             task_info=task_info,
+            signer_roles=signer_roles,
         )
 
         # Signature enforcement — must come after full parse so that the

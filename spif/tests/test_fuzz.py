@@ -78,6 +78,11 @@ doc_strategy = st.builds(
     payload=st.lists(node_strategy, min_size=1, max_size=5, unique_by=lambda n: n.id),
     # unique_by ensures no duplicate step IDs (DAG validator rejects duplicates)
     trace=st.lists(step_strategy, max_size=4, unique_by=lambda s: s.id),
+    signer_roles=st.dictionaries(
+        st.text(min_size=1, max_size=16, alphabet=st.characters(whitelist_categories=("Lu", "Ll", "Nd"))),
+        st.sampled_from(["model", "human_reviewer", "tool"]),
+        max_size=3,
+    ),
 )
 
 
