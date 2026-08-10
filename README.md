@@ -11,6 +11,7 @@
 ## Table of Contents
 
 - [Key Features](#key-features)
+- [EU AI Act integration boundaries](#eu-ai-act-integration-boundaries)
 - [Monorepo Project Layout](#monorepo-project-layout)
 - [Programmatic Specification-Compliant Samples](#programmatic-specification-compliant-samples)
 - [Getting Started](#getting-started)
@@ -32,6 +33,27 @@
 - **Cross-Language Fidelity**: Complete feature parity and validated interoperability between Python, TypeScript/Node.js, and Rust.
 - **Web Verifier**: In-browser, wasm-based `.spif` verification — nothing uploaded. See [`/verify`](verify/).
 - **No upload verifier API**: server-side sidecars do not accept standalone `.spif` uploads; they only inspect provenance attached to proxied responses. Local files stay local.
+
+---
+
+## EU AI Act integration boundaries
+
+SPIF is an infrastructure/provenance component. It is not an AI-system
+provider or deployer, and SPIF alone is not EU AI Act compliant. A deployer
+must provide the user-facing disclosure, visible label, machine-readable mark,
+and transport path that keeps the mark attached to the generated content.
+
+The readiness tests in [`spif/tests/test_eu_readiness.py`](spif/tests/test_eu_readiness.py)
+measure the following boundary:
+
+| Requirement area | SPIF evidence | Integrator responsibility | Not provided by SPIF |
+|---|---|---|---|
+| Article 50 workflow | Signed per-output identity, timestamp, input hash, and chain | Content-carried machine mark, visible label, disclosure, and detection after export | Standalone Article 50 compliance |
+| C2PA interoperability | SPIF integrity and content-hash evidence | C2PA manifest, hard binding, credential trust, and lifecycle handling | C2PA conformance or trust-list membership |
+| Privacy/security | Hash-based input reference, signatures, bounded parsing, trace integrity | Data-minimisation policy, retention, access control, replay store, and tenant isolation | Legal basis or complete privacy compliance |
+| GPAI evidence | Per-output model and generation metadata | Model documentation, training-data summary, copyright policy, and systemic-risk controls | GPAI Code of Practice obligations |
+
+Use the test results as integration evidence, not as a legal certification.
 
 ---
 
