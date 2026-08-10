@@ -200,11 +200,22 @@ class SPIFKeyStore:
         Verify every role claim in doc.signer_roles against this store's policy.
 
         Raises SPIFSignatureError if a signer_id claims a role it is not
-        authorized for. Roles with no registered authorization list are not
-        enforced. Does not check signature validity or key revocation — call
-        verify() for that; this is a separate, explicit policy check.
+        authorized for, or if the claimed signer_id is not among the document's
+        declared signers (an unbound claim — anyone could attach that name).
+        Roles with no registered authorization list are not enforced. Does not
+        check signature validity or key revocation — call verify() for that;
+        this is a separate, explicit policy check.
         """
+        declared_signers = {s.signer for s in doc.signatures}
+        if doc.signature:
+            declared_signers.add(doc.signature.signer)
+
         for signer_id, role in doc.signer_roles.items():
+            if signer_id not in declared_signers:
+                raise SPIFSignatureError(
+                    f"Role claim for {signer_id!r} does not match any declared "
+                    f"signer on this document"
+                )
             if not self.is_authorized_for_role(role, signer_id):
                 raise SPIFSignatureError(
                     f"Signer {signer_id!r} is not authorized for role {role!r}"
@@ -325,8 +336,16 @@ class SPIFKeyStore:
             return {}
         try:
             data = json.loads(self._roles_path.read_text())
-            return dict(data.get("roles", {}))
-        except (json.JSONDecodeError, KeyError, AttributeError) as exc:
+            roles = data.get("roles", {})
+            if not isinstance(roles, dict):
+                raise ValueError("'roles' must be an object")
+            for role, signers in roles.items():
+                if not isinstance(role, str):
+                    raise ValueError(f"role key {role!r} must be a string")
+                if not isinstance(signers, list) or not all(isinstance(s, str) for s in signers):
+                    raise ValueError(f"role {role!r} value must be a list of strings")
+            return roles
+        except (json.JSONDecodeError, KeyError, AttributeError, ValueError) as exc:
             raise SPIFSignatureError(
                 f"Roles file {self._roles_path} is malformed: {exc}"
             ) from exc

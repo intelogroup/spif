@@ -449,6 +449,9 @@ class SPIFReader:
 
         # 4. Parse all chunks up to CHECKSUM
         chunks: dict[int, list[bytes]] = {}
+        roles_offset = None
+        auth_offset = None
+        scan_offset = len(MAGIC) + 2
         for chunk_type, chunk_data in _iter_chunks(data, len(MAGIC) + 2):
             if chunk_type == CHUNK_CHECKSUM:
                 break
@@ -456,7 +459,18 @@ class SPIFReader:
                 raise SPIFFormatError(
                     f"Duplicate chunk of type 0x{chunk_type:02x} is not allowed"
                 )
+            if chunk_type == CHUNK_ROLES and roles_offset is None:
+                roles_offset = scan_offset
+            if chunk_type in (CHUNK_SIGNATURE, CHUNK_MULTISIG) and auth_offset is None:
+                auth_offset = scan_offset
             chunks.setdefault(chunk_type, []).append(chunk_data)
+            scan_offset += 5 + len(chunk_data)
+
+        if roles_offset is not None and auth_offset is not None and roles_offset >= auth_offset:
+            raise SPIFFormatError(
+                "ROLES chunk must precede SIGNATURE/MULTISIG so role claims "
+                "are covered by the signature"
+            )
 
         # 4a. Detect compression from HEADER chunk (flags2 field)
         compressed = False
