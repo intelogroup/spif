@@ -354,6 +354,14 @@ class TestReasoningModelDetection:
         adapter = OpenAISPIFAdapter(MagicMock())
         assert adapter._is_reasoning_model(model)
 
+    def test_gpt_5_6_uses_reasoning_request_shape(self):
+        adapter = OpenAISPIFAdapter(MagicMock(), model="gpt-5.6-luna")
+
+        params = adapter._request_params("gpt-5.6-luna", [], 32, stream=False)
+
+        assert params["max_completion_tokens"] == 32
+        assert "max_tokens" not in params
+
     @pytest.mark.parametrize("model", [
         "gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-3.5-turbo",
     ])

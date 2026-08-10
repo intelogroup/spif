@@ -82,6 +82,23 @@ _THINKING_CONFIDENCE = Distribution(
 )
 
 
+def _temperature_is_deprecated(model: str) -> bool:
+    """Return whether Anthropic rejects the temperature request parameter."""
+    return model.startswith((
+        "claude-opus-5",
+        "claude-sonnet-5",
+        "claude-fable-5",
+    ))
+
+
+def _set_temperature_if_supported(
+    request_params: dict[str, Any], model: str, temperature: float
+) -> None:
+    """Add temperature only for models whose API accepts the parameter."""
+    if not _temperature_is_deprecated(model):
+        request_params["temperature"] = temperature
+
+
 def _build_tool_call_node(block: Any, confidence: Distribution) -> Node:
     """Convert an Anthropic tool_use content block to a NODE_TOOL_CALL node."""
     return Node(
@@ -284,10 +301,10 @@ class AnthropicSPIFAdapter:
                 "type":          "enabled",
                 "budget_tokens": thinking_budget_tokens,
             }
-            # Temperature must be 1.0 when extended thinking is enabled
-            request_params["temperature"] = 1.0
+            # Temperature must be 1.0 when extended thinking is enabled.
+            _set_temperature_if_supported(request_params, use_model, 1.0)
         else:
-            request_params["temperature"] = self._temperature
+            _set_temperature_if_supported(request_params, use_model, self._temperature)
 
         with self._client.messages.stream(**request_params) as stream:
             for event in stream:
@@ -360,9 +377,9 @@ class AnthropicSPIFAdapter:
                 "type":          "enabled",
                 "budget_tokens": thinking_budget_tokens,
             }
-            request_params["temperature"] = 1.0
+            _set_temperature_if_supported(request_params, use_model, 1.0)
         else:
-            request_params["temperature"] = self._temperature
+            _set_temperature_if_supported(request_params, use_model, self._temperature)
 
         async with self._client.messages.stream(**request_params) as stream:
             async for event in stream:
@@ -433,9 +450,9 @@ class AnthropicSPIFAdapter:
                 "type":          "enabled",
                 "budget_tokens": thinking_budget_tokens,
             }
-            request_params["temperature"] = 1.0
+            _set_temperature_if_supported(request_params, use_model, 1.0)
         else:
-            request_params["temperature"] = self._temperature
+            _set_temperature_if_supported(request_params, use_model, self._temperature)
         if effective_tools:
             request_params["tools"] = effective_tools
             request_params["tool_choice"] = {"type": "auto"}

@@ -194,10 +194,10 @@ class OpenAISPIFAdapter:
     model :
         Default model to use (overridable per-call).
     max_tokens :
-        Default max_tokens (maps to max_completion_tokens for o1/o3).
+        Default max_tokens (maps to max_completion_tokens for o1/o3 and GPT-5.6).
     temperature :
-        Sampling temperature recorded in provenance.  Ignored for o1/o3
-        models (they require temperature=1 and reject any other value).
+        Sampling temperature recorded in provenance. Ignored for o1/o3 and
+        GPT-5.6 models, which use the reasoning request shape.
     logprobs :
         If True (default), request per-token logprobs and use them to
         compute a real confidence Distribution.
@@ -210,12 +210,13 @@ class OpenAISPIFAdapter:
         If True (default), add a TraceStep for o1/o3 reasoning token counts.
     """
 
-    # Models that require temperature=1 and use max_completion_tokens
+    # Models that use max_completion_tokens and omit temperature.
     _REASONING_MODELS = frozenset({
         "o1", "o1-mini", "o1-preview", "o1-pro",
         "o3", "o3-mini", "o3-pro",
         "o4-mini",
     })
+    _REASONING_MODEL_PREFIXES = ("gpt-5.6",)
 
     def __init__(
         self,
@@ -245,7 +246,11 @@ class OpenAISPIFAdapter:
     def _is_reasoning_model(self, model: str) -> bool:
         # Match on prefix so "o1-2024-12-17" also matches
         base = model.split("-")[0] if "-" in model else model
-        return model in self._REASONING_MODELS or base in {"o1", "o3", "o4"}
+        return (
+            model in self._REASONING_MODELS
+            or base in {"o1", "o3", "o4"}
+            or model.startswith(self._REASONING_MODEL_PREFIXES)
+        )
 
     def _request_params(
         self,
