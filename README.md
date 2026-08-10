@@ -1,7 +1,7 @@
 # SPIF: Semantic Provenance Inference Format
 
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
-[![Format Specification](https://img.shields.io/badge/Spec-v0.2--Active-success)](spif/SPEC.md)
+[![Format Specification](https://img.shields.io/badge/Spec-v0.2--Active-success)](docs/SPEC.md)
 [![Rust Tests](https://github.com/intelogroup/spif/actions/workflows/spif-rust-test.yml/badge.svg)](https://github.com/intelogroup/spif/actions/workflows/spif-rust-test.yml)
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/intelogroup/spif/badge)](https://scorecard.dev/viewer/?uri=github.com/intelogroup/spif)
 [![CodeQL](https://github.com/intelogroup/spif/actions/workflows/codeql.yml/badge.svg)](https://github.com/intelogroup/spif/actions/workflows/codeql.yml)
@@ -41,7 +41,7 @@ This repository is structured as a monorepo, containing all components of the SP
 
 | Path | Component | Language / Stack | Description |
 | :--- | :--- | :--- | :--- |
-| [`/spif`](spif/) | **Core Python & CLI** | Python 3.9+ | Main specification (`SPEC.md`), reference compiler, CLI generator, and LLM integrations. |
+| [`/spif`](spif/) | **Core Python & CLI** | Python 3.9+ | Reference compiler, CLI generator, and LLM integrations. The wire specification lives in [`docs/SPEC.md`](docs/SPEC.md). |
 | [`/spif-rust`](spif-rust/) | **Rust Engine & CLI** | Rust (2021) | Ultra-fast native core decoder, multi-signer validator, and high-throughput batch signature verifier. |
 | [`/verify`](verify/) | **Web Verifier** | Rust/wasm | Static, in-browser `.spif` verifier — no upload, no GUI viewer, ghost artifact stays binary-only. Live at [intelogroup.github.io/spif](https://intelogroup.github.io/spif/). |
 
@@ -103,7 +103,7 @@ cargo test
 
 SPIF implements eager signature verification under **Strict Mode**. Any modification to payload segments or invalid checksums will instantly raise a signature validation error, protecting agent-to-agent and server-to-client pipelines from man-in-the-middle forging.
 
-*For security audits and detailed architectural considerations, see [CRYPTO_AUDIT.md](spif/CRYPTO_AUDIT.md) and [SPEC.md](spif/SPEC.md).*
+*For security audits and detailed architectural considerations, see [CRYPTO_AUDIT.md](docs/CRYPTO_AUDIT.md) and [SPEC.md](docs/SPEC.md).*
 
 ---
 

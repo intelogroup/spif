@@ -36,7 +36,7 @@ Vectors: malleable signatures, truncated signatures, bit-flipped payloads
 that still pass verification, invalid/undersized keys.
 
 - ed25519: 5/5 RFC 8032 test vectors, 150/150 Project Wycheproof vectors.
-- ~55,000 verifies/sec (see `BENCHMARKS.md`).
+- ~55,000 verifies/sec (see `../docs/BENCHMARKS.md`).
 - Signature verification (`SPIFReader::verify_signatures_internal`,
   `src/reader.rs`) rejects any non-ed25519 algorithm, any signer key that
   doesn't decode to 32 bytes, and any signature that fails
@@ -75,7 +75,7 @@ replayed/stale provenance, dependency vulnerabilities in the crate itself.
   0.36→0.41).
 - 2 Dependabot alerts (1 moderate, 1 low) are open and unrelated to the
   above; tracked for the next release, not fixed yet — see
-  `BENCHMARKS.md`.
+  `../docs/BENCHMARKS.md`.
 - The web verifier (`verify/`, wasm-based) gives a decoded JSON dump for
   tooling that wants to cross-check a `.spif` against external provenance
   metadata; it does not itself perform cross-artifact binding checks. There
@@ -90,7 +90,7 @@ Vectors: very large DAGs, deeply nested structures, large compressed
 payloads.
 
 Tested with synthetic DAGs up to 50,000 nodes; scaling measured, not
-independently re-verified in this document — see `BENCHMARKS.md` for the
+independently re-verified in this document — see `../docs/BENCHMARKS.md` for the
 raw numbers before repeating them elsewhere.
 
 ## What's not done yet
@@ -103,6 +103,6 @@ raw numbers before repeating them elsewhere.
 - No independent third-party audit of the Rust/x86 build has taken place.
 - No bug bounty program exists yet.
 
-Numbers in this file are pulled from `BENCHMARKS.md` and from tests that
+Numbers in this file are pulled from `../docs/BENCHMARKS.md` and from tests that
 were run and re-verified while writing this document, not from memory or
 estimate.

@@ -116,3 +116,12 @@ be attached to every AI output or tool call inline, with confidence metadata
 in the same envelope. It gives up the public transparency log, policy/layout
 language, and CA-backed identity that make Sigstore, in-toto, and C2PA useful
 in their respective domains.
+
+## Rust verification snapshot
+
+The Rust implementation has also been validated independently of the Python
+microbenchmarks: 25 `cargo test` cases passed, 5/5 RFC 8032 Ed25519 vectors
+and 150/150 Wycheproof vectors passed, and the tamper/truncation sweep rejected
+15,664/15,664 bit mutations and 1,957/1,957 truncation points without a panic.
+These are verification results, not a replacement for the signed provenance
+comparison above.

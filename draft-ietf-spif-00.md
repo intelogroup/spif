@@ -140,4 +140,4 @@ To defend against buffer pre-allocation memory exploits (e.g., CVE-2026-34665 st
 # 8. IANA Considerations
 
 ## 8.1 MIME Type Registration
-This document registers the MIME type `application/x-spif` and file extension `.spfx` for SPIF payloads.
+This document registers the MIME type `application/x-spif` and file extension `.spif` for SPIF payloads.
