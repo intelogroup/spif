@@ -169,11 +169,11 @@ class TestRevocation:
         assert rk["alice"] == 111
         assert rk["bob"] == 222
 
-    def test_corrupted_revocation_file_fails_open(self, tmp_ks, alice_key):
-        """BUG: _load_revoked() swallows json.JSONDecodeError/KeyError and
-        returns {} — a truncated or tampered revoked.json is treated as
-        "nobody is revoked" instead of failing closed. A previously-revoked
-        key silently becomes trusted again if the file is corrupted."""
+    def test_corrupted_revocation_file_fails_closed(self, tmp_ks, alice_key):
+        """A truncated or tampered revoked.json now raises instead of being
+        silently treated as "nobody is revoked" — fails closed, not open."""
+        from spif.reader import SPIFSignatureError
+
         signer_id = "alice@example.com"
         tmp_ks.add_key(signer_id, _alice_pub(alice_key))
         tmp_ks.revoke(signer_id)
@@ -182,8 +182,8 @@ class TestRevocation:
         # Simulate corruption/truncation of the revocation file.
         tmp_ks._revocation_path.write_text("{not valid json")
 
-        # Should still report revoked (or raise) — instead silently un-revokes.
-        assert tmp_ks.is_revoked(signer_id) is False
+        with pytest.raises(SPIFSignatureError, match="malformed"):
+            tmp_ks.is_revoked(signer_id)
 
     def test_no_revocation_file_returns_empty(self, tmp_ks):
         assert tmp_ks.revoked_keys() == {}
