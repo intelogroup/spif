@@ -1,8 +1,28 @@
-# SPIF — Semantic Provenance Inference Format
+<div align="center">
 
-**Cryptographically signed, tamper-evident provenance for AI outputs.**
+<img src="../assets/spif-mark.svg#gh-light-mode-only" alt="SPIF provenance mark" width="112" />
+<img src="../assets/spif-mark-dark.svg#gh-dark-mode-only" alt="SPIF provenance mark" width="112" />
 
-SPIF is a binary wire format that wraps any LLM response with a SHA-256 checksum and an ed25519 signature — baked into the format itself, not bolted on. Every document carries: who produced it, which model, at what timestamp, in what chain of prior calls. Any byte changed after signing is detected on decode.
+# SPIF Python
+
+### Sign, inspect, and verify AI provenance from Python.
+
+[Back to the project overview](../README.md) · [Read the specification](../docs/SPEC.md) · [Rust/WASM implementation](../spif-rust/README.md)
+
+</div>
+
+<br />
+
+SPIF is a binary wire format that wraps an LLM response with a SHA-256 checksum and an Ed25519
+signature. Every document carries who produced it, which model was used, when it was created,
+and which prior calls were part of the chain.
+
+| Use SPIF when you need to... | Python entry point |
+| --- | --- |
+| Capture model and tool provenance | Provider adapters |
+| Sign an output for transport or storage | `spif.crypto.sign_document()` |
+| Reject modified artifacts | `SPIFReader(require_signature=True)` |
+| Inspect artifacts from scripts or CI | `spif` CLI |
 
 ```
 pip install spif
@@ -10,7 +30,7 @@ pip install spif
 
 ---
 
-## The Problem
+## Why this package exists
 
 AI outputs flow through pipelines — model to application to database to downstream model — as plain JSON strings. There is no standard way to prove:
 
@@ -18,7 +38,8 @@ AI outputs flow through pipelines — model to application to database to downst
 - That the response was not modified in transit or at rest
 - That a chain of AI calls traces back to a known origin
 
-SPIF solves this at the wire format level.
+SPIF solves this at the wire-format level, so provenance is part of the artifact rather than an
+optional application field.
 
 ---
 

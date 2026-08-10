@@ -1,13 +1,30 @@
-# spif-rust
+<div align="center">
 
-Rust implementation of the Semantic Provenance Inference Format.
+<img src="../assets/spif-mark.svg#gh-light-mode-only" alt="SPIF provenance mark" width="112" />
+<img src="../assets/spif-mark-dark.svg#gh-dark-mode-only" alt="SPIF provenance mark" width="112" />
 
-Current v0.2 coverage:
-- read and write core SPIF documents
-- zlib-compressed payload-bearing chunks via `flags2`
-- byte-accurate ed25519 signature verification against the raw signing body
-- streaming reader and writer
-- conformance checks against Python-generated compatibility fixtures
+# SPIF Rust
+
+### Native parsing, signing, streaming, and verification.
+
+[Back to the project overview](../README.md) · [Read the specification](../docs/SPEC.md) · [Python implementation](../spif/README.md)
+
+</div>
+
+<br />
+
+The Rust implementation of SPIF provides a native engine for reading, writing, streaming, and
+verifying signed `.spif` artifacts.
+
+| Capability | Status |
+| --- | --- |
+| Read and write core SPIF documents | Supported |
+| zlib-compressed payload chunks via `flags2` | Supported |
+| Byte-accurate Ed25519 signature verification | Supported |
+| Streaming reader and writer | Supported |
+| Cross-language conformance fixtures | Supported |
+
+## Quickstart
 
 Useful commands:
 
@@ -16,8 +33,12 @@ cargo test --quiet
 cargo fmt --check
 ```
 
-## Web verifier
+## What this crate powers
 
-`.spif` files can be verified in-browser (no upload, wasm-only) at
-https://intelogroup.github.io/spif/ — source in [`../verify`](../verify),
-built from this crate's `wasm` module via `wasm-pack build --target web`.
+```text
+.spif artifact → Rust reader → checksum + signature verification → trusted payload
+```
+
+The crate also exposes a WebAssembly verification module in `wasm.rs`, built with
+`wasm-pack build --target web`. It is a library artifact, not a hosted web page or verification
+API.

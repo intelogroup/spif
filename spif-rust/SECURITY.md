@@ -76,10 +76,10 @@ replayed/stale provenance, dependency vulnerabilities in the crate itself.
 - 2 Dependabot alerts (1 moderate, 1 low) are open and unrelated to the
   above; tracked for the next release, not fixed yet — see
   `../docs/BENCHMARKS.md`.
-- The web verifier (`verify/`, wasm-based) gives a decoded JSON dump for
-  tooling that wants to cross-check a `.spif` against external provenance
-  metadata; it does not itself perform cross-artifact binding checks. There
-  is no native viewer/desktop binary.
+- The Rust WebAssembly module (`spif-rust/src/wasm.rs`) gives tooling a decoded JSON
+  representation for cross-checking a `.spif` against external provenance metadata; it does not
+  itself perform cross-artifact binding checks. There is no hosted web page or native desktop
+  viewer.
 
 **Status: dependency-level auditing only. No cross-artifact binding
 mechanism exists yet — not claimed here.**

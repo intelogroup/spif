@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240" role="img" aria-labelledby="title desc">
+  <title id="title">SPIF provenance mark</title>
+  <desc id="desc">A solid triangle with a notched corner, evoking a folded and sealed document.</desc>
+  <path d="M120 30 L204 198 L36 198 Z M120 30 L120 96 L166 128 Z"
+        fill="#0F172A" fill-rule="evenodd"/>
+</svg>

@@ -8,7 +8,7 @@ Thanks for taking the time to contribute. This repo is a monorepo with three com
 | :--- | :--- | :--- |
 | [`/spif`](spif/) | Core Python & CLI | Python 3.9+ |
 | [`/spif-rust`](spif-rust/) | Rust engine & CLI | Rust (2021) |
-| [`/verify`](verify/) | Web verifier | Rust/wasm |
+| [`/verify`](verify/) | Generated WASM package and sample artifact | Rust/WASM |
 
 ## Dev setup
 
