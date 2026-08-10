@@ -298,7 +298,7 @@ def main():
     # signing cert (or a configured trust-anchor bundle) before it will
     # produce a manifest at all — there's no bring-your-own-key path to
     # benchmark against. That refusal is itself the finding: see
-    # provenance_comparison_matrix.md.
+    # BENCHMARKS.md.
     import tempfile
     with tempfile.TemporaryDirectory() as td:
         tmpdir = Path(td)
@@ -316,7 +316,7 @@ def main():
             # result worth reporting, not the documented rejection case.
             raise AssertionError(
                 "C2PA accepted the self-signed cert — this contradicts the "
-                "documented finding, re-check provenance_comparison_matrix.md"
+                "documented finding, re-check BENCHMARKS.md"
             )
 
     hdr = f"{'System':<42}{'Build p50':>12}{'Build p99':>12}{'Verify p50':>12}{'Verify p99':>12}{'Size B':>10}"
@@ -341,7 +341,7 @@ Sigstore (Fulcio + Rekor) — not measured quantitatively:
   and no external log to trust or reach. They solve different problems
   (public supply-chain attestation vs. inline per-output provenance) and are
   not really substitutable — the honest comparison is the feature matrix in
-  provenance_comparison_matrix.md, not a latency number.
+  BENCHMARKS.md, not a latency number.
 """)
 
 
