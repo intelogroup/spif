@@ -17,7 +17,11 @@ import base64
 import struct
 
 import cbor2
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from cryptography.exceptions import InvalidSignature
+from cryptography.hazmat.primitives.asymmetric.ed25519 import (
+    Ed25519PrivateKey,
+    Ed25519PublicKey,
+)
 from cryptography.hazmat.primitives.serialization import (
     Encoding, NoEncryption, PrivateFormat, PublicFormat,
     load_pem_private_key as _load_pem_private_key,
@@ -136,6 +140,13 @@ def export_pem_public_key(key: Ed25519PrivateKey, path: str | Path) -> None:
     Path(path).write_bytes(pub)
 
 
+def _rotation_payload(old_signer_id: str, new_signer_id: str, ts: int) -> bytes:
+    return cbor2.dumps(
+        {"old_signer": old_signer_id, "superseded_by": new_signer_id, "ts": ts},
+        canonical=True,
+    )
+
+
 def rotate_key(
     old_key: Ed25519PrivateKey,
     new_key: Ed25519PrivateKey,
@@ -143,27 +154,53 @@ def rotate_key(
     new_signer_id: str,
 ) -> dict:
     """
-    Produce a signed rotation record: old key certifies that it is superseded by new key.
+    Produce a signed rotation record: old key certifies that it is superseded by
+    new key, AND new key counter-signs to prove it consents to receiving trust.
 
     Returns a JSON-serializable dict that callers can append to a rotation log.
-    The proof field is a base64-encoded ed25519 signature by old_key over the
-    canonical CBOR of {superseded_by, ts} — allowing verifiers to confirm the
-    rotation is authentic without trusting the log file alone.
+    Both proof fields are base64-encoded ed25519 signatures over the canonical
+    CBOR of {old_signer, superseded_by, ts} — verify with verify_rotation().
     """
     import base64
 
     ts = int(time.time() * 1000)
-    payload_to_sign = cbor2.dumps(
-        {"superseded_by": new_signer_id, "ts": ts}, canonical=True
-    )
+    payload_to_sign = _rotation_payload(old_signer_id, new_signer_id, ts)
     proof = old_key.sign(payload_to_sign)
+    new_key_proof = new_key.sign(payload_to_sign)
 
     return {
         "old_signer": old_signer_id,
         "superseded_by": new_signer_id,
         "timestamp_ms": ts,
         "proof": base64.b64encode(proof).decode("ascii"),
+        "new_key_proof": base64.b64encode(new_key_proof).decode("ascii"),
     }
+
+
+def verify_rotation(
+    record: dict,
+    old_pubkey: Ed25519PublicKey,
+    new_pubkey: Ed25519PublicKey,
+) -> bool:
+    """
+    Verify a rotation record produced by rotate_key(): checks that both
+    old_pubkey and new_pubkey signed the same {old_signer, superseded_by, ts}
+    payload, proving mutual consent to the handoff.
+
+    Returns True if both signatures check out, False otherwise (never raises
+    on a bad signature — callers decide how to treat an unverified record).
+    """
+    import base64
+
+    payload = _rotation_payload(
+        record["old_signer"], record["superseded_by"], record["timestamp_ms"]
+    )
+    try:
+        old_pubkey.verify(base64.b64decode(record["proof"]), payload)
+        new_pubkey.verify(base64.b64decode(record["new_key_proof"]), payload)
+    except (InvalidSignature, KeyError):
+        return False
+    return True
 
 
 def sign_document(
