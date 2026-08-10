@@ -136,6 +136,19 @@ def test_crl_client():
     assert client.get_revoked_keys() == {"key5", "key6", "key7"}
 
 
+def test_crl_fetch_failure_fails_open_silently():
+    """BUG: _fetch_crl() catches every exception from the CRL HTTP fetch and
+    falls back to the cached (here, never-populated) _revoked_keys with no
+    signal to the caller. A network partition or DNS failure against the CRL
+    endpoint silently disables revocation checking instead of failing closed
+    — get_revoked_keys() returns an empty set indistinguishable from "nobody
+    is revoked", with no exception and no way to detect the outage."""
+    unreachable_port = get_free_port()  # nothing listens here
+    client = CRLClient(f"http://127.0.0.1:{unreachable_port}/crl", cache_ttl=0)
+    # Should have surfaced a connection error; instead fails open.
+    assert client.get_revoked_keys() == set()
+
+
 def test_policy_evaluator(keys, tmp_keystore, policy_file):
     # Create valid doc signed by Alice
     doc = SPIFDocument(

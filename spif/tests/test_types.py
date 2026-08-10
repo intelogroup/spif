@@ -30,6 +30,22 @@ def test_distribution_roundtrip():
     assert Distribution.from_dict(d.to_dict()) == d
 
 
+def test_distribution_inverted_percentiles_not_rejected():
+    """BUG: __post_init__ never validates p5 <= p95 — an inverted
+    percentile pair (p5 > p95) is nonsensical but accepted silently."""
+    d = Distribution(mean=0.5, var=0.01, p5=0.99, p95=0.01)
+    assert d.p5 == 0.99
+    assert d.p95 == 0.01
+
+
+def test_distribution_out_of_range_percentiles_not_rejected():
+    """BUG: p5/p95 are meant to be probabilities in [0, 1] like mean, but
+    are never range-checked — values outside [0, 1] round-trip silently."""
+    d = Distribution(mean=0.5, var=0.01, p5=5.0, p95=-3.0)
+    assert d.p5 == 5.0
+    assert d.p95 == -3.0
+
+
 def test_node_empty_id():
     with pytest.raises(ValueError, match="id"):
         Node(id="", type="text", value="hello")
