@@ -743,7 +743,7 @@ fn main() -> Result<()> {
         let upstream = upstream.clone();
         threads.push(std::thread::spawn(move || {
             loop {
-                let mut req = match server.recv() {
+            let req = match server.recv() {
                     Ok(r) => r,
                     Err(e) => {
                         eprintln!("[ERROR] Error receiving request: {}", e);
@@ -755,30 +755,11 @@ fn main() -> Result<()> {
                 let method = req.method().to_string();
 
                 if (path == "/validate" || path == "/verify") && method == "POST" {
-                    let mut body = Vec::new();
-                    if req.as_reader().read_to_end(&mut body).is_ok() {
-                        let mut raw_spif = body;
-                        if let Ok(json_val) = serde_json::from_slice::<JsonValue>(&raw_spif) {
-                            if let Some(spif_str) = json_val.get("spif").and_then(|v| v.as_str()) {
-                                if let Ok(decoded) = STANDARD.decode(spif_str) {
-                                    raw_spif = decoded;
-                                }
-                            } else if let Some(payload_str) = json_val.get("payload").and_then(|v| v.as_str()) {
-                                if let Ok(decoded) = STANDARD.decode(payload_str) {
-                                    raw_spif = decoded;
-                                }
-                            }
-                        }
-
-                        let res = evaluator.validate_document(&raw_spif);
-                        let res_json = serde_json::to_vec(&res).unwrap();
-                        let status_code = if res.status == "valid" { 200 } else { 403 };
-
-                        let response = tiny_http::Response::from_data(res_json)
-                            .with_status_code(status_code)
-                            .with_header(tiny_http::Header::from_bytes("Content-Type", "application/json").unwrap());
-                        let _ = req.respond(response);
-                    }
+                    let response = tiny_http::Response::from_string(
+                        "Direct upload verification is disabled; use the local WASM verifier",
+                    )
+                    .with_status_code(410);
+                    let _ = req.respond(response);
                 } else if let Some(ref up) = upstream {
                     if let Err(e) = handle_proxy_request(up, &evaluator, req) {
                         eprintln!("[ERROR] Proxy error: {}", e);

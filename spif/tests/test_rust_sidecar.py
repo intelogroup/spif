@@ -163,33 +163,19 @@ def test_rust_sidecar_http_server(compile_rust_sidecar, keys, tmp_keystore, poli
         )
         revoked_bytes = sign_doc(doc_bob, keys["bob_priv"], keys["bob_pub"])
 
-        # Scenario A: Direct validate API with valid doc
-        validate_url = f"http://127.0.0.1:{sidecar_port}/validate"
-        req = urllib.request.Request(
-            validate_url,
-            data=valid_bytes,
-            headers={"Content-Type": "application/x-spif"},
-            method="POST"
-        )
-        with urllib.request.urlopen(req) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-            assert data["status"] == "valid"
+        # Scenario A: standalone upload verification is intentionally disabled.
+        for path in ("/validate", "/verify"):
+            req = urllib.request.Request(
+                f"http://127.0.0.1:{sidecar_port}{path}",
+                data=valid_bytes,
+                headers={"Content-Type": "application/x-spif"},
+                method="POST",
+            )
+            with pytest.raises(urllib.error.HTTPError) as exc_info:
+                urllib.request.urlopen(req)
+            assert exc_info.value.code == 410
 
-        # Scenario B: Direct validate API with revoked Bob key -> should return 403
-        req_revoked = urllib.request.Request(
-            validate_url,
-            data=revoked_bytes,
-            headers={"Content-Type": "application/x-spif"},
-            method="POST"
-        )
-        with pytest.raises(urllib.error.HTTPError) as exc_info:
-            urllib.request.urlopen(req_revoked)
-        assert exc_info.value.code == 403
-        err_res = json.loads(exc_info.value.read().decode("utf-8"))
-        assert err_res["status"] == "invalid"
-        assert err_res["failure_code"] == "SPIF_ERROR_KEY_REVOKED"
-
-        # Scenario C: Proxy request with valid response
+        # Scenario B: Proxy request with valid response
         MockUpstreamHandler.spif_response_bytes = valid_bytes
         proxy_url = f"http://127.0.0.1:{sidecar_port}/v1/chat/completions"
         req_proxy = urllib.request.Request(
@@ -202,7 +188,7 @@ def test_rust_sidecar_http_server(compile_rust_sidecar, keys, tmp_keystore, poli
             assert resp.status == 200
             assert resp.info().get("X-Spif") is not None
 
-        # Scenario D: Proxy request with revoked response -> proxy intercepts, returns 403 & FPR
+        # Scenario C: Proxy request with revoked response -> proxy intercepts, returns 403 & FPR
         MockUpstreamHandler.spif_response_bytes = revoked_bytes
         with pytest.raises(urllib.error.HTTPError) as exc_proxy_err:
             urllib.request.urlopen(req_proxy)
