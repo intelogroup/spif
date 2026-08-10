@@ -29,6 +29,7 @@ from spif import (
     TraceStep,
 )
 from spif.format import MAGIC
+from spif.streaming import SPIFStreamWriter
 
 
 @dataclass(frozen=True)
@@ -298,10 +299,32 @@ class TestPrivacyAndHostileInputs:
 
 
 class TestResilienceAndGPAIBoundaries:
+    def test_interrupted_stream_never_becomes_verified_document(self):
+        case = _case()
+        document = SPIFReader().decode(case.spif_bytes)
+        stream = SPIFStreamWriter()
+        encoded = b"".join([
+            stream.open(document.provenance),
+            stream.partial_text("A generated ", node_id="output"),
+            stream.commit(document),
+        ])
+        for cut in (1, 8, 32):
+            with pytest.raises((SPIFChecksumError, SPIFFormatError, ValueError)):
+                SPIFReader(require_signature=True).decode(encoded[:-cut])
+
     def test_incomplete_stream_is_not_a_verified_document(self):
         case = _case()
         with pytest.raises((SPIFChecksumError, SPIFFormatError, SPIFSignatureError, ValueError)):
             SPIFReader(require_signature=True).decode(case.spif_bytes[:-32])
+
+    def test_retry_and_provider_substitution_are_recordable(self):
+        case = _case()
+        document = SPIFReader().decode(case.spif_bytes)
+        assert document.provenance is not None
+        document.provenance.attempt = 2
+        document.provenance.source_model = "actual-response-model"
+        assert document.provenance.attempt == 2
+        assert document.provenance.source_model != "requested-model"
 
     def test_gpai_boundary_is_explicit(self):
         case = _case()
