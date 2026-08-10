@@ -37,8 +37,10 @@ class _FakeMessage:
 class _FakeAnthropicMessages:
     def __init__(self, response):
         self._response = response
+        self.last_kwargs = None
 
     def create(self, **kwargs):
+        self.last_kwargs = kwargs
         return self._response
 
 
@@ -136,6 +138,19 @@ class TestAnthropicAdapterToolCalls:
         assert tool_calls[0].value["name"] == "get_weather"
         assert tool_calls[0].value["arguments"] == {"city": "Paris"}
         assert tool_calls[0].value["call_id"] == "tc_001"
+
+    def test_claude_5_omits_deprecated_temperature_parameter(self):
+        response = _FakeMessage(
+            model="claude-opus-5",
+            content=[_FakeBlock(type="text", text="ok")],
+        )
+        client = _FakeAnthropicClient(response)
+        adapter = AnthropicSPIFAdapter(client, model="claude-opus-5", temperature=0.2)
+
+        doc = adapter.complete("Reply with exactly: OK")
+
+        assert doc.provenance.source_model == "claude-opus-5"
+        assert "temperature" not in client.messages.last_kwargs
 
     def test_complete_pending_when_no_executor(self):
         resp = self._make_response_with_tool_call()
