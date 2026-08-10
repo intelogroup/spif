@@ -27,7 +27,7 @@ understate SPIF's real per-record cost.
 Usage:
     /path/to/venv/bin/python3 benchmarks/provenance_comparison_bench.py [--reps N]
 
-Requires (in the venv, not spif's normal deps): sigstore, in-toto, c2pa-python.
+Requires (in the venv, not spif's normal deps): securesystemslib, c2pa-python.
 c2pa-python needs Python >=3.10 (uses `match` statements internally).
 """
 from __future__ import annotations

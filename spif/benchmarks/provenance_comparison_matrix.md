@@ -16,19 +16,20 @@ in-toto are measured locally on equal terms: local keypair, no network,
 **both signed** (SPIF via `spif.crypto.sign_document()` +
 `SPIFReader().verify_signature()`, in-toto via a DSSE envelope). An earlier
 draft of this doc compared an *unsigned* SPIF encode against in-toto's
-signed envelope — caught in review, fixed. Python 3.12.13, Reps=200:
+signed envelope — caught in review, fixed. Latest rerun: Python 3.11.15,
+`c2pa-python` 0.37.5, `securesystemslib` 1.4.0, Reps=200:
 
 ```
 System                                    Build p50   Build p99  Verify p50  Verify p99   Size B
-SPIF (signed, ed25519)                      110.0μ      122.9μ      163.8μ      173.7μ       828
-in-toto (DSSE, local Ed25519 key)            75.5μ       81.7μ      156.2μ      184.2μ       896
+SPIF (signed, ed25519)                      273.0μ      306.7μ      424.5μ      449.9μ       828
+in-toto (DSSE, local Ed25519 key)           198.8μ      223.5μ      407.9μ      474.5μ       896
 ```
 
-Honest result: once both sides actually sign, **in-toto is ~1.5x faster to
-build** (75.5μs vs 110.0μs — SPIF's two-pass encode, needed to lock chunk
+Honest result: once both sides actually sign, **in-toto is ~1.4x faster to
+build** (198.8μs vs 273.0μs — SPIF's two-pass encode, needed to lock chunk
 layout before signing the exact preceding bytes, costs more than DSSE's
-single-pass sign) and the two are **roughly tied on verify** (163.8μs vs
-156.2μs, SPIF ~5% slower). SPIF is still ~8% smaller (828B vs 896B). The
+single-pass sign) and the two are **roughly tied on verify** (424.5μs vs
+407.9μs, SPIF ~4% slower). SPIF is still ~8% smaller (828B vs 896B). The
 previous claim of "SPIF wins 6x build / 14x verify" was an artifact of
 comparing signed in-toto against unsigned SPIF — not a real result, and this
 doc no longer makes it. SPIF's case at the crypto layer is size and
@@ -36,22 +37,12 @@ streaming decode, not raw signing speed; unsigned SPIF (no per-record
 non-repudiation) is still ~11μs/~10μs for callers who don't need a signature
 at all — a mode in-toto and C2PA don't have.
 
-**Sigstore** was measured live against its staging Fulcio+Rekor instance in
-an earlier pass (2026-08-09, real network calls, real transparency-log
-entries: index 859471/859487/859514/859549 at
-[search.sigstore.dev](https://search.sigstore.dev), staging). Those numbers
-(verify p50 ≈ 4.3ms, n=30, in-process via `sigstore-python`'s own API) are
-real but **not reproducible from anything committed in this repo** — the
-measurement required a live OIDC login and ad-hoc scripts that weren't
-checked in, so the figures are removed from this doc rather than presented
-as something a reader can regenerate. What stays, because it doesn't depend
-on a specific run: Sigstore's verify path is architecturally a network round
-trip to Fulcio (cert issuance) and usually Rekor (transparency log), not a
-local CPU operation — a local microbenchmark would misrepresent it, and any
-honest number needs live infrastructure and a fresh OIDC token each time
-(interactive browser, or a CI service-account flow for sign specifically —
-manual interactive sign took 23.5s/14.1s wall-clock, almost all of it
-browser login, not signing).
+**Sigstore** was not measured in the latest rerun. The committed benchmark
+intentionally excludes live Fulcio/Rekor latency because signing and
+verification require network access, transparency-log interaction, and a
+fresh OIDC token. A local CPU microbenchmark would not represent that real
+workflow; any Sigstore latency figure should come from a separately committed
+and reproducible live-infrastructure harness.
 
 ## Feature / guarantee matrix
 
