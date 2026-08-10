@@ -3,7 +3,7 @@
 <img src="assets/spif-logo.svg#gh-light-mode-only" alt="SPIF — signed provenance" width="420" />
 <img src="assets/spif-logo-dark.svg#gh-dark-mode-only" alt="SPIF — signed provenance" width="420" />
 
-## A binary container format for AI-generated content — output, provenance, uncertainty, and reasoning trace in one self-describing, integrity-verified document.
+## Semantic Provenance Inference Format
 
 SPIF is an open binary format for carrying signed, tamper-evident provenance across models,
 tools, agents, and organizational boundaries.
