@@ -178,13 +178,11 @@ class TestHelpers:
         texts, thoughts, probs = _extract_chunk_content(chunk)
         assert texts == ["fallback text"]
 
-    def test_extract_chunk_text_property_raises_is_uncaught(self):
-        """BUG: the no-candidates fallback does getattr(chunk, "text", None),
-        which only guards against a missing attribute. Some SDK versions
-        raise (e.g. ValueError) from the .text property itself when the
-        response was blocked for safety, instead of returning None — that
-        exception propagates uncaught instead of being handled as a normal
-        "no text this chunk" case."""
+    def test_extract_chunk_text_property_raises_handled_as_no_text(self):
+        """Some SDK versions raise (e.g. ValueError) from the .text property
+        itself when the response was blocked for safety, instead of
+        returning None — this is now handled as a normal "no text this
+        chunk" case instead of propagating."""
         class SafetyBlockedChunk:
             candidates = []
 
@@ -192,15 +190,21 @@ class TestHelpers:
             def text(self):
                 raise ValueError("response blocked for safety")
 
-        with pytest.raises(ValueError, match="blocked for safety"):
-            _extract_chunk_content(SafetyBlockedChunk())
+        texts, thoughts, probs = _extract_chunk_content(SafetyBlockedChunk())
+        assert texts == []
 
-    def test_messages_to_contents_multimodal_list_content_silently_malformed(self):
-        """BUG: _messages_to_contents() assumes m["content"] is always a
-        plain string and does {"text": m["content"]}. An OpenAI/Anthropic-
-        style multi-part content list (common for multimodal messages) is
-        wrapped whole into the "text" field instead of being converted to
-        proper multi-part `parts`, or rejected with a clear adapter error."""
+    def test_messages_to_contents_multimodal_text_parts_converted(self):
+        msgs = [{
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "describe this"},
+                {"type": "text", "text": "in detail"},
+            ],
+        }]
+        contents = _messages_to_contents(msgs)
+        assert contents[0]["parts"] == [{"text": "describe this"}, {"text": "in detail"}]
+
+    def test_messages_to_contents_unsupported_multimodal_entry_raises(self):
         msgs = [{
             "role": "user",
             "content": [
@@ -208,9 +212,8 @@ class TestHelpers:
                 {"type": "image_url", "image_url": "https://example.com/x.png"},
             ],
         }]
-        contents = _messages_to_contents(msgs)
-        # A list ends up jammed into the scalar "text" field — not a string.
-        assert isinstance(contents[0]["parts"][0]["text"], list)
+        with pytest.raises(ValueError, match="Unsupported multimodal content entry"):
+            _messages_to_contents(msgs)
 
 
 # ---------------------------------------------------------------------------

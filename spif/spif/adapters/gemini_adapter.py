@@ -175,8 +175,14 @@ def _extract_chunk_content(
     # Gemini response: chunk.candidates[0].content.parts
     candidates = getattr(chunk, "candidates", None) or []
     if not candidates:
-        # New SDK may expose chunk.text directly for simple cases
-        text = getattr(chunk, "text", None)
+        # New SDK may expose chunk.text directly for simple cases. Some SDK
+        # versions raise (e.g. ValueError) from the .text property itself
+        # when the response was blocked for safety, instead of returning
+        # None — treat that the same as "no text this chunk".
+        try:
+            text = getattr(chunk, "text", None)
+        except Exception:
+            text = None
         if text:
             text_tokens.append(text)
         return text_tokens, thinking_tokens, token_probs
@@ -561,5 +567,18 @@ def _messages_to_contents(messages: list[dict[str, Any]]) -> list[dict[str, Any]
         role = m["role"]
         if role == "assistant":
             role = "model"
-        result.append({"role": role, "parts": [{"text": m["content"]}]})
+        content = m["content"]
+        if isinstance(content, list):
+            parts = []
+            for entry in content:
+                if isinstance(entry, dict) and entry.get("type") == "text":
+                    parts.append({"text": entry.get("text", "")})
+                else:
+                    raise ValueError(
+                        f"Unsupported multimodal content entry for Gemini adapter: {entry!r}. "
+                        "Only {'type': 'text', 'text': ...} entries are supported."
+                    )
+        else:
+            parts = [{"text": content}]
+        result.append({"role": role, "parts": parts})
     return result
