@@ -19,7 +19,10 @@ provenance/attestation systems, not serialization formats:
                   measured — see the printed note.
 
 Same payload used for all three quantitative systems: one "AI response with
-metadata" record, comparable to a single hop in audit_chain_bench.py.
+metadata" record, comparable to a single hop in audit_chain_bench.py. Both
+SPIF and in-toto measure a *signed* build/verify round trip (ed25519) —
+comparing an unsigned SPIF encode against a signed DSSE envelope would
+understate SPIF's real per-record cost.
 
 Usage:
     /path/to/venv/bin/python3 benchmarks/provenance_comparison_bench.py [--reps N]
@@ -41,6 +44,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from spif import SPIFDocument, SPIFWriter, SPIFReader, Node, compute_content_id
 from spif.types import Distribution, Provenance
+from spif.crypto import generate_key, sign_document
 
 PAYLOAD_TEXT = (
     "The model recommends approach B because it minimizes latency under the "
@@ -74,8 +78,8 @@ def _timeit(fn, reps: int) -> dict:
 # SPIF
 # ---------------------------------------------------------------------------
 
-def spif_build_and_sign() -> bytes:
-    doc = SPIFDocument(
+def _spif_doc() -> SPIFDocument:
+    return SPIFDocument(
         payload=[
             Node(
                 id="response",
@@ -93,16 +97,16 @@ def spif_build_and_sign() -> bytes:
             timestamp_ms=TIMESTAMP_MS,
         ),
     )
-    return SPIFWriter().encode(doc)
+
+
+def spif_build_and_sign(private_key) -> bytes:
+    # Signed, like in-toto's build below — an unsigned SPIF encode isn't a
+    # fair comparison against a signed DSSE envelope.
+    return sign_document(_spif_doc(), private_key)
 
 
 def spif_verify(blob: bytes) -> bool:
-    doc = SPIFReader().decode(blob)  # raises on checksum/structure failure
-    return doc is not None
-
-
-def spif_sizeof() -> int:
-    return len(spif_build_and_sign())
+    return SPIFReader().verify_signature(blob)
 
 
 # ---------------------------------------------------------------------------
@@ -243,15 +247,19 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--reps", type=int, default=100)
     args = ap.parse_args()
+    if args.reps <= 0:
+        ap.error("--reps must be a positive integer")
 
     print("\n## Provenance Comparison Benchmark (quantitative: SPIF, in-toto, C2PA)\n")
     print(f"Payload: single AI-response record, {len(PAYLOAD_TEXT)} chars text + metadata. Reps={args.reps}\n")
 
     results = {}
 
-    # SPIF
-    build = _timeit(spif_build_and_sign, args.reps)
-    blob = spif_build_and_sign()
+    # SPIF (signed, ed25519 — same key generated once, outside the timed loop,
+    # matching in-toto's setup below)
+    spif_key = generate_key()
+    build = _timeit(lambda: spif_build_and_sign(spif_key), args.reps)
+    blob = spif_build_and_sign(spif_key)
     verify = _timeit(lambda: spif_verify(blob), args.reps)
     results["SPIF"] = {"build": build, "verify": verify, "size_bytes": len(blob)}
 
@@ -274,17 +282,23 @@ def main():
     # produce a manifest at all — there's no bring-your-own-key path to
     # benchmark against. That refusal is itself the finding: see
     # provenance_comparison_matrix.md.
-    try:
-        import tempfile
-        with tempfile.TemporaryDirectory() as td:
-            tmpdir = Path(td)
-            cert_path, key_path = _c2pa_setup(tmpdir)
-            c2pa_build_and_sign(cert_path, key_path, tmpdir)  # expected to raise
-            raise AssertionError("expected C2PA to reject the self-signed cert")
-    except Exception as e:
-        results["C2PA (signed manifest)"] = {
-            "error": f"requires CA-issued cert, not measured — {e}"
-        }
+    import tempfile
+    with tempfile.TemporaryDirectory() as td:
+        tmpdir = Path(td)
+        cert_path, key_path = _c2pa_setup(tmpdir)
+        try:
+            c2pa_build_and_sign(cert_path, key_path, tmpdir)
+        except Exception as e:
+            results["C2PA (signed manifest)"] = {
+                "error": f"requires CA-issued cert, not measured — {e}"
+            }
+        else:
+            # Self-signed cert was unexpectedly accepted — this is a real
+            # result worth reporting, not the documented rejection case.
+            raise AssertionError(
+                "C2PA accepted the self-signed cert — this contradicts the "
+                "documented finding, re-check provenance_comparison_matrix.md"
+            )
 
     hdr = f"{'System':<42}{'Build p50':>12}{'Build p99':>12}{'Verify p50':>12}{'Verify p99':>12}{'Size B':>10}"
     print(hdr)

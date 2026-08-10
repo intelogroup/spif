@@ -8,53 +8,50 @@ at generation time. The real competitor set for that claim is Sigstore, C2PA,
 and in-toto — not msgpack. This doc compares against those three, honestly,
 including where SPIF loses or where a comparison isn't fair to make.
 
-Quantitative numbers (build/verify latency, size) are in
-`results/provenance_comparison_bench.txt`, produced by
-`provenance_comparison_bench.py`. SPIF and in-toto were measured locally on
-equal terms (local keypair, no network). Numbers:
+Quantitative numbers (build/verify latency, size) are produced by
+`provenance_comparison_bench.py` — run it yourself to reproduce
+(`python3 provenance_comparison_bench.py --reps 200`); output isn't
+committed (`spif/results/*.txt` is gitignored, regenerate locally). SPIF and
+in-toto are measured locally on equal terms: local keypair, no network,
+**both signed** (SPIF via `spif.crypto.sign_document()` +
+`SPIFReader().verify_signature()`, in-toto via a DSSE envelope). An earlier
+draft of this doc compared an *unsigned* SPIF encode against in-toto's
+signed envelope — caught in review, fixed. Python 3.12.13, Reps=200:
 
 ```
 System                                    Build p50   Build p99  Verify p50  Verify p99   Size B
-SPIF                                         11.5μ       15.8μ       10.3μ       18.7μ       672
-in-toto (DSSE, local Ed25519 key)            68.1μ       88.4μ      144.1μ      167.5μ       896
+SPIF (signed, ed25519)                      110.0μ      122.9μ      163.8μ      173.7μ       828
+in-toto (DSSE, local Ed25519 key)            75.5μ       81.7μ      156.2μ      184.2μ       896
 ```
 
-(final same-interpreter run, Python 3.12.13 — earlier 3.9 numbers moved <2%,
-not a meaningful confound, but this is the run to cite)
+Honest result: once both sides actually sign, **in-toto is ~1.5x faster to
+build** (75.5μs vs 110.0μs — SPIF's two-pass encode, needed to lock chunk
+layout before signing the exact preceding bytes, costs more than DSSE's
+single-pass sign) and the two are **roughly tied on verify** (163.8μs vs
+156.2μs, SPIF ~5% slower). SPIF is still ~8% smaller (828B vs 896B). The
+previous claim of "SPIF wins 6x build / 14x verify" was an artifact of
+comparing signed in-toto against unsigned SPIF — not a real result, and this
+doc no longer makes it. SPIF's case at the crypto layer is size and
+streaming decode, not raw signing speed; unsigned SPIF (no per-record
+non-repudiation) is still ~11μs/~10μs for callers who don't need a signature
+at all — a mode in-toto and C2PA don't have.
 
-SPIF is ~6x faster to build and ~14x faster to verify than an equivalent
-in-toto DSSE-enveloped statement, and ~25% smaller. Both are local-keypair,
-zero-network, offline-capable — this is an apples-to-apples number.
-
-**Sigstore was also measured, live, against its staging Fulcio+Rekor
-instance** (2026-08-09, real network calls, real transparency-log entries —
-see `results/provenance_comparison_bench.txt` for the raw run).
-
-FINAL pass (2026-08-09): re-run on one interpreter (Python 3.12.13) for all
-three systems so version isn't a confound, and Sigstore verify bumped from
-n=5 to n=30 with percentile reporting to match SPIF/in-toto's n=200 style.
-Interpreter version turned out not material (SPIF/in-toto moved <2% between
-3.9 and 3.12), but this run is the one to cite since everything's now on
-equal footing:
-
-```
-SPIF verify (p50):      10.3μs
-in-toto verify (p50):  144.1μs
-Sigstore verify (p50):   4.3ms   (n=30, real staging Fulcio+Rekor, steady-state)
-Sigstore verify (p99):  21.0ms   (pulled up by one cold-TLS sample, 26.4ms)
-```
-
-Fair comparison: Sigstore verify is ~417x slower than SPIF's, ~30x slower
-than in-toto's — real, and still the same underlying story (every verify is
-a network call to infrastructure you don't run, vs. SPIF/in-toto checking a
-signature against a key you already have). Multiplier history as measurement
-got fairer each round: 73,000x (CLI-subprocess bug) → 530-570x (in-process,
-n=5, mixed interpreter) → 417x (in-process, n=30, same interpreter, p50).
-Sign still isn't reportable as a clean number: live runs took 23.5s/14.1s
-wall-clock, but that's interactive GitHub OIDC login time (0.35-0.39s of
-actual CPU work), and no local session was cached — each run re-authenticated
-as a different GitHub identity. A CI/service-account flow with an ambient
-OIDC token would give a real sign number; manual interactive signing doesn't.
+**Sigstore** was measured live against its staging Fulcio+Rekor instance in
+an earlier pass (2026-08-09, real network calls, real transparency-log
+entries: index 859471/859487/859514/859549 at
+[search.sigstore.dev](https://search.sigstore.dev), staging). Those numbers
+(verify p50 ≈ 4.3ms, n=30, in-process via `sigstore-python`'s own API) are
+real but **not reproducible from anything committed in this repo** — the
+measurement required a live OIDC login and ad-hoc scripts that weren't
+checked in, so the figures are removed from this doc rather than presented
+as something a reader can regenerate. What stays, because it doesn't depend
+on a specific run: Sigstore's verify path is architecturally a network round
+trip to Fulcio (cert issuance) and usually Rekor (transparency log), not a
+local CPU operation — a local microbenchmark would misrepresent it, and any
+honest number needs live infrastructure and a fresh OIDC token each time
+(interactive browser, or a CI service-account flow for sign specifically —
+manual interactive sign took 23.5s/14.1s wall-clock, almost all of it
+browser login, not signing).
 
 ## Feature / guarantee matrix
 
@@ -91,11 +88,13 @@ OIDC token would give a real sign number; manual interactive signing doesn't.
 
 ## The honest positioning
 
-SPIF's moat isn't "faster than JSON." It's: cheap enough (double-digit
-microseconds, sub-kilobyte) to attach real cryptographic provenance to every
-single AI output/tool-call inline, with zero network dependency and zero PKI
-setup — a niche none of Sigstore, C2PA, or in-toto occupy, because none of
-them were built for high-frequency, per-call, streaming attestation. The
-tradeoff for that is giving up the things that make Sigstore/in-toto/C2PA
-valuable in their own domains: a public transparency log, a policy/layout
-language, and CA-backed identity respectively.
+SPIF's moat isn't "faster than JSON," and after the signed-vs-signed fix
+above it isn't "faster than in-toto" either — the two are close (SPIF
+somewhat slower to build, roughly tied to verify). It's: sub-millisecond,
+sub-kilobyte, zero-network, zero-PKI-setup provenance attachable to *every*
+single AI output/tool-call inline — a niche none of Sigstore, C2PA, or
+in-toto occupy, because none of them were built for high-frequency, per-call,
+streaming attestation with a native confidence/uncertainty field in the same
+envelope. The tradeoff for that is giving up the things that make
+Sigstore/in-toto/C2PA valuable in their own domains: a public transparency
+log, a policy/layout language, and CA-backed identity respectively.
