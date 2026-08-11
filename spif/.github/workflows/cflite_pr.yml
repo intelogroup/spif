@@ -21,3 +21,4 @@ jobs:
           mode: 'code-change'
           sanitizer: address
           output-sarif: true
+          github-token: ${{ secrets.GITHUB_TOKEN }}
