@@ -25,7 +25,7 @@ anyhow = "1.0"
 base64 = "0.22"
 chrono = { version = "0.4", features = ["serde"] }
 byteorder = "1.5"
-ed25519-dalek = "2.1"
+ed25519-dalek = "3.0"
 flate2 = "1.0"
 # NOTE: The four deps below are only used in src/bin/bench_speed.rs.
 # They belong in dev-dependencies but cargo does not make those available to
