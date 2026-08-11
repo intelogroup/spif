@@ -1,0 +1,24 @@
+name: ClusterFuzzLite PR fuzzing
+on:
+  pull_request:
+    paths:
+      - 'spif/**'
+      - '.clusterfuzzlite/**'
+permissions: read-all
+jobs:
+  PR:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Build fuzzers
+        id: build
+        uses: google/clusterfuzzlite/actions/build_fuzzers@v1
+        with:
+          language: python
+      - name: Run fuzzers
+        uses: google/clusterfuzzlite/actions/run_fuzzers@v1
+        with:
+          fuzz-seconds: 300
+          mode: 'code-change'
+          sanitizer: address
+          output-sarif: true
+          github-token: ${{ secrets.GITHUB_TOKEN }}
