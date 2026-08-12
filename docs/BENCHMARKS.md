@@ -68,8 +68,8 @@ in-toto (DSSE, local Ed25519 key)            76.6μ       91.5μ      151.8μ   
 ```
 
 Once both sides actually sign, **in-toto is ~1.5x faster to build** (76.6μs
-vs 113.0μs) and verification is **roughly tied** (170.5μs vs 151.8μs, SPIF
-~12% slower). SPIF is ~8% smaller (828B vs 896B). The prior claim that SPIF
+vs 113.0μs) and **~12% faster to verify** (151.8μs vs 170.5μs). SPIF is ~8%
+smaller (828B vs 896B). The prior claim that SPIF
 was several times faster was an artifact of comparing signed in-toto with
 unsigned SPIF. SPIF's crypto-layer advantages are size and streaming decode;
 unsigned SPIF remains available for callers who do not need per-record
