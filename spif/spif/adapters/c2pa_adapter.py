@@ -1,9 +1,10 @@
 """
 C2PA manifest → SPIF importer.
 
-Converts an already-parsed C2PA manifest store (the JSON dict returned by
-``c2pa-python``'s ``Reader.json()`` / ``c2pa-node``'s equivalent) into a
-SPIFDocument. This is an *import* adapter, not an export one: it turns a
+Converts a C2PA manifest store (the JSON string returned by
+``c2pa-python``'s ``Reader.json()`` / ``c2pa-node``'s equivalent, or an
+already-parsed dict of the same shape) into a SPIFDocument. This is an
+*import* adapter, not an export one: it turns a
 foreign provenance artifact into a SPIF node so it can travel inside a SPIF
 DAG, be multi-signed alongside SPIF's own signatures, and be queried the
 same way as any other SPIF-native content.
@@ -40,8 +41,19 @@ from ..types import Distribution, Node, Provenance, SPIFDocument
 _CERTAIN = Distribution.certain(semantics="output_stability")
 
 
-def _active_manifest(manifest_store: dict[str, Any]) -> dict[str, Any]:
-    """Pick the active manifest out of a c2pa-python manifest store dict."""
+def _active_manifest(manifest_store: dict[str, Any] | str) -> dict[str, Any]:
+    """Pick the active manifest out of a c2pa-python manifest store.
+
+    Accepts either a dict or the raw JSON string ``Reader.json()`` actually
+    returns.
+    """
+    if isinstance(manifest_store, str):
+        manifest_store = json.loads(manifest_store)
+    if not isinstance(manifest_store, dict):
+        raise ValueError(
+            f"C2PA manifest store must be a dict or JSON string, got {type(manifest_store).__name__}"
+        )
+
     active_label = manifest_store.get("active_manifest")
     manifests = manifest_store.get("manifests", {})
     if active_label and active_label in manifests:
@@ -60,19 +72,20 @@ def _manifest_hash(manifest: dict[str, Any]) -> str:
 
 
 def import_c2pa_manifest(
-    manifest_store: dict[str, Any],
+    manifest_store: dict[str, Any] | str,
     *,
     context_ref: str = "",
     timestamp_ms: int | None = None,
 ) -> SPIFDocument:
     """
-    Build a SPIFDocument from a C2PA manifest store dict.
+    Build a SPIFDocument from a C2PA manifest store.
 
     Parameters
     ----------
     manifest_store :
-        The JSON dict from ``c2pa.Reader(...).json()`` (or a single
-        manifest dict — both shapes are accepted).
+        The JSON string returned by ``c2pa.Reader(...).json()``, or an
+        already-parsed dict of the same shape (a single manifest dict is
+        also accepted).
     context_ref :
         Hash of a prior SPIF document this import continues, if any.
     timestamp_ms :

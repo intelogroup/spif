@@ -44,6 +44,18 @@ class TestActiveManifestSelection:
         with pytest.raises(ValueError, match="no manifest found"):
             import_c2pa_manifest({})
 
+    def test_accepts_json_string_matching_reader_json_output(self):
+        """c2pa-python's Reader.json() returns a JSON string, not a dict."""
+        import json
+
+        doc = import_c2pa_manifest(json.dumps(_MANIFEST_STORE))
+        assert doc.provenance.source_model == "Claude/Fable5 c2pa-python/0.37.5"
+        assert doc.payload[0].value["title"] == "generated.docx"
+
+    def test_raises_clear_error_on_non_dict_non_string_input(self):
+        with pytest.raises(ValueError, match="dict or JSON string"):
+            import_c2pa_manifest(12345)
+
 
 class TestProvenanceMapping:
     def test_claim_generator_maps_to_source_model_and_version(self):
