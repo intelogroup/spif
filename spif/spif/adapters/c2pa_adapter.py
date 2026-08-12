@@ -17,7 +17,13 @@ Confidence
 ──────────
 C2PA provenance is binary (the manifest validated or it didn't) — there is
 no distribution to estimate. Every imported node gets Distribution.certain(),
-same as any other point-mass claim.
+same as any other point-mass claim. A manifest whose own ``validation_state``
+(set by ``c2pa-python``'s Reader after checking trust anchors) is
+``"Invalid"`` is refused outright — a point-mass claim built on a manifest
+c2pa-python itself flagged as invalid would be a false "certain". Readers on
+older c2pa-python without this field, or a bare manifest with no
+validation info, are still imported as-is per this adapter's documented
+contract: it trusts what it's given, and validation is the caller's job.
 
 Signature handling
 ───────────────────
@@ -41,8 +47,8 @@ from ..types import Distribution, Node, Provenance, SPIFDocument
 _CERTAIN = Distribution.certain(semantics="output_stability")
 
 
-def _active_manifest(manifest_store: dict[str, Any] | str) -> dict[str, Any]:
-    """Pick the active manifest out of a c2pa-python manifest store.
+def _parse_store(manifest_store: dict[str, Any] | str) -> dict[str, Any]:
+    """Normalise a c2pa-python manifest store to a dict.
 
     Accepts either a dict or the raw JSON string ``Reader.json()`` actually
     returns.
@@ -53,7 +59,11 @@ def _active_manifest(manifest_store: dict[str, Any] | str) -> dict[str, Any]:
         raise ValueError(
             f"C2PA manifest store must be a dict or JSON string, got {type(manifest_store).__name__}"
         )
+    return manifest_store
 
+
+def _active_manifest(manifest_store: dict[str, Any]) -> dict[str, Any]:
+    """Pick the active manifest out of a parsed c2pa-python manifest store."""
     active_label = manifest_store.get("active_manifest")
     manifests = manifest_store.get("manifests", {})
     if active_label and active_label in manifests:
@@ -97,7 +107,14 @@ def import_c2pa_manifest(
     SPIFDocument with one NODE_FACT node holding the manifest's assertions
     and a Provenance describing the C2PA claim generator.
     """
-    manifest = _active_manifest(manifest_store)
+    store = _parse_store(manifest_store)
+    manifest = _active_manifest(store)
+
+    validation_state = store.get("validation_state") or manifest.get("validation_state")
+    if validation_state == "Invalid":
+        raise ValueError(
+            "C2PA manifest failed its own validation (validation_state='Invalid'); refusing to import"
+        )
 
     claim_generator = manifest.get("claim_generator", "unknown")
     signature_info = manifest.get("signature_info") or {}
@@ -125,6 +142,7 @@ def import_c2pa_manifest(
             "format": manifest.get("format", ""),
             "assertions": manifest.get("assertions", []),
             "ingredients": manifest.get("ingredients", []),
+            "validation_state": validation_state or "unknown",
         },
         confidence=_CERTAIN,
     )

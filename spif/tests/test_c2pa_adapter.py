@@ -57,6 +57,38 @@ class TestActiveManifestSelection:
             import_c2pa_manifest(12345)
 
 
+class TestValidationState:
+    def test_rejects_manifest_flagged_invalid_at_store_level(self):
+        store = {**_MANIFEST_STORE, "validation_state": "Invalid"}
+        with pytest.raises(ValueError, match="failed its own validation"):
+            import_c2pa_manifest(store)
+
+    def test_rejects_manifest_flagged_invalid_at_manifest_level(self):
+        store = {
+            "active_manifest": "urn:uuid:abc123",
+            "manifests": {
+                "urn:uuid:abc123": {
+                    **_MANIFEST_STORE["manifests"]["urn:uuid:abc123"],
+                    "validation_state": "Invalid",
+                }
+            },
+        }
+        with pytest.raises(ValueError, match="failed its own validation"):
+            import_c2pa_manifest(store)
+
+    def test_trusted_manifest_imports_and_records_validation_state(self):
+        store = {**_MANIFEST_STORE, "validation_state": "Trusted"}
+        doc = import_c2pa_manifest(store)
+        assert doc.payload[0].value["validation_state"] == "Trusted"
+
+    def test_missing_validation_state_still_imports_as_unknown(self):
+        """No validation_state field (older c2pa-python, or a bare manifest)
+        is not the same as Invalid — adapter still trusts what it's given,
+        per its documented contract."""
+        doc = import_c2pa_manifest(_MANIFEST_STORE)
+        assert doc.payload[0].value["validation_state"] == "unknown"
+
+
 class TestProvenanceMapping:
     def test_claim_generator_maps_to_source_model_and_version(self):
         doc = import_c2pa_manifest(_MANIFEST_STORE)
