@@ -10,7 +10,7 @@ tools, agents, and organizational boundaries.
 
 <p>
   <a href="spif-rust/README.md">Use the Rust engine</a> ·
-  <a href="spif/README.md">Install the Python package</a> ·
+  <a href="spif-py/README.md">Install the Python package</a> ·
   <a href="docs/SPEC.md">Read the specification</a>
 </p>
 
@@ -53,7 +53,7 @@ a network verification service.
 ### Python CLI
 
 ```bash
-cd spif
+cd spif-py
 pip install -e ".[dev]"
 spif --help
 ```
@@ -73,13 +73,13 @@ see in practice:
 
 ```bash
 # Validate structure and verify signatures
-PYTHONPATH=spif python3 -m spif.cli validate examples/fixtures/sample_valid.spif
-PYTHONPATH=spif python3 -m spif.cli verify examples/fixtures/sample_valid.spif
+PYTHONPATH=spif-py python3 -m spif.cli validate examples/fixtures/sample_valid.spif
+PYTHONPATH=spif-py python3 -m spif.cli verify examples/fixtures/sample_valid.spif
 # OK
 # VALID
 
 # A changed payload is rejected
-PYTHONPATH=spif python3 -m spif.cli verify examples/fixtures/sample_tampered.spif
+PYTHONPATH=spif-py python3 -m spif.cli verify examples/fixtures/sample_tampered.spif
 # INVALID signature verification failed
 ```
 
@@ -104,9 +104,9 @@ magic → version → header → provenance → payload → signature → checks
 | You want to... | Start here |
 | --- | --- |
 | Verify a `.spif` file | [Rust engine and WASM module](spif-rust/README.md) |
-| Add provenance to a Python app | [Python implementation](spif/README.md) |
+| Add provenance to a Python app | [Python implementation](spif-py/README.md) |
 | Build an interoperable reader or writer | [Wire specification](docs/SPEC.md) |
-| Review the threat model | [Cryptographic audit](docs/CRYPTO_AUDIT.md) |
+| Review the threat model | [Security](SECURITY.md) |
 | Compare serialization performance | [Benchmarks](docs/BENCHMARKS.md) |
 | Integrate provenance into a deployer workflow | [EU AI Act integration](docs/README.md) |
 
@@ -114,7 +114,7 @@ magic → version → header → provenance → payload → signature → checks
 
 | Path | Role |
 | --- | --- |
-| [`spif/`](spif/) | Python reference implementation, CLI, streaming support, and provider adapters |
+| [`spif-py/`](spif-py/) | Python reference implementation, CLI, streaming support, and provider adapters |
 | [`spif-rust/`](spif-rust/) | Native Rust engine, CLI, sidecar, and cross-language validation |
 | [`verify/`](verify/) | Generated WebAssembly package and sample artifact |
 | [`examples/`](examples/) | Programmatically generated, specification-compliant fixtures |

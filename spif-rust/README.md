@@ -7,7 +7,7 @@
 
 ### Native parsing, signing, streaming, and verification.
 
-[Back to the project overview](../README.md) · [Read the specification](../docs/SPEC.md) · [Python implementation](../spif/README.md)
+[Back to the project overview](../README.md) · [Read the specification](../docs/SPEC.md) · [Python implementation](../spif-py/README.md)
 
 </div>
 

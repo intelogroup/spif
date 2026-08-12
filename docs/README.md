@@ -1,8 +1,7 @@
 # SPIF Documentation
 
 - [Wire format specification](SPEC.md) — the external interface: chunk layout, encoding, signing. Start here if you're implementing a reader/writer.
-- [Crypto audit](CRYPTO_AUDIT.md) — key derivation, signature scheme, threat coverage.
-- [Security policy](../SECURITY.md) — how to report a vulnerability.
+- [Security policy](../SECURITY.md) — how to report a vulnerability, key derivation, signature scheme, threat coverage.
 - [IETF draft](../draft-ietf-spif-00.md) — standards-track draft of the format.
 - [Benchmarks](BENCHMARKS.md) — serialization and provenance/attestation comparisons.
 - [EU AI Act integration](#eu-ai-act-integration) — how to use SPIF as a provenance component in a deployer workflow.
@@ -30,7 +29,7 @@ A deployer can return the generated content together with:
 - signed SPIF bytes containing provenance evidence for the output.
 
 The reference Python envelope is implemented by
-[`spif/spif/eu_ai_act.py`](../spif/spif/eu_ai_act.py):
+[`spif-py/spif/eu_ai_act.py`](../spif-py/spif/eu_ai_act.py):
 
 ```python
 from spif import build_deployer_output
@@ -80,10 +79,10 @@ handling.
 
 A detached `.spif` sidecar is provenance evidence. It is not, by itself, a
 content-carried machine-readable mark. The integration tests in
-[`spif/tests/test_eu_readiness.py`](../spif/tests/test_eu_readiness.py) and
-[`spif/tests/test_eu_ai_act_profile.py`](../spif/tests/test_eu_ai_act_profile.py)
+[`spif-py/tests/test_eu_readiness.py`](../spif-py/tests/test_eu_readiness.py) and
+[`spif-py/tests/test_eu_ai_act_profile.py`](../spif-py/tests/test_eu_ai_act_profile.py)
 verify the envelope and integrity behaviors described here; they are not a
 legal certification or a C2PA conformance test.
-- Component READMEs: [`spif/`](../spif/README.md) (Python), [`spif-rust/`](../spif-rust/README.md) (Rust).
+- Component READMEs: [`spif-py/`](../spif-py/README.md) (Python), [`spif-rust/`](../spif-rust/README.md) (Rust).
 
 See [CONTRIBUTING.md](../CONTRIBUTING.md) for how to propose changes.
