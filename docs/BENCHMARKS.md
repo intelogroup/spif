@@ -61,14 +61,14 @@ system. SPIF and in-toto are measured locally on equal terms: local keypair,
 no network, and both signed. Latest rerun: Apple M2, Python 3.12.13,
 `securesystemslib` 1.4.0, 2026-08-12, Reps=200, median of 3 runs.
 
-```
+```text
 System                                    Build p50   Build p99  Verify p50  Verify p99   Size B
 SPIF (signed, ed25519)                      113.0μ      131.3μ      170.5μ      186.6μ       828
 in-toto (DSSE, local Ed25519 key)            76.6μ       91.5μ      151.8μ      181.8μ       896
 ```
 
 Once both sides actually sign, **in-toto is ~1.5x faster to build** (76.6μs
-vs 113.0μs) and **~12% faster to verify** (151.8μs vs 170.5μs). SPIF is ~8%
+vs 113.0μs), and SPIF is **~12% slower to verify** (170.5μs vs 151.8μs). SPIF is ~8%
 smaller (828B vs 896B). The prior claim that SPIF
 was several times faster was an artifact of comparing signed in-toto with
 unsigned SPIF. SPIF's crypto-layer advantages are size and streaming decode;
