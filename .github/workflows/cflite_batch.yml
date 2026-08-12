@@ -7,13 +7,11 @@ jobs:
   BatchFuzzing:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
       - name: Build fuzzers
         id: build
         uses: google/clusterfuzzlite/actions/build_fuzzers@v1
         with:
           language: python
-          project-src-path: spif-py
       - name: Run fuzzers
         uses: google/clusterfuzzlite/actions/run_fuzzers@v1
         with:
