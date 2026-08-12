@@ -2,8 +2,7 @@ name: ClusterFuzzLite PR fuzzing
 on:
   pull_request:
     paths:
-      - 'spif/**'
-      - '.clusterfuzzlite/**'
+      - 'spif-py/**'
 permissions: read-all
 jobs:
   PR:
@@ -14,6 +13,7 @@ jobs:
         uses: google/clusterfuzzlite/actions/build_fuzzers@v1
         with:
           language: python
+          project-src-path: spif-py
       - name: Run fuzzers
         uses: google/clusterfuzzlite/actions/run_fuzzers@v1
         with:

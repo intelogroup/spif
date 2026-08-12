@@ -13,4 +13,6 @@ jobs:
         with:
           python-version: "3.11"
       - run: pip install -e ".[dev]"
+        working-directory: spif-py
       - run: make test
+        working-directory: spif-py

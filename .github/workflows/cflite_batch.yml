@@ -12,6 +12,7 @@ jobs:
         uses: google/clusterfuzzlite/actions/build_fuzzers@v1
         with:
           language: python
+          project-src-path: spif-py
       - name: Run fuzzers
         uses: google/clusterfuzzlite/actions/run_fuzzers@v1
         with:
