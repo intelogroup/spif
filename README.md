@@ -53,7 +53,7 @@ a network verification service.
 ### Python CLI
 
 ```bash
-cd spif
+cd spif-py
 pip install -e ".[dev]"
 spif --help
 ```
@@ -73,13 +73,13 @@ see in practice:
 
 ```bash
 # Validate structure and verify signatures
-PYTHONPATH=spif python3 -m spif.cli validate examples/fixtures/sample_valid.spif
-PYTHONPATH=spif python3 -m spif.cli verify examples/fixtures/sample_valid.spif
+PYTHONPATH=spif-py python3 -m spif.cli validate examples/fixtures/sample_valid.spif
+PYTHONPATH=spif-py python3 -m spif.cli verify examples/fixtures/sample_valid.spif
 # OK
 # VALID
 
 # A changed payload is rejected
-PYTHONPATH=spif python3 -m spif.cli verify examples/fixtures/sample_tampered.spif
+PYTHONPATH=spif-py python3 -m spif.cli verify examples/fixtures/sample_tampered.spif
 # INVALID signature verification failed
 ```
 
