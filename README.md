@@ -106,7 +106,7 @@ magic → version → header → provenance → payload → signature → checks
 | Verify a `.spif` file | [Rust engine and WASM module](spif-rust/README.md) |
 | Add provenance to a Python app | [Python implementation](spif-py/README.md) |
 | Build an interoperable reader or writer | [Wire specification](docs/SPEC.md) |
-| Review the threat model | [Cryptographic audit](docs/CRYPTO_AUDIT.md) |
+| Review the threat model | [Security](SECURITY.md) |
 | Compare serialization performance | [Benchmarks](docs/BENCHMARKS.md) |
 | Integrate provenance into a deployer workflow | [EU AI Act integration](docs/README.md) |
 

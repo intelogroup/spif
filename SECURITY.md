@@ -45,6 +45,32 @@ that still pass verification, invalid/undersized keys.
 **Status: tested against RFC 8032 and Wycheproof vectors, currently
 passing.**
 
+### Crypto implementation details
+
+- **Two-pass signing**: the SIGNATURE/MULTISIG chunk itself is not covered
+  by the signature — only bytes before the first auth chunk are. Pass 1
+  encodes with a dummy 64-byte signature to fix chunk layout, pass 2 signs
+  the exact resulting bytes and re-encodes. This guarantees identical chunk
+  structure between the dummy and final encoding, so the real signature
+  verifies.
+- **Checksum vs signature**: SHA-256 checksum (via `hmac.compare_digest`,
+  timing-safe) catches accidental corruption only; it does not protect
+  against an attacker with write access. Use `SPIFReader.strict()` /
+  `require_signature=True` for untrusted sources.
+- **Key derivation**: PBKDF2-HMAC-SHA512, 600,000 iterations (OWASP 2026
+  minimum), 32-byte output. Salt is `"sif-key-v1:" + passphrase`; an empty
+  passphrase means a static, publicly-known salt, so a precomputed table of
+  common BIP39 mnemonics recovers keys derived without one. A `UserWarning`
+  fires at runtime when `passphrase=""` is used — always supply a
+  passphrase for high-value signing keys.
+- **Canonical CBOR**: `cbor2.dumps(..., canonical=True)` (RFC 8949 §4.2) —
+  sorted map keys, minimal-length integers, no NaN/Infinity — so the same
+  document always encodes to the same bytes, which the signature depends on.
+- **Revocation**: a JSON list of revoked signer IDs, checked before
+  signature verification. Not embedded in the document itself, since
+  signatures must remain verifiable even if the revocation service is down;
+  fetching and trusting the list is the caller's responsibility.
+
 ## 3. Provenance / DAG attacks
 
 Vectors: cycle injection into the trace or payload DAG, dangling

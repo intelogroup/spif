@@ -1,8 +1,7 @@
 # SPIF Documentation
 
 - [Wire format specification](SPEC.md) — the external interface: chunk layout, encoding, signing. Start here if you're implementing a reader/writer.
-- [Crypto audit](CRYPTO_AUDIT.md) — key derivation, signature scheme, threat coverage.
-- [Security policy](../SECURITY.md) — how to report a vulnerability.
+- [Security policy](../SECURITY.md) — how to report a vulnerability, key derivation, signature scheme, threat coverage.
 - [IETF draft](../draft-ietf-spif-00.md) — standards-track draft of the format.
 - [Benchmarks](BENCHMARKS.md) — serialization and provenance/attestation comparisons.
 - [EU AI Act integration](#eu-ai-act-integration) — how to use SPIF as a provenance component in a deployer workflow.
