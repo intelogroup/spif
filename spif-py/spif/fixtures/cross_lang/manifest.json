@@ -94,7 +94,7 @@
       "has_provenance": true,
       "name": "tool_chain",
       "payload_count": 3,
-      "sha256": "dd9a0b5926403c26c4fabfc0949d763d55e7499723e90092ab2198d8b85ff48c",
+      "sha256": "185be99c119ef1f33e1b132e76e15f2eea54536006e9cb42c4bae690e1e63482",
       "source_model": "claude-sonnet-4-6",
       "trace_count": 0
     },

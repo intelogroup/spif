@@ -63,7 +63,7 @@ fn find_python_with_spif_deps() -> Result<PathBuf> {
 
 fn generate_fixtures() -> Result<(PathBuf, Manifest)> {
     let root = repo_root();
-    let script = root.join("spif/compat/generate_compat_fixtures.py");
+    let script = root.join("spif-py/compat/generate_compat_fixtures.py");
     let python = find_python_with_spif_deps()?;
     let unique = SystemTime::now()
         .duration_since(UNIX_EPOCH)
