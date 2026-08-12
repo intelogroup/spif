@@ -8,6 +8,7 @@ jobs:
   PR:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
       - name: Build fuzzers
         id: build
         uses: google/clusterfuzzlite/actions/build_fuzzers@v1
