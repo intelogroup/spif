@@ -675,7 +675,7 @@ Content-Type: application/x-spif
 
 | Language   | Location              | Status   |
 |------------|-----------------------|----------|
-| Python     | `spif/`               | Complete (alpha package) |
+| Python     | `spif-py/`             | Complete (alpha package) |
 | Rust       | `spif-rust/`          | Complete |
 
 The Python implementation is authoritative for format questions. Rust is
@@ -685,7 +685,7 @@ disagree on behavior, Python is correct.
 
 ### 14.1 Test Vectors
 
-The Python test suite (`spif/tests/`) serves as executable format tests:
+The Python test suite (`spif-py/tests/`) serves as executable format tests:
 
 | File                       | Coverage                                              |
 |----------------------------|-------------------------------------------------------|

@@ -31,7 +31,7 @@ cargo test
 1. Fork and branch off `main`.
 2. Keep changes scoped to one component per PR where possible — cross-cutting spec changes (`docs/SPEC.md`) should be discussed in an issue first, since Python, Rust, and wasm all need to stay in sync.
 3. Add or update tests for any behavior change. `cargo test` / `pytest` must pass locally before opening a PR.
-4. Don't commit generated output (`spif/graphify-out/`, `spif/results/*.txt`, build artifacts) — these are gitignored.
+4. Don't commit generated output (`spif-py/graphify-out/`, `spif-py/results/*.txt`, build artifacts) — these are gitignored.
 5. Open a PR against `main`. CI (Rust tests, CodeQL) must pass before merge.
 
 ## Requirements for an acceptable PR
