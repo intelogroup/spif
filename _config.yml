@@ -1,4 +1,5 @@
 title: SPIF
 description: Semantic Provenance Inference Format — a small signed envelope for AI output provenance
+tagline: Provenance that travels with the output, not a separate tracing system
 theme: jekyll-theme-minimal
 markdown: kramdown

@@ -4,6 +4,8 @@ title: "Introducing SPIF: an 828-byte signed provenance envelope for AI outputs"
 date: 2026-08-12
 ---
 
+I kept losing track of which model, which confidence, which tool call produced a given output once it left the pipeline it was generated in. That's the itch this scratches.
+
 An AI output usually can't carry its own history: model, confidence, steps taken, tamper status. That metadata lives in a separate tracing system, if it exists at all, so it's the first thing lost once the response leaves your pipeline.
 
 SPIF is a small binary (CBOR) envelope that attaches this directly to the output: model/tool identity, a confidence distribution (not just a token logprob), an optional DAG of intermediate steps, and an optional ed25519 signature. Decode is streaming and the whole thing is designed to be sub-millisecond, so it's cheap enough to attach inline, per response, instead of only living in a separate system.
@@ -42,4 +44,4 @@ An adapter also just landed that imports a C2PA manifest into a SPIF envelope, s
 
 Spec and code are Apache-2.0. Roast welcome, especially the DAG validation and the Rust decoder, I'd rather find the holes here than after someone depends on it.
 
-[Repo](https://github.com/intelogroup/spif)
+[Repo](https://github.com/intelogroup/spif) · [Spec](https://github.com/intelogroup/spif/blob/main/docs/SPEC.md) · [README](https://github.com/intelogroup/spif/blob/main/README.md)
