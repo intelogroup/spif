@@ -11,6 +11,7 @@ from spif import (
     GovernanceEvent,
     Provenance,
     SPIFKeyStore,
+    SPIFMagicError,
     SPIFReader,
     SPIFWriter,
     TrustDecision,
@@ -520,3 +521,140 @@ def test_verify_chain_rejects_reverse_order_six_event_set(tmp_path):
         (False, "missing_parent"),
         (False, "missing_parent"),
     ]
+
+
+# ---------------------------------------------------------------
+# Edge cases
+# ---------------------------------------------------------------
+
+
+def test_verify_chain_empty_list_returns_empty(tmp_path):
+    keystore = SPIFKeyStore(tmp_path / "empty-list-keys")
+    assert governance.verify_chain([], keystore) == []
+
+
+def test_verify_chain_rejects_self_referential_parent(tmp_path):
+    """An event citing its own event_id as a parent must not verify."""
+    keystore, keys = _registered_keystore(tmp_path)
+    decision = _event("Decision")
+    evidence = _event("Evidence", parent_ids=["evidence-001"])  # its own event_id
+
+    results = governance.verify_chain(
+        _signed_events([decision, evidence], keys), keystore
+    )
+
+    assert [(result.valid, result.reason) for result in results] == [
+        (True, "verified"),
+        (False, "missing_parent"),
+    ]
+
+
+def test_verify_event_rejects_garbage_bytes(tmp_path):
+    keystore, _ = _registered_keystore(tmp_path)
+    with pytest.raises(SPIFMagicError):
+        governance.verify_event(b"not a spif document", keystore)
+
+
+def test_verify_event_unknown_signer_on_empty_keystore(tmp_path):
+    keystore = SPIFKeyStore(tmp_path / "empty-keys")
+    key = generate_key()
+    event = _event("Decision")
+    data = governance.sign_event(event, key, event.actor)
+
+    decision = governance.verify_event(data, keystore)
+    assert (decision.valid, decision.reason) == (False, "unknown_signer")
+
+
+def test_event_rejects_non_string_parent_id(tmp_path):
+    with pytest.raises(ValueError):
+        _event("Evidence", parent_ids=["decision-001", 42])  # type: ignore[list-item]
+
+
+def test_verify_chain_unicode_event_and_actor_ids(tmp_path):
+    keystore = SPIFKeyStore(tmp_path / "unicode-keys")
+    key = generate_key()
+    signer = "actor-医院-\U0001f3e5"
+    keystore.add_key(
+        signer, key.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
+    )
+    keystore.authorize_role(EVENT_ROLE_BY_TYPE["Decision"], signer)
+
+    event = GovernanceEvent(
+        event_type="Decision",
+        event_id="决策-",
+        timestamp_ms=1_700_000_000_000,
+        actor=signer,
+        payload={"note": "临床决策"},
+        parent_ids=[],
+        policy_id="policy-é",
+        credential_ref="credential://ünicode",
+    )
+    data = governance.sign_event(event, key, signer)
+
+    results = governance.verify_chain([data], keystore)
+    assert [(r.valid, r.reason) for r in results] == [(True, "verified")]
+
+
+# ---------------------------------------------------------------
+# Stress
+# ---------------------------------------------------------------
+
+
+def test_verify_chain_allows_only_one_decision_root_per_call(tmp_path):
+    """verify_chain models a single workflow instance: a second Decision in
+    the same call is rejected as invalid_root even with no parent_ids and
+    even though it would be a perfectly valid root on its own. Callers doing
+    multi-tenant/batch verification must call verify_chain once per lineage,
+    not batch independent workflows into one call."""
+    keystore, keys = _registered_keystore(tmp_path)
+    first = _event("Decision")
+    second = _event("Decision", actor=ACTORS["Decision"])
+    second.event_id = "decision-002"
+
+    results = governance.verify_chain(_signed_events([first, second], keys), keystore)
+    assert [(r.valid, r.reason) for r in results] == [
+        (True, "verified"),
+        (False, "invalid_root"),
+    ]
+
+
+def test_verify_chain_thousand_independent_lineages_verified_separately(tmp_path):
+    """A thousand independent six-stage lineages, each verified with its own
+    verify_chain call (the API's actual contract per the single-root rule
+    above), must all fully verify — confirms no per-call overhead blows up
+    at volume and no state leaks between separate calls sharing one
+    keystore."""
+    keystore, keys = _registered_keystore(tmp_path)
+    cycle = ["Decision", "Evidence", "PolicyEvaluation", "Review", "Action", "Outcome"]
+
+    for lineage in range(1000):
+        events: list[GovernanceEvent] = []
+        parent_id: str | None = None
+        for event_type in cycle:
+            event = GovernanceEvent(
+                event_type=event_type,
+                event_id=f"{event_type.lower()}-{lineage:04d}",
+                timestamp_ms=1_700_000_000_000 + lineage,
+                actor=ACTORS[event_type],
+                payload={"lineage": lineage},
+                parent_ids=[parent_id] if parent_id else [],
+                policy_id="bed-placement-v1",
+                credential_ref=f"credential://hospital/{ACTORS[event_type]}",
+            )
+            events.append(event)
+            parent_id = event.event_id
+
+        results = governance.verify_chain(_signed_events(events, keys), keystore)
+        assert all(r.valid for r in results), (lineage, [r.reason for r in results if not r.valid])
+
+
+def test_verify_chain_stress_all_duplicate_event_ids(tmp_path):
+    """1000 events sharing one event_id: only the first may verify, all
+    later duplicates must be rejected without the chain growing unbounded
+    state per rejected duplicate."""
+    keystore, keys = _registered_keystore(tmp_path)
+    events = [_event("Decision") for _ in range(1000)]  # all share "decision-001"
+
+    results = governance.verify_chain(_signed_events(events, keys), keystore)
+    assert results[0].valid is True
+    assert all(r.reason == "duplicate_event_id" for r in results[1:])
