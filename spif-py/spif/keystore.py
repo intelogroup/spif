@@ -49,6 +49,10 @@ from .reader import (
 from .types import SPIFDocument
 
 
+class SPIFRevokedSignerError(SPIFSignatureError):
+    """A cryptographically valid signature belongs to a revoked signer."""
+
+
 class SPIFKeyStore:
     """
     File-based store of ed25519 public keys for SPIF signature verification.
@@ -295,12 +299,6 @@ class SPIFKeyStore:
 
         for sig in sigs:
             signer = sig.signer
-            # Revocation check
-            if self.is_revoked(signer):
-                raise SPIFSignatureError(
-                    f"Signer '{signer}' is revoked as of "
-                    f"{self._load_revoked()[signer]} ms"
-                )
             # Key lookup
             raw_key = self.get_key(signer)
             if raw_key is None:
@@ -318,6 +316,11 @@ class SPIFKeyStore:
             except InvalidSignature:
                 raise SPIFSignatureError(
                     f"Signature by '{signer}' is cryptographically invalid"
+                )
+            if self.is_revoked(signer):
+                raise SPIFRevokedSignerError(
+                    f"Signer '{signer}' is revoked as of "
+                    f"{self._load_revoked()[signer]} ms"
                 )
 
         return True

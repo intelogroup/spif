@@ -62,6 +62,13 @@ def _registered_keystore(tmp_path):
     return keystore, keys
 
 
+def _signed_events(events: list[GovernanceEvent], keys: dict[str, object]) -> list[bytes]:
+    return [
+        governance.sign_event(event, keys[event.event_type], ACTORS[event.event_type])
+        for event in events
+    ]
+
+
 def _tamper_signature(data: bytes) -> bytes:
     doc = SPIFReader().decode(data)
     assert doc.signature is not None
@@ -135,6 +142,19 @@ def test_verify_event_reports_unknown_and_revoked_signers(tmp_path):
     revoked_result = governance.verify_event(signed, keystore)
     assert (revoked_result.valid, revoked_result.reason) == (False, "revoked_signer")
     assert governance.verify_chain([signed], keystore)[0].valid is False
+
+
+def test_verify_event_rejects_tampered_signature_before_revoked_signer(tmp_path):
+    """Fails if revocation masks signature tampering for a registered signer."""
+    keystore, keys = _registered_keystore(tmp_path)
+    signed = governance.sign_event(
+        _event("Decision"), keys["Decision"], ACTORS["Decision"]
+    )
+    keystore.revoke(ACTORS["Decision"], revoked_at_ms=1_700_000_000_001)
+
+    result = governance.verify_event(_tamper_signature(signed), keystore)
+
+    assert (result.valid, result.reason) == (False, "invalid_signature")
 
 
 def test_verify_event_rejects_expected_signer_tampering_and_role_mismatches(tmp_path):
@@ -289,4 +309,131 @@ def test_verify_chain_rejects_duplicate_event_ids_without_replacing_parent(tmp_p
         (True, "verified"),
         (False, "duplicate_event_id"),
         (True, "verified"),
+    ]
+
+
+def test_verify_chain_rejects_decision_with_parents_as_invalid_root(tmp_path):
+    """Fails if the only root event can declare a parent."""
+    keystore, keys = _registered_keystore(tmp_path)
+    decision = _event("Decision", parent_ids=["earlier-event"])
+
+    results = governance.verify_chain(_signed_events([decision], keys), keystore)
+
+    assert [(result.valid, result.reason) for result in results] == [
+        (False, "invalid_root"),
+    ]
+
+
+def test_verify_chain_rejects_non_decision_without_parent_as_invalid_root(tmp_path):
+    """Fails if a non-root event starts an independent governance branch."""
+    keystore, keys = _registered_keystore(tmp_path)
+    evidence = _event("Evidence")
+
+    results = governance.verify_chain(_signed_events([evidence], keys), keystore)
+
+    assert [(result.valid, result.reason) for result in results] == [
+        (False, "invalid_root"),
+    ]
+
+
+def test_verify_chain_rejects_second_decision_root(tmp_path):
+    """Fails if a second Decision starts a disconnected root component."""
+    keystore, keys = _registered_keystore(tmp_path)
+    decision = _event("Decision")
+    second_decision = _event("Decision")
+    second_decision.event_id = "decision-002"
+
+    results = governance.verify_chain(
+        _signed_events([decision, second_decision], keys), keystore
+    )
+
+    assert [(result.valid, result.reason) for result in results] == [
+        (True, "verified"),
+        (False, "invalid_root"),
+    ]
+
+
+def test_verify_chain_rejects_duplicate_parent_ids(tmp_path):
+    """Fails if a child repeats one verified parent identifier."""
+    keystore, keys = _registered_keystore(tmp_path)
+    decision = _event("Decision")
+    evidence = _event(
+        "Evidence", parent_ids=[decision.event_id, decision.event_id]
+    )
+
+    results = governance.verify_chain(
+        _signed_events([decision, evidence], keys), keystore
+    )
+
+    assert [(result.valid, result.reason) for result in results] == [
+        (True, "verified"),
+        (False, "duplicate_parent"),
+    ]
+
+
+def test_verify_chain_requires_parent_event_type_to_precede_child(tmp_path):
+    """Fails if an already verified later-stage event is a parent."""
+    keystore, keys = _registered_keystore(tmp_path)
+    decision = _event("Decision")
+    action = _event("Action", parent_ids=[decision.event_id])
+    policy = _event("PolicyEvaluation", parent_ids=[action.event_id])
+
+    results = governance.verify_chain(
+        _signed_events([decision, action, policy], keys), keystore
+    )
+
+    assert [(result.valid, result.reason) for result in results] == [
+        (True, "verified"),
+        (True, "verified"),
+        (False, "parent_order"),
+    ]
+
+
+def test_verify_chain_rejects_disconnected_six_event_set(tmp_path):
+    """Fails if six signed stages contain an independent non-Decision root."""
+    keystore, keys = _registered_keystore(tmp_path)
+    decision = _event("Decision")
+    evidence = _event("Evidence")
+    policy = _event("PolicyEvaluation", parent_ids=[evidence.event_id])
+    review = _event("Review", parent_ids=[policy.event_id])
+    action = _event("Action", parent_ids=[review.event_id])
+    outcome = _event("Outcome", parent_ids=[action.event_id])
+
+    results = governance.verify_chain(
+        _signed_events([decision, evidence, policy, review, action, outcome], keys),
+        keystore,
+    )
+
+    assert [(result.valid, result.reason) for result in results] == [
+        (True, "verified"),
+        (False, "invalid_root"),
+        (False, "missing_parent"),
+        (False, "missing_parent"),
+        (False, "missing_parent"),
+        (False, "missing_parent"),
+    ]
+
+
+def test_verify_chain_rejects_reverse_order_six_event_set(tmp_path):
+    """Fails if a six-stage chain connects later event types to earlier children."""
+    keystore, keys = _registered_keystore(tmp_path)
+    decision = _event("Decision")
+    outcome = _event("Outcome", parent_ids=[decision.event_id])
+    action = _event("Action", parent_ids=[outcome.event_id])
+    review = _event("Review", parent_ids=[action.event_id])
+    policy = _event("PolicyEvaluation", parent_ids=[review.event_id])
+    evidence = _event("Evidence", parent_ids=[policy.event_id])
+
+    results = governance.verify_chain(
+        _signed_events([decision, outcome, action, review, policy, evidence], keys),
+        keystore,
+    )
+
+    assert [(result.valid, result.reason) for result in results] == [
+        (True, "verified"),
+        (True, "verified"),
+        (False, "parent_order"),
+        (False, "missing_parent"),
+        (False, "missing_parent"),
+        (False, "missing_parent"),
     ]

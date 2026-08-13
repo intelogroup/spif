@@ -7,7 +7,7 @@ from typing import Any
 
 from .crypto import sign_document
 from .format import NODE_CONCEPT
-from .keystore import SPIFKeyStore
+from .keystore import SPIFKeyStore, SPIFRevokedSignerError
 from .reader import SPIFReader, SPIFSignatureError
 from .types import Node, Provenance, SPIFDocument
 
@@ -200,8 +200,8 @@ def verify_event(
 
     Malformed SPIF bytes raise the reader's format exceptions. Expected trust
     failures return an invalid :class:`TrustDecision`, preserving the decoded
-    event identifiers whenever they are available. For a known, non-revoked
-    signer, the raw signature is verified before any event profile claim is
+    event identifiers whenever they are available. For a known signer, the
+    raw signature is verified before revocation or any event profile claim is
     interpreted.
     """
     doc = SPIFReader().decode(data)
@@ -213,13 +213,13 @@ def verify_event(
     signature_signer = doc.signature.signer
     if not isinstance(signature_signer, str) or not signature_signer:
         return TrustDecision(event_id, signer_id, event_type, False, "missing_signer_binding")
-    if keystore.is_revoked(signature_signer):
-        return TrustDecision(event_id, signature_signer, event_type, False, "revoked_signer")
     if not keystore.has_key(signature_signer):
         return TrustDecision(event_id, signature_signer, event_type, False, "unknown_signer")
 
     try:
         keystore.verify(data)
+    except SPIFRevokedSignerError:
+        return TrustDecision(event_id, signature_signer, event_type, False, "revoked_signer")
     except SPIFSignatureError:
         return TrustDecision(event_id, signature_signer, event_type, False, "invalid_signature")
 
@@ -264,7 +264,7 @@ def verify_chain(
     events: list[bytes],
     keystore: SPIFKeyStore,
 ) -> list[TrustDecision]:
-    """Verify event signatures and require declared parents to precede children."""
+    """Verify event signatures and enforce clinical-governance topology."""
     decisions: list[TrustDecision] = []
     verified_events: dict[str, GovernanceEvent] = {}
 
@@ -281,6 +281,31 @@ def verify_chain(
                     False,
                     "duplicate_event_id",
                 )
+            elif (
+                event.event_type == "Decision"
+                and (
+                    event.parent_ids
+                    or any(
+                        previous.event_type == "Decision"
+                        for previous in verified_events.values()
+                    )
+                )
+            ) or (event.event_type != "Decision" and not event.parent_ids):
+                decision = TrustDecision(
+                    decision.event_id,
+                    decision.signer_id,
+                    decision.event_type,
+                    False,
+                    "invalid_root",
+                )
+            elif len(set(event.parent_ids)) != len(event.parent_ids):
+                decision = TrustDecision(
+                    decision.event_id,
+                    decision.signer_id,
+                    decision.event_type,
+                    False,
+                    "duplicate_parent",
+                )
             elif any(parent_id not in verified_events for parent_id in event.parent_ids):
                 decision = TrustDecision(
                     decision.event_id,
@@ -288,6 +313,18 @@ def verify_chain(
                     decision.event_type,
                     False,
                     "missing_parent",
+                )
+            elif any(
+                EVENT_TYPES.index(verified_events[parent_id].event_type)
+                >= EVENT_TYPES.index(event.event_type)
+                for parent_id in event.parent_ids
+            ):
+                decision = TrustDecision(
+                    decision.event_id,
+                    decision.signer_id,
+                    decision.event_type,
+                    False,
+                    "parent_order",
                 )
             else:
                 verified_events[event.event_id] = event

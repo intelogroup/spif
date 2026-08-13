@@ -166,7 +166,7 @@ def summarize_chain(results: list[TrustDecision]) -> dict[str, object]:
         for event_type in EVENT_TYPES
     }
     trust_valid = bool(results) and not failures
-    complete = all(
+    complete = trust_valid and all(
         len(valid_results_by_type[event_type]) == 1 for event_type in EVENT_TYPES
     )
     decision = by_type.get("Decision")

@@ -168,3 +168,23 @@ def test_summary_marks_duplicate_valid_event_types_incomplete():
     assert summary["trust_valid"] is True
     assert summary["complete"] is False
     assert summary["valid"] is False
+
+
+def test_summary_marks_topology_failure_in_complete_type_set_incomplete():
+    """Fails if an invalid topology is called complete based only on stage presence."""
+    from examples.clinical_governance_chain import summarize_chain
+    from spif import EVENT_TYPES
+
+    results = [
+        TrustDecision(f"{event_type}-001", "signer", event_type, True, "verified")
+        for event_type in EVENT_TYPES
+    ]
+    results.append(
+        TrustDecision("evidence-002", "signer", "Evidence", False, "invalid_root")
+    )
+
+    summary = summarize_chain(results)
+
+    assert summary["trust_valid"] is False
+    assert summary["complete"] is False
+    assert summary["valid"] is False
