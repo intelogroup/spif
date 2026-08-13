@@ -11,6 +11,7 @@ from spif import (
     GovernanceEvent,
     Provenance,
     SPIFKeyStore,
+    SPIFMagicError,
     SPIFReader,
     SPIFWriter,
     TrustDecision,
@@ -532,7 +533,7 @@ def test_verify_chain_rejects_self_referential_parent(tmp_path):
 
 def test_verify_event_rejects_garbage_bytes(tmp_path):
     keystore, _ = _registered_keystore(tmp_path)
-    with pytest.raises(Exception):
+    with pytest.raises(SPIFMagicError):
         governance.verify_event(b"not a spif document", keystore)
 
 
