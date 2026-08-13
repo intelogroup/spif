@@ -207,6 +207,8 @@ def c2pa_build_and_sign(cert_path: Path, key_path: Path, tmpdir: Path) -> Path:
     # arbitrary text isn't a supported asset type. SVG is the closest thing to
     # "text content" it will sign, so the payload is embedded as a <desc>.
     import c2pa
+    from cryptography.hazmat.primitives.asymmetric import ec
+    from cryptography.hazmat.primitives import hashes, serialization
 
     src = tmpdir / "src.svg"
     src.write_text(
@@ -214,12 +216,15 @@ def c2pa_build_and_sign(cert_path: Path, key_path: Path, tmpdir: Path) -> Path:
     )
     dst = tmpdir / f"out_{time.perf_counter_ns()}.svg"
 
-    signer_info = c2pa.C2paSignerInfo(
-        alg="es256",
-        sign_cert=cert_path.read_bytes(),
-        private_key=key_path.read_bytes(),
-        ta_url=None,
-    )
+    # c2pa-python 0.9.0's public API takes a raw-sign callback, not a
+    # key-bytes struct (that shape only exists in newer/unreleased builds —
+    # see the module docstring on the "0.37.5" version mismatch).
+    private_key = serialization.load_pem_private_key(key_path.read_bytes(), password=None)
+
+    def _sign(data: bytes) -> bytes:
+        return private_key.sign(data, ec.ECDSA(hashes.SHA256()))
+
+    signer = c2pa.create_signer(_sign, c2pa.SigningAlg.ES256, cert_path.read_bytes())
     manifest = json.dumps({
         "claim_generator": "spif-bench/0.1",
         "assertions": [
@@ -228,9 +233,8 @@ def c2pa_build_and_sign(cert_path: Path, key_path: Path, tmpdir: Path) -> Path:
             }},
         ],
     })
-    signer = c2pa.Signer.from_info(signer_info)
-    with c2pa.Builder.from_json(manifest) as builder:
-        builder.sign_file(src, dst, signer)
+    builder = c2pa.Builder(manifest)
+    builder.sign_file(signer, str(src), str(dst))
     return dst
 
 
@@ -248,7 +252,7 @@ def _is_expected_c2pa_cert_rejection(error: Exception) -> bool:
     except ImportError:
         return False
 
-    if not isinstance(error, c2pa.C2paError):
+    if not isinstance(error, c2pa.Error):
         return False
 
     message = str(error).lower()
