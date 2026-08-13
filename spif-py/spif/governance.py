@@ -5,7 +5,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from .crypto import sign_document
 from .format import NODE_CONCEPT
+from .keystore import SPIFKeyStore
+from .reader import SPIFReader, SPIFSignatureError
 from .types import Node, Provenance, SPIFDocument
 
 
@@ -105,6 +108,17 @@ class GovernanceEvent:
         return event
 
 
+@dataclass(frozen=True)
+class TrustDecision:
+    """The verification outcome for one signed governance event."""
+
+    event_id: str
+    signer_id: str
+    event_type: str
+    valid: bool
+    reason: str
+
+
 def build_event_document(event: GovernanceEvent, *, nonce: str = "") -> SPIFDocument:
     """Build an unsigned SPIF document containing one governance event node."""
     if not isinstance(event, GovernanceEvent):
@@ -126,10 +140,147 @@ def event_from_document(doc: SPIFDocument) -> GovernanceEvent:
     return GovernanceEvent.from_node(doc.payload[0])
 
 
+def sign_event(
+    event: GovernanceEvent,
+    private_key: Any,
+    signer_id: str,
+    *,
+    nonce: str = "",
+) -> bytes:
+    """Sign one governance event with its actor's key.
+
+    The signer ID and required event role are placed in signed document data,
+    alongside the event type and parent IDs already represented by the event
+    node.  Verification can therefore bind all three claims to the same raw
+    signature without changing the SPIF wire format.
+    """
+    if not isinstance(signer_id, str) or not signer_id:
+        raise ValueError("signer_id must not be empty")
+
+    doc = build_event_document(event, nonce=nonce)
+    doc.payload[0].value["signer_id"] = signer_id
+    doc.signer_roles = {signer_id: EVENT_ROLE_BY_TYPE[event.event_type]}
+    return sign_document(doc, private_key, signer_id)
+
+
+def _trust_fields(doc: SPIFDocument) -> tuple[str, str, str]:
+    """Extract identifiers for a decision without trusting event validation."""
+    if len(doc.payload) != 1 or not isinstance(doc.payload[0].value, dict):
+        return "", "", ""
+    value = doc.payload[0].value
+    event_id = value.get("event_id", "")
+    signer_id = value.get("signer_id", "")
+    event_type = value.get("event_type", "")
+    return (
+        event_id if isinstance(event_id, str) else "",
+        signer_id if isinstance(signer_id, str) else "",
+        event_type if isinstance(event_type, str) else "",
+    )
+
+
+def _decision(
+    doc: SPIFDocument,
+    *,
+    valid: bool,
+    reason: str,
+) -> TrustDecision:
+    event_id, signer_id, event_type = _trust_fields(doc)
+    return TrustDecision(event_id, signer_id, event_type, valid, reason)
+
+
+def verify_event(
+    data: bytes,
+    keystore: SPIFKeyStore,
+    *,
+    expected_signer: str | None = None,
+    now_ms: int | None = None,
+) -> TrustDecision:
+    """Verify a signed governance event against a registered actor key.
+
+    Malformed SPIF bytes raise the reader's format exceptions. Expected trust
+    failures return an invalid :class:`TrustDecision`, preserving the decoded
+    event identifiers whenever they are available. ``now_ms`` is accepted for
+    callers that evaluate a chain against a policy timestamp; revocation is
+    intentionally checked against the keystore's current trust state.
+    """
+    del now_ms
+    doc = SPIFReader().decode(data)
+
+    if doc.signature is None or doc.signatures:
+        return _decision(doc, valid=False, reason="missing_signature")
+
+    try:
+        event = event_from_document(doc)
+    except ValueError:
+        return _decision(doc, valid=False, reason="invalid_event")
+
+    event_id, signer_id, event_type = _trust_fields(doc)
+    if not signer_id:
+        return TrustDecision(event_id, signer_id, event_type, False, "missing_signer_binding")
+    if doc.signature.signer != signer_id:
+        return TrustDecision(event_id, signer_id, event_type, False, "signer_mismatch")
+    if expected_signer is not None and signer_id != expected_signer:
+        return TrustDecision(event_id, signer_id, event_type, False, "expected_signer_mismatch")
+    if keystore.is_revoked(signer_id):
+        return TrustDecision(event_id, signer_id, event_type, False, "revoked_signer")
+    if not keystore.has_key(signer_id):
+        return TrustDecision(event_id, signer_id, event_type, False, "unknown_signer")
+
+    expected_role = EVENT_ROLE_BY_TYPE[event.event_type]
+    if doc.signer_roles.get(signer_id) != expected_role:
+        return TrustDecision(event_id, signer_id, event_type, False, "event_role_mismatch")
+
+    try:
+        keystore.check_roles(doc)
+    except SPIFSignatureError:
+        return TrustDecision(event_id, signer_id, event_type, False, "unauthorized_role")
+
+    try:
+        keystore.verify(data)
+    except SPIFSignatureError:
+        return TrustDecision(event_id, signer_id, event_type, False, "invalid_signature")
+
+    return TrustDecision(event_id, signer_id, event_type, True, "verified")
+
+
+def verify_chain(
+    events: list[bytes],
+    keystore: SPIFKeyStore,
+    *,
+    now_ms: int | None = None,
+) -> list[TrustDecision]:
+    """Verify event signatures and require declared parents to precede children."""
+    decisions: list[TrustDecision] = []
+    present_ids: set[str] = set()
+
+    for data in events:
+        decision = verify_event(data, keystore, now_ms=now_ms)
+        if decision.valid:
+            doc = SPIFReader().decode(data)
+            event = event_from_document(doc)
+            if any(parent_id not in present_ids for parent_id in event.parent_ids):
+                decision = TrustDecision(
+                    decision.event_id,
+                    decision.signer_id,
+                    decision.event_type,
+                    False,
+                    "missing_parent",
+                )
+            else:
+                present_ids.add(event.event_id)
+        decisions.append(decision)
+
+    return decisions
+
+
 __all__ = [
     "EVENT_TYPES",
     "EVENT_ROLE_BY_TYPE",
     "GovernanceEvent",
+    "TrustDecision",
     "build_event_document",
     "event_from_document",
+    "sign_event",
+    "verify_event",
+    "verify_chain",
 ]
