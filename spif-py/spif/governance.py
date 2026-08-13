@@ -156,6 +156,8 @@ def sign_event(
     """
     if not isinstance(signer_id, str) or not signer_id:
         raise ValueError("signer_id must not be empty")
+    if event.actor != signer_id:
+        raise ValueError("event.actor must match signer_id")
 
     doc = build_event_document(event, nonce=nonce)
     doc.payload[0].value["signer_id"] = signer_id
@@ -219,6 +221,8 @@ def verify_event(
         return TrustDecision(event_id, signer_id, event_type, False, "missing_signer_binding")
     if doc.signature.signer != signer_id:
         return TrustDecision(event_id, signer_id, event_type, False, "signer_mismatch")
+    if event.actor != signer_id:
+        return TrustDecision(event_id, signer_id, event_type, False, "actor_signer_mismatch")
     if expected_signer is not None and signer_id != expected_signer:
         return TrustDecision(event_id, signer_id, event_type, False, "expected_signer_mismatch")
     if keystore.is_revoked(signer_id):
@@ -229,6 +233,10 @@ def verify_event(
     expected_role = EVENT_ROLE_BY_TYPE[event.event_type]
     if doc.signer_roles.get(signer_id) != expected_role:
         return TrustDecision(event_id, signer_id, event_type, False, "event_role_mismatch")
+    if not keystore.has_role_authorization_list(expected_role):
+        return TrustDecision(event_id, signer_id, event_type, False, "role_authorization_missing")
+    if not keystore.is_authorized_for_role(expected_role, signer_id):
+        return TrustDecision(event_id, signer_id, event_type, False, "unauthorized_role")
 
     try:
         keystore.check_roles(doc)

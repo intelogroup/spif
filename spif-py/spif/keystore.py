@@ -197,6 +197,15 @@ class SPIFKeyStore:
         signers = self._load_roles().get(role)
         return signers is None or signer_id in signers
 
+    def has_role_authorization_list(self, role: str) -> bool:
+        """Return whether role has an explicitly configured authorization list.
+
+        This lets application profiles that require explicit grants distinguish
+        an unconfigured role from one whose configured list denies a signer,
+        while preserving this keystore's default opt-in role semantics.
+        """
+        return role in self._load_roles()
+
     def check_roles(self, doc: SPIFDocument) -> None:
         """
         Verify every role claim in doc.signer_roles against this store's policy.
