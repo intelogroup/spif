@@ -150,7 +150,7 @@ fn main() {
             let (incr_ok, incr_t, steps_seen) = bench_incremental(n, cycle_at);
 
             println!(
-                "N={n:>6} cycle@{pos_name:<6} batch: detected={batch_ok} time={batch_t:>10.2?} (reads all {n} steps first)  |  incremental: detected={incr_ok} time={incr_t:>10.2?} (aborted after {steps_seen}/{n} steps)"
+                "N={n:>6} cycle@{pos_name:<6} batch(decode+validate): detected={batch_ok} time={batch_t:>10.2?} (reads all {n} steps first)  |  incremental(dag-only): detected={incr_ok} time={incr_t:>10.2?} (aborted after {steps_seen}/{n} steps)"
             );
         }
     }

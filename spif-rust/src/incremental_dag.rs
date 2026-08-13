@@ -26,8 +26,6 @@ pub struct IncrementalDagChecker {
     dependents: HashMap<String, Vec<String>>,
     /// all step ids seen so far
     known: HashSet<String>,
-    /// deps declared by each step (kept for dangling-ref checks at input time)
-    deps_of: HashMap<String, Vec<String>>,
 }
 
 impl IncrementalDagChecker {
@@ -35,43 +33,78 @@ impl IncrementalDagChecker {
         Self::default()
     }
 
-    /// Add a step. Returns Err immediately if this step closes a cycle.
-    /// Deps that haven't arrived yet are allowed (forward references) and
-    /// wired up lazily; a truly dangling dep is only knowable at the end of
-    /// stream, so that check stays in the batch validator.
+    /// Add a step. Returns Err immediately if this step closes a cycle, and
+    /// leaves the checker's state exactly as it was before the call (the
+    /// edges from the rejected step are rolled back) so it stays usable for
+    /// subsequent inserts. Deps that haven't arrived yet are allowed
+    /// (forward references) and wired up lazily; a truly dangling dep is
+    /// only knowable at the end of stream, so that check stays in the batch
+    /// validator.
     pub fn add_step(&mut self, id: &str, deps: &[String]) -> Result<()> {
-        if !self.known.insert(id.to_string()) {
+        if self.known.contains(id) {
             return Err(anyhow!("Duplicate TraceStep id: '{id}'"));
         }
-        self.deps_of.insert(id.to_string(), deps.to_vec());
+
+        // de-dup deps so a step listing the same dep twice doesn't create
+        // two identical entries we'd need to distinguish on rollback
+        let mut unique_deps: Vec<&String> = Vec::new();
         for dep in deps {
+            if !unique_deps.iter().any(|d| **d == *dep) {
+                unique_deps.push(dep);
+            }
+        }
+        for dep in &unique_deps {
             self.dependents
-                .entry(dep.clone())
+                .entry((*dep).clone())
                 .or_default()
                 .push(id.to_string());
         }
 
-        // DFS forward from `id` through the dependents graph. If we reach
-        // `id` again, the edges we just added closed a cycle.
-        let mut stack: Vec<String> = self
+        // DFS forward from `id` through the dependents graph, tracking which
+        // direct child the search descended from so a cycle can be reported
+        // with the actual chain that closed it, not just "via itself".
+        let mut stack: Vec<(String, String)> = self
             .dependents
             .get(id)
             .cloned()
-            .unwrap_or_default();
+            .unwrap_or_default()
+            .into_iter()
+            .map(|child| (child.clone(), child))
+            .collect();
         let mut visited: HashSet<String> = HashSet::new();
-        while let Some(node) = stack.pop() {
+        let mut cycle_via: Option<String> = None;
+        while let Some((node, origin)) = stack.pop() {
             if node == id {
-                return Err(anyhow!(
-                    "Cycle detected in trace DAG: step '{id}' reaches itself via '{node}'"
-                ));
+                cycle_via = Some(origin);
+                break;
             }
             if !visited.insert(node.clone()) {
                 continue;
             }
             if let Some(children) = self.dependents.get(&node) {
-                stack.extend(children.iter().cloned());
+                for child in children {
+                    stack.push((child.clone(), origin.clone()));
+                }
             }
         }
+
+        if let Some(via) = cycle_via {
+            for dep in &unique_deps {
+                if let Some(v) = self.dependents.get_mut(*dep) {
+                    if let Some(pos) = v.iter().rposition(|x| x == id) {
+                        v.remove(pos);
+                    }
+                    if v.is_empty() {
+                        self.dependents.remove(*dep);
+                    }
+                }
+            }
+            return Err(anyhow!(
+                "Cycle detected in trace DAG: step '{id}' transitively depends on itself through dependency chain starting at '{via}'"
+            ));
+        }
+
+        self.known.insert(id.to_string());
         Ok(())
     }
 }
@@ -197,11 +230,31 @@ mod tests {
     }
 
     #[test]
-    fn cycle_error_names_involved_step() {
+    fn cycle_error_names_closing_chain() {
         let mut c = IncrementalDagChecker::new();
         c.add_step("x", &["y".to_string()]).unwrap();
         let err = c.add_step("y", &["x".to_string()]).unwrap_err();
+        // reports the id and the dependency chain that closed the loop, not
+        // just the id talking to itself
         assert!(err.to_string().contains('y'), "{err}");
+        assert!(err.to_string().contains("starting at 'x'"), "{err}");
+    }
+
+    #[test]
+    fn checker_stays_usable_after_rejected_cycle() {
+        // a rejected insert must roll back its edges so the checker doesn't
+        // permanently wedge on a stale cycle for unrelated later inserts
+        let mut c = IncrementalDagChecker::new();
+        c.add_step("a", &["b".to_string()]).unwrap();
+        c.add_step("b", &["a".to_string()]).unwrap_err();
+
+        // "b" was never actually committed (its insert failed), so it can be
+        // retried cleanly with a different, acyclic dependency set
+        c.add_step("b", &[]).unwrap();
+
+        // and completely unrelated inserts aren't affected by the failed one
+        c.add_step("z", &[]).unwrap();
+        c.add_step("z2", &["z".to_string()]).unwrap();
     }
 
     // ---------------------------------------------------------------
@@ -213,20 +266,18 @@ mod tests {
     /// dependents list on every insert — here it's cheap because only the
     /// hub has any dependents, and each new leaf's own dependents list is
     /// empty, so DFS from a fresh leaf is O(1) per insert.
+    /// Timing thresholds live in `examples/incremental_cycle_bench.rs`
+    /// (release-mode only) — a debug-build `cargo test` on a shared CI
+    /// runner is not a reliable clock, so this test only proves the loop
+    /// terminates, not a latency bound.
     #[test]
-    fn star_fan_out_from_hub_stays_fast() {
+    fn star_fan_out_from_hub_completes() {
         let mut c = IncrementalDagChecker::new();
         c.add_step("hub", &[]).unwrap();
-        let start = std::time::Instant::now();
         for i in 0..20_000 {
             c.add_step(&format!("leaf{i}"), &["hub".to_string()])
                 .unwrap();
         }
-        let elapsed = start.elapsed();
-        assert!(
-            elapsed.as_millis() < 2_000,
-            "star fan-out took too long: {elapsed:?}"
-        );
     }
 
     /// Adversarial dense DAG: node i depends on ALL previous nodes. This is
@@ -235,20 +286,14 @@ mod tests {
     /// polynomial, no infinite loop / no exponential blowup) rather than
     /// checking a specific complexity class.
     #[test]
-    fn dense_all_previous_deps_terminates_reasonably() {
+    fn dense_all_previous_deps_terminates() {
         let mut c = IncrementalDagChecker::new();
         let n = 1_500;
         c.add_step("s0", &[]).unwrap();
-        let start = std::time::Instant::now();
         for i in 1..n {
             let deps: Vec<String> = (0..i).map(|j| format!("s{j}")).collect();
             c.add_step(&format!("s{i}"), &deps).unwrap();
         }
-        let elapsed = start.elapsed();
-        assert!(
-            elapsed.as_secs() < 10,
-            "dense DAG insert blew up: {elapsed:?}"
-        );
     }
 
     /// Wide adversarial cycle: hub has 10k forward-ref dependents, and the
