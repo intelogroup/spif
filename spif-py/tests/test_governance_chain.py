@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 import pytest
+import tracemalloc
 
 from spif import (
     EVENT_ROLE_BY_TYPE,
@@ -268,6 +269,20 @@ def test_verify_event_requires_configured_and_granted_role_authorization(tmp_pat
     assert (denied.valid, denied.reason) == (False, "unauthorized_role")
 
 
+def test_verify_event_rejects_tampered_artifact_claiming_revoked_signer(tmp_path):
+    """A revoked-signer reason must require a valid signature for that key."""
+    keystore, keys = _registered_keystore(tmp_path)
+    signer_id = ACTORS["Review"]
+    signed = governance.sign_event(_event("Review"), keys["Review"], signer_id)
+    keystore.revoke(signer_id, revoked_at_ms=1_700_000_000_001)
+
+    forged = _tamper_signed_field(signed, "actor", "forged-reviewer")
+
+    result = governance.verify_event(forged, keystore)
+
+    assert (result.valid, result.reason) == (False, "invalid_signature")
+
+
 def test_verify_chain_rejects_events_with_parents_not_already_present(tmp_path):
     """Fails if a chain accepts a governance event whose parent was not supplied first."""
     keystore, keys = _registered_keystore(tmp_path)
@@ -310,6 +325,74 @@ def test_verify_chain_rejects_duplicate_event_ids_without_replacing_parent(tmp_p
         (False, "duplicate_event_id"),
         (True, "verified"),
     ]
+
+
+def test_verify_chain_rejects_duplicate_parent_ids(tmp_path):
+    """A parent reference list must not contain the same event twice."""
+    keystore, keys = _registered_keystore(tmp_path)
+    decision = _event("Decision")
+    evidence = _event("Evidence", parent_ids=[decision.event_id, decision.event_id])
+
+    results = governance.verify_chain(
+        _signed_events([decision, evidence], keys), keystore
+    )
+
+    assert [(result.valid, result.reason) for result in results] == [
+        (True, "verified"),
+        (False, "duplicate_parent"),
+    ]
+
+
+def test_verify_chain_rejects_disconnected_and_reverse_order_workflows(tmp_path):
+    """Six signed stages are not a workflow unless their topology is connected and ordered."""
+    keystore, keys = _registered_keystore(tmp_path)
+    disconnected = [
+        _event(event_type) for event_type in (
+            "Decision", "Evidence", "PolicyEvaluation", "Review", "Action", "Outcome"
+        )
+    ]
+    assert all(
+        result.reason == ("verified" if event.event_type == "Decision" else "invalid_root")
+        for event, result in zip(
+            disconnected,
+            governance.verify_chain(_signed_events(disconnected, keys), keystore),
+        )
+    )
+
+    reverse = []
+    for index, event_type in enumerate(
+        ("Outcome", "Action", "Review", "PolicyEvaluation", "Evidence", "Decision")
+    ):
+        reverse.append(
+            _event(
+                event_type,
+                parent_ids=[] if index == 0 else [reverse[index - 1].event_id],
+            )
+        )
+    results = governance.verify_chain(_signed_events(reverse, keys), keystore)
+    assert results[0].reason == "invalid_root"
+    assert all(not result.valid for result in results)
+
+
+def test_verify_chain_stress_fanout_preserves_parent_integrity(tmp_path):
+    """A moderate fan-out remains bounded and verifies every signed child."""
+    keystore, keys = _registered_keystore(tmp_path)
+    root = _event("Decision")
+    children = []
+    for index in range(128):
+        child = _event("Outcome", parent_ids=[root.event_id])
+        child.event_id = f"outcome-{index:03d}"
+        children.append(child)
+    data = _signed_events([root] + children, keys)
+
+    tracemalloc.start()
+    results = governance.verify_chain(data, keystore)
+    _, peak = tracemalloc.get_traced_memory()
+    tracemalloc.stop()
+
+    assert len(results) == 129
+    assert all(result.valid for result in results)
+    assert peak < 32 * 1024 * 1024
 
 
 def test_verify_chain_rejects_decision_with_parents_as_invalid_root(tmp_path):
