@@ -387,27 +387,52 @@ def bench_streaming_throughput():
 # 7. AI pipeline simulation
 # ---------------------------------------------------------------------------
 
+FIXTURES_DIR = Path(__file__).resolve().parents[1] / "spif-py" / "spif" / "fixtures" / "cross_lang"
+
+
+def _load_fixture_docs(reader: "SPIFReader") -> list:
+    """Real previously-encoded .spif files, as a proxy for real-world payload mix.
+
+    Falls back to the synthetic factories below if the fixtures dir is
+    missing or a fixture fails to decode (e.g. sample_corrupted.spif).
+    """
+    if not FIXTURES_DIR.is_dir():
+        return []
+    docs = []
+    for path in sorted(FIXTURES_DIR.glob("*.spif")):
+        try:
+            docs.append(reader.decode(path.read_bytes()))
+        except Exception:
+            continue
+    return docs
+
+
 def bench_pipeline_simulation():
     print("\n## 7. AI Pipeline Simulation (100 docs, realistic distribution)")
-    print("     Mix: 40% QA, 25% long answer, 15% reasoning, 10% embedding, 10% agent")
 
-    factories = (
-        [doc_qa] * 40 +
-        [doc_long_answer] * 25 +
-        [doc_reasoning_trace] * 15 +
-        [doc_with_embedding] * 10 +
-        [doc_agent_pipeline] * 10
-    )
+    reader = SPIFReader()
+    fixture_docs = _load_fixture_docs(reader)
 
-    import random
-    rng = random.Random(42)
-    rng.shuffle(factories)
+    if fixture_docs:
+        print(f"     Source: {len(fixture_docs)} real fixtures from {FIXTURES_DIR.relative_to(FIXTURES_DIR.parents[3])}, repeated/shuffled to 100")
+        import random
+        rng = random.Random(42)
+        docs = [rng.choice(fixture_docs) for _ in range(100)]
+    else:
+        print("     Mix: 40% QA, 25% long answer, 15% reasoning, 10% embedding, 10% agent")
+        factories = (
+            [doc_qa] * 40 +
+            [doc_long_answer] * 25 +
+            [doc_reasoning_trace] * 15 +
+            [doc_with_embedding] * 10 +
+            [doc_agent_pipeline] * 10
+        )
+        import random
+        rng = random.Random(42)
+        rng.shuffle(factories)
+        docs = [f() for f in factories]
 
     writer = SPIFWriter()
-    reader = SPIFReader()
-
-    # Pre-build all docs
-    docs = [f() for f in factories]
     total_bytes = sum(len(writer.encode(d)) for d in docs)
 
     # Time the whole pipeline: encode all 100, then decode all 100

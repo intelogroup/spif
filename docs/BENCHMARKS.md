@@ -19,20 +19,26 @@ regenerate it locally rather than committing result files.
 
 ## Benchmark Results (μs per document)
 
-Measured on Apple M2 with Python 3.11.15 on 2026-08-10, using `REPS = 500`
-iterations. These serialization figures are separate from the signed
-provenance comparison below.
+Measured on Apple M2 with Python 3.9.6 on 2026-08-13, using `REPS = 500`
+iterations (`benchmarks/bench_speed.py`). These serialization figures are
+separate from the signed provenance comparison below.
+
+Decode is higher than the prior (2026-08-10) rerun across every level —
+decode now pays for the DAG cycle-detection check added on the decode path
+in #60 (`spif-rust`'s `IncrementalDagChecker` equivalent validation also
+applies to the Python reader). Encode is roughly flat, as expected since
+encode doesn't walk the trace DAG.
 
 | Document Type | Operation | SPIF (SIF) | JSON | CBOR | MessagePack |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **minimal** | encode | **7.6 μs** | 2.1 μs | 3.3 μs | 1.0 μs |
-| | decode | **7.6 μs** | 1.6 μs | 1.6 μs | 1.1 μs |
-| **medium** | encode | **20.0 μs** | 7.6 μs | 12.4 μs | 3.3 μs |
-| | decode | **22.8 μs** | 5.7 μs | 7.3 μs | 3.2 μs |
-| **trace** | encode | **40.0 μs** | 28.0 μs | 19.3 μs | 5.4 μs |
-| | decode | **38.9 μs** | 8.6 μs | 12.1 μs | 5.8 μs |
-| **full** | encode | **63.9 μs** | 37.1 μs | 32.8 μs | 12.5 μs |
-| | decode | **79.9 μs** | 22.0 μs | 29.6 μs | 13.3 μs |
+| **minimal** | encode | **7.2 μs** | 2.3 μs | 2.9 μs | 1.2 μs |
+| | decode | **9.0 μs** | 1.7 μs | 1.5 μs | 0.6 μs |
+| **medium** | encode | **18.1 μs** | 8.3 μs | 8.3 μs | 3.7 μs |
+| | decode | **25.0 μs** | 5.0 μs | 5.9 μs | 2.7 μs |
+| **trace** | encode | **32.0 μs** | 14.1 μs | 14.0 μs | 5.7 μs |
+| | decode | **44.9 μs** | 7.9 μs | 11.1 μs | 5.1 μs |
+| **full** | encode | **65.1 μs** | 41.6 μs | 33.4 μs | 13.7 μs |
+| | decode | **90.7 μs** | 20.3 μs | 28.3 μs | 11.6 μs |
 
 ---
 
