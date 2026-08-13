@@ -158,6 +158,24 @@ doc_b = adapter_b.complete("Given the risks, recommend an action.")
 
 ---
 
+## Clinical Governance Application Profile
+
+The [synthetic clinical-governance walkthrough](examples/clinical_governance_chain.py)
+shows a signed, cross-system evidence chain for a recommendation, evidence,
+policy evaluation, clinical review, action, and outcome. Run it with:
+
+```bash
+PYTHONPATH=. python examples/clinical_governance_chain.py
+```
+
+This is a prototype-scoped synthetic example, not a compliance certification.
+Its RMF fields are application-profile payload fields, not core SPIF wire
+fields, and its trust registry is a local prototype. Production credential
+issuance, EHR integration, retention, and compliance determinations remain
+external responsibilities.
+
+---
+
 ## PROV-JSON Export
 
 Convert a SPIF document to [W3C PROV-JSON](https://www.w3.org/Submission/2013/SUBM-prov-json-20130424/) for tools that speak standard provenance interchange formats instead of SPIF's native binary.
