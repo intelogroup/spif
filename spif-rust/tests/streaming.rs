@@ -8,6 +8,38 @@ use spif_rust::{
     SPIFReader,
 };
 
+fn minimal_doc_with_trace(steps: Vec<TraceStep>) -> SPIFDocument {
+    SPIFDocument {
+        payload: vec![Node {
+            id: "n1".into(),
+            node_type: "fact".into(),
+            value: Value::Text("v".into()),
+            confidence: Distribution::certain("logical"),
+            refs: vec![],
+        }],
+        provenance: None,
+        semantic: None,
+        trace: steps,
+        trace_method: "reasoning".into(),
+        alternatives: vec![],
+        delta: None,
+        signature: None,
+        signatures: vec![],
+        task_info: None,
+    }
+}
+
+fn trace_step(id: &str, deps: &[&str]) -> TraceStep {
+    TraceStep {
+        id: id.into(),
+        step_type: "inference".into(),
+        content: Value::Text("x".into()),
+        confidence: Distribution::certain("logical"),
+        deps: deps.iter().map(|s| s.to_string()).collect(),
+        alternatives: vec![],
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -226,6 +258,7 @@ fn test_incremental_feed_same_as_bulk() {
             StreamEvent::Verified { .. } => "verified",
             StreamEvent::StepAccepted { .. } => "step_accepted",
             StreamEvent::Error(_) => "error",
+            _ => "other",
         })
         .collect();
 
@@ -242,6 +275,7 @@ fn test_incremental_feed_same_as_bulk() {
             StreamEvent::Verified { .. } => "verified",
             StreamEvent::StepAccepted { .. } => "step_accepted",
             StreamEvent::Error(_) => "error",
+            _ => "other",
         })
         .collect();
 
@@ -408,4 +442,86 @@ fn test_many_tokens_fidelity() {
     } else {
         panic!("expected text value");
     }
+}
+
+// ---------------------------------------------------------------------------
+// PARTIAL_STEP (incremental DAG check)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_partial_step_acyclic_emits_step_accepted() {
+    let mut writer = SPIFStreamWriter::new();
+    let mut reader = SPIFStreamReader::new();
+
+    let mut events = Vec::new();
+    events.extend(reader.feed(&writer.open(None).unwrap()));
+    events.extend(reader.feed(&writer.partial_step("s0", &[]).unwrap()));
+    events.extend(reader.feed(
+        &writer
+            .partial_step("s1", &["s0".to_string()])
+            .unwrap(),
+    ));
+
+    let accepted: Vec<&str> = events
+        .iter()
+        .filter_map(|e| match e {
+            StreamEvent::StepAccepted { id } => Some(id.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(accepted, vec!["s0", "s1"]);
+    assert!(!reader.is_done());
+}
+
+#[test]
+fn test_partial_step_cycle_emits_error_and_stops_stream() {
+    let mut writer = SPIFStreamWriter::new();
+    let mut reader = SPIFStreamReader::new();
+
+    let mut events = Vec::new();
+    events.extend(reader.feed(&writer.open(None).unwrap()));
+    events.extend(reader.feed(
+        &writer
+            .partial_step("a", &["b".to_string()]) // forward ref, allowed
+            .unwrap(),
+    ));
+    events.extend(reader.feed(
+        &writer
+            .partial_step("b", &["a".to_string()]) // closes the cycle
+            .unwrap(),
+    ));
+
+    let has_error = events
+        .iter()
+        .any(|e| matches!(e, StreamEvent::Error(msg) if msg.contains("Cycle detected")));
+    assert!(has_error, "{events:?}");
+    assert!(reader.is_done());
+
+    // stream is done; further feeds are inert, not a panic or a second event
+    let more = reader.feed(&writer.partial_step("c", &[]).unwrap());
+    assert!(more.is_empty());
+}
+
+#[test]
+fn test_partial_step_then_commit_emits_verified() {
+    let mut writer = SPIFStreamWriter::new();
+    let mut reader = SPIFStreamReader::new();
+
+    let mut events = Vec::new();
+    events.extend(reader.feed(&writer.open(None).unwrap()));
+    events.extend(reader.feed(&writer.partial_step("s0", &[]).unwrap()));
+    events.extend(reader.feed(
+        &writer
+            .partial_step("s1", &["s0".to_string()])
+            .unwrap(),
+    ));
+
+    let doc = minimal_doc_with_trace(vec![trace_step("s0", &[]), trace_step("s1", &["s0"])]);
+    events.extend(reader.feed(&writer.commit(&doc).unwrap()));
+
+    let verified = events
+        .iter()
+        .any(|e| matches!(e, StreamEvent::Verified { .. }));
+    assert!(verified, "{events:?}");
+    assert!(reader.is_done());
 }
