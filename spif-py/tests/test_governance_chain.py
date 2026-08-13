@@ -437,6 +437,24 @@ def test_verify_chain_rejects_second_decision_root(tmp_path):
     ]
 
 
+def test_verify_chain_rejects_duplicate_parent_ids(tmp_path):
+    """Fails if a child repeats one verified parent identifier."""
+    keystore, keys = _registered_keystore(tmp_path)
+    decision = _event("Decision")
+    evidence = _event(
+        "Evidence", parent_ids=[decision.event_id, decision.event_id]
+    )
+
+    results = governance.verify_chain(
+        _signed_events([decision, evidence], keys), keystore
+    )
+
+    assert [(result.valid, result.reason) for result in results] == [
+        (True, "verified"),
+        (False, "duplicate_parent"),
+    ]
+
+
 def test_verify_chain_requires_parent_event_type_to_precede_child(tmp_path):
     """Fails if an already verified later-stage event is a parent."""
     keystore, keys = _registered_keystore(tmp_path)
