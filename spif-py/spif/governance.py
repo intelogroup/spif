@@ -57,7 +57,7 @@ class GovernanceEvent:
         ):
             if not isinstance(value, str) or not value:
                 raise ValueError(f"{name} must not be empty")
-        if not isinstance(self.timestamp_ms, int) or self.timestamp_ms < 0:
+        if type(self.timestamp_ms) is not int or self.timestamp_ms < 0:
             raise ValueError("timestamp_ms must be a non-negative integer")
         if not isinstance(self.payload, dict):
             raise ValueError("payload must be a dictionary")
@@ -266,7 +266,15 @@ def verify_chain(
         if decision.valid:
             doc = SPIFReader().decode(data)
             event = event_from_document(doc)
-            if any(parent_id not in present_ids for parent_id in event.parent_ids):
+            if event.event_id in present_ids:
+                decision = TrustDecision(
+                    decision.event_id,
+                    decision.signer_id,
+                    decision.event_type,
+                    False,
+                    "duplicate_event_id",
+                )
+            elif any(parent_id not in present_ids for parent_id in event.parent_ids):
                 decision = TrustDecision(
                     decision.event_id,
                     decision.signer_id,

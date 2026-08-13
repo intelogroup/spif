@@ -53,6 +53,8 @@ def test_unsupported_event_type_fails():
 @pytest.mark.parametrize("kwargs", [
     {"event_id": ""},
     {"timestamp_ms": -1},
+    {"timestamp_ms": True},
+    {"timestamp_ms": False},
     {"actor": ""},
     {"parent_ids": "not-a-list"},
 ])

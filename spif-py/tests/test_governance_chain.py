@@ -126,7 +126,7 @@ def test_sign_event_and_verify_event_bind_actor_to_signer(tmp_path):
     keystore, keys = _registered_keystore(tmp_path)
     mismatched_event = _event("Review", actor=ACTORS["Decision"])
 
-    with pytest.raises(ValueError, match="event.actor must match signer_id"):
+    with pytest.raises(ValueError, match=r"event\.actor must match signer_id"):
         governance.sign_event(mismatched_event, keys["Review"], ACTORS["Review"])
 
     decoded_mismatch = build_event_document(mismatched_event)
@@ -176,3 +176,21 @@ def test_verify_chain_rejects_events_with_parents_not_already_present(tmp_path):
 
     assert [result.valid for result in results] == [True, False]
     assert results[1].reason == "missing_parent"
+
+
+def test_verify_chain_rejects_duplicate_event_ids(tmp_path):
+    """Fails if two valid signed events reuse one event identifier."""
+    keystore, keys = _registered_keystore(tmp_path)
+    first = _event("Decision")
+    duplicate = _event("Decision")
+
+    results = governance.verify_chain(
+        [
+            governance.sign_event(first, keys["Decision"], ACTORS["Decision"]),
+            governance.sign_event(duplicate, keys["Decision"], ACTORS["Decision"]),
+        ],
+        keystore,
+    )
+
+    assert [result.valid for result in results] == [True, False]
+    assert results[1].reason == "duplicate_event_id"
