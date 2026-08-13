@@ -10,15 +10,22 @@ import tempfile
 
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 
-from spif import EVENT_ROLE_BY_TYPE, GovernanceEvent, SPIFKeyStore
+from spif import (
+    EVENT_ROLE_BY_TYPE,
+    EVENT_TYPES,
+    GovernanceEvent,
+    SPIFKeyStore,
+    TrustDecision,
+    sign_event,
+    verify_chain,
+)
 from spif.crypto import generate_key
-from spif.governance import TrustDecision, sign_event, verify_chain
 
 
 CASE_ID = "SYNTH-CASE-2026-042"
 
 ACTORS = {
-    "Decision": "qventus-sim:recommendation-service",
+    "Decision": "recommendation-platform-sim:recommendation-service",
     "Evidence": "hospital-ehr-sim:evidence-service",
     "PolicyEvaluation": "policy-engine-sim:policy-evaluator",
     "Review": "hospital-ehr-sim:clinical-reviewer",
@@ -54,7 +61,7 @@ def build_synthetic_chain() -> tuple[list[bytes], SPIFKeyStore]:
             "recommend-bed-placement",
             1_700_000_000_000,
             {
-                "system": "qventus-sim",
+                "system": "recommendation-platform-sim",
                 "case_id": CASE_ID,
                 "recommendation": "prioritize-inpatient-bed-placement",
             },
@@ -150,6 +157,18 @@ def summarize_chain(results: list[TrustDecision]) -> dict[str, object]:
         for result in results
         if not result.valid
     ]
+    valid_results_by_type = {
+        event_type: [
+            result
+            for result in results
+            if result.valid and result.event_type == event_type
+        ]
+        for event_type in EVENT_TYPES
+    }
+    trust_valid = bool(results) and not failures
+    complete = all(
+        len(valid_results_by_type[event_type]) == 1 for event_type in EVENT_TYPES
+    )
     decision = by_type.get("Decision")
     evidence = by_type.get("Evidence")
     policy = by_type.get("PolicyEvaluation")
@@ -157,7 +176,9 @@ def summarize_chain(results: list[TrustDecision]) -> dict[str, object]:
     action = by_type.get("Action")
     outcome = by_type.get("Outcome")
     return {
-        "valid": bool(results) and not failures,
+        "valid": trust_valid and complete,
+        "trust_valid": trust_valid,
+        "complete": complete,
         "recommendation": decision.event_id if decision else None,
         "evidence": evidence.event_id if evidence else None,
         "policy": policy.event_id if policy else None,

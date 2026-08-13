@@ -5,7 +5,18 @@ from __future__ import annotations
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 import pytest
 
-from spif import EVENT_ROLE_BY_TYPE, GovernanceEvent, SPIFKeyStore, SPIFReader, SPIFWriter
+from spif import (
+    EVENT_ROLE_BY_TYPE,
+    GovernanceEvent,
+    Provenance,
+    SPIFKeyStore,
+    SPIFReader,
+    SPIFWriter,
+    TrustDecision,
+    sign_event,
+    verify_chain,
+    verify_event,
+)
 from spif.crypto import generate_key, sign_document
 from spif.governance import build_event_document
 import spif.governance as governance
@@ -60,10 +71,23 @@ def _tamper_signature(data: bytes) -> bytes:
     return SPIFWriter().encode(doc)
 
 
-def _tamper_event_content(data: bytes) -> bytes:
+def _tamper_signed_field(data: bytes, field: str, value: object) -> bytes:
     doc = SPIFReader().decode(data)
-    doc.payload[0].value["payload"] = {"status": "tampered"}
+    doc.payload[0].value[field] = value
     return SPIFWriter().encode(doc)
+
+
+def _signed_document_with_provenance(
+    event: GovernanceEvent,
+    private_key,
+    signer_id: str,
+    provenance,
+) -> bytes:
+    doc = build_event_document(event)
+    doc.provenance = provenance
+    doc.payload[0].value["signer_id"] = signer_id
+    doc.signer_roles = {signer_id: EVENT_ROLE_BY_TYPE[event.event_type]}
+    return sign_document(doc, private_key, signer_id)
 
 
 def test_each_actor_signed_event_verifies_and_preserves_its_signer(tmp_path):
@@ -78,6 +102,19 @@ def test_each_actor_signed_event_verifies_and_preserves_its_signer(tmp_path):
         assert decoded.signature.signer == signer_id
         assert decoded.payload[0].value["signer_id"] == signer_id
         assert governance.verify_event(signed, keystore).valid is True
+
+
+def test_governance_verification_is_available_from_the_top_level_api(tmp_path):
+    """Fails if documented governance verification cannot be used via ``spif``."""
+    keystore, keys = _registered_keystore(tmp_path)
+    signed = sign_event(_event("Decision"), keys["Decision"], ACTORS["Decision"])
+
+    event_result = verify_event(signed, keystore)
+    chain_result = verify_chain([signed], keystore)
+
+    assert isinstance(event_result, TrustDecision)
+    assert (event_result.valid, event_result.reason) == (True, "verified")
+    assert chain_result == [event_result]
 
 
 def test_verify_event_reports_unknown_and_revoked_signers(tmp_path):
@@ -110,8 +147,18 @@ def test_verify_event_rejects_expected_signer_tampering_and_role_mismatches(tmp_
         signed, keystore, expected_signer="someone-else"
     ).valid is False
     assert governance.verify_event(_tamper_signature(signed), keystore).valid is False
-    content_tamper = governance.verify_event(_tamper_event_content(signed), keystore)
-    assert (content_tamper.valid, content_tamper.reason) == (False, "invalid_signature")
+    for field, value in (
+        ("payload", {"status": "tampered"}),
+        ("actor", "different-reviewer"),
+        ("event_type", "Decision"),
+    ):
+        result = governance.verify_event(_tamper_signed_field(signed, field, value), keystore)
+        assert (result.valid, result.reason) == (False, "invalid_signature")
+
+    role_tamper = SPIFReader().decode(signed)
+    role_tamper.signer_roles[ACTORS["Review"]] = EVENT_ROLE_BY_TYPE["Decision"]
+    role_result = governance.verify_event(SPIFWriter().encode(role_tamper), keystore)
+    assert (role_result.valid, role_result.reason) == (False, "invalid_signature")
 
     mismatched = build_event_document(review)
     mismatched.payload[0].value["signer_id"] = ACTORS["Review"]
@@ -119,6 +166,47 @@ def test_verify_event_rejects_expected_signer_tampering_and_role_mismatches(tmp_
     wrong_role = sign_document(mismatched, keys["Review"], ACTORS["Review"])
     role_result = governance.verify_event(wrong_role, keystore)
     assert (role_result.valid, role_result.reason) == (False, "event_role_mismatch")
+
+
+def test_verify_event_requires_signed_provenance_to_match_the_event(tmp_path):
+    """Fails if profile provenance can be absent or disagree with signed event identity."""
+    keystore, keys = _registered_keystore(tmp_path)
+    event = _event("Review")
+    signer_id = ACTORS["Review"]
+
+    missing = _signed_document_with_provenance(event, keys["Review"], signer_id, None)
+    actor_mismatch = _signed_document_with_provenance(
+        event,
+        keys["Review"],
+        signer_id,
+        Provenance(
+            source_model="different-reviewer",
+            timestamp_ms=event.timestamp_ms,
+        ),
+    )
+    timestamp_mismatch = _signed_document_with_provenance(
+        event,
+        keys["Review"],
+        signer_id,
+        Provenance(
+            source_model=event.actor,
+            timestamp_ms=event.timestamp_ms + 1,
+        ),
+    )
+
+    missing_result = governance.verify_event(missing, keystore)
+    actor_result = governance.verify_event(actor_mismatch, keystore)
+    timestamp_result = governance.verify_event(timestamp_mismatch, keystore)
+
+    assert (missing_result.valid, missing_result.reason) == (False, "missing_provenance")
+    assert (actor_result.valid, actor_result.reason) == (
+        False,
+        "provenance_actor_mismatch",
+    )
+    assert (timestamp_result.valid, timestamp_result.reason) == (
+        False,
+        "provenance_timestamp_mismatch",
+    )
 
 
 def test_sign_event_and_verify_event_bind_actor_to_signer(tmp_path):
@@ -176,3 +264,29 @@ def test_verify_chain_rejects_events_with_parents_not_already_present(tmp_path):
 
     assert [result.valid for result in results] == [True, False]
     assert results[1].reason == "missing_parent"
+
+
+def test_verify_chain_rejects_duplicate_event_ids_without_replacing_parent(tmp_path):
+    """Fails if a later same-ID artifact can substitute for a verified parent."""
+    keystore, keys = _registered_keystore(tmp_path)
+    decision = _event("Decision")
+    substituted_parent = _event("Evidence")
+    substituted_parent.event_id = decision.event_id
+    action = _event("Action", parent_ids=[decision.event_id])
+
+    results = governance.verify_chain(
+        [
+            governance.sign_event(decision, keys["Decision"], ACTORS["Decision"]),
+            governance.sign_event(
+                substituted_parent, keys["Evidence"], ACTORS["Evidence"]
+            ),
+            governance.sign_event(action, keys["Action"], ACTORS["Action"]),
+        ],
+        keystore,
+    )
+
+    assert [(result.valid, result.reason) for result in results] == [
+        (True, "verified"),
+        (False, "duplicate_event_id"),
+        (True, "verified"),
+    ]

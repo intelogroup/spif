@@ -47,8 +47,12 @@ from .governance import (
     EVENT_TYPES,
     EVENT_ROLE_BY_TYPE,
     GovernanceEvent,
+    TrustDecision,
     build_event_document,
     event_from_document,
+    sign_event,
+    verify_event,
+    verify_chain,
 )
 
 __all__ = [
@@ -71,6 +75,6 @@ __all__ = [
     "derive_key_from_mnemonic", "load_pem_private_key",
     "generate_key", "export_pem_private_key", "export_pem_public_key",
     "DeployerOutput", "build_deployer_output",
-    "EVENT_TYPES", "EVENT_ROLE_BY_TYPE", "GovernanceEvent",
-    "build_event_document", "event_from_document",
+    "EVENT_TYPES", "EVENT_ROLE_BY_TYPE", "GovernanceEvent", "TrustDecision",
+    "build_event_document", "event_from_document", "sign_event", "verify_event", "verify_chain",
 ]
