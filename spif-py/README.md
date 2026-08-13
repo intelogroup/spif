@@ -158,6 +158,22 @@ doc_b = adapter_b.complete("Given the risks, recommend an action.")
 
 ---
 
+## PROV-JSON Export
+
+Convert a SPIF document to [W3C PROV-JSON](https://www.w3.org/Submission/2013/SUBM-prov-json-20130424/) for tools that speak standard provenance interchange formats instead of SPIF's native binary.
+
+```python
+import json
+from spif.exporters.prov import to_prov
+
+prov = to_prov(doc)
+json.dumps(prov)  # ready for any PROV-JSON consumer
+```
+
+This is a **lossy** export — SPIF-native features with no PROV equivalent are dropped or degraded rather than silently discarded. What's preserved: the provenance chain (who/what/when), trace step ordering, node values and confidence means, and signer identity (as a `prov:Agent`). What's lost: `Distribution.shape`/`semantics` typing (stored as plain attributes), ed25519 signature bytes (signer identity survives, the bytes don't), `CHUNK_ALTS` alternatives, `CHUNK_SEMANTIC` embeddings, and trace-edge weights/types. The export itself lists every loss under an inline `_sif_export_losses` key, so a downstream consumer can see exactly what didn't make the trip.
+
+---
+
 ## Wire Format
 
 SPIF is a chunked binary container (similar structure to PNG):

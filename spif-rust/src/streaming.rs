@@ -32,6 +32,7 @@
 //! }
 //! ```
 
+use crate::incremental_dag::IncrementalDagChecker;
 use crate::reader::SPIFReader;
 use crate::types::*;
 use crate::writer::SPIFWriter;
@@ -42,7 +43,20 @@ use sha2::{Digest, Sha256};
 
 pub const CHUNK_PARTIAL_TEXT: u8 = 0x10;
 pub const CHUNK_STREAM_META: u8 = 0x11;
+/// Announces a TraceStep's id + deps as soon as it's known, ahead of the
+/// full PAYLOAD chunk, so the reader can cycle-check incrementally.
+pub const CHUNK_PARTIAL_STEP: u8 = 0x12;
 pub const FLAG_STREAMING: u8 = 0b10000000;
+
+/// Caps on untrusted PARTIAL_STEP input. The incremental checker is
+/// correct but not free on adversarial input — a step with a huge dep
+/// list, or a stream with unbounded step count, still costs real CPU/RSS
+/// per insert (see the dense-DAG benchmark in
+/// examples/incremental_cycle_bench.rs, which is quadratic by construction
+/// once fan-in gets large). These bounds turn "attacker sends a pathological
+/// stream" into an immediate rejection instead of unbounded resource use.
+pub const MAX_STREAM_STEPS: usize = 1_000_000;
+pub const MAX_DEPS_PER_STEP: usize = 10_000;
 
 // ---------------------------------------------------------------------------
 // Events
@@ -50,6 +64,7 @@ pub const FLAG_STREAMING: u8 = 0b10000000;
 
 /// An event emitted by [`SPIFStreamReader`] as bytes arrive.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub enum StreamEvent {
     /// Magic bytes and header were valid; the stream is a SPIF document.
     Opened,
@@ -59,6 +74,8 @@ pub enum StreamEvent {
         text: String,
         seq: u32,
     },
+    /// A TraceStep's id + deps arrived and passed the incremental cycle check.
+    StepAccepted { id: String },
     /// The full document has been verified (checksum matched).
     Verified { document: Box<SPIFDocument> },
     /// An unrecoverable error occurred; the stream is done.
@@ -146,6 +163,21 @@ impl SPIFStreamWriter {
         map.insert("text", Value::Text(text.to_string()));
 
         let chunk = Self::cbor_chunk(CHUNK_PARTIAL_TEXT, &map)?;
+        self.body.extend_from_slice(&chunk);
+        Ok(chunk)
+    }
+
+    /// Emit a PARTIAL_STEP chunk announcing a TraceStep's id + deps ahead of
+    /// the full PAYLOAD, so the reader can cycle-check it immediately.
+    pub fn partial_step(&mut self, id: &str, deps: &[String]) -> Result<Vec<u8>> {
+        self.require_open()?;
+        let mut map = std::collections::BTreeMap::new();
+        map.insert("id", Value::Text(id.to_string()));
+        map.insert(
+            "deps",
+            Value::Array(deps.iter().cloned().map(Value::Text).collect()),
+        );
+        let chunk = Self::cbor_chunk(CHUNK_PARTIAL_STEP, &map)?;
         self.body.extend_from_slice(&chunk);
         Ok(chunk)
     }
@@ -266,6 +298,8 @@ pub struct SPIFStreamReader {
     pos: usize,
     state: ReaderState,
     require_signature: bool,
+    dag: IncrementalDagChecker,
+    step_count: usize,
 }
 
 #[derive(PartialEq)]
@@ -282,6 +316,8 @@ impl Default for SPIFStreamReader {
             pos: 0,
             state: ReaderState::Header,
             require_signature: false,
+            dag: IncrementalDagChecker::new(),
+            step_count: 0,
         }
     }
 }
@@ -355,6 +391,51 @@ impl SPIFStreamReader {
         }
     }
 
+    /// Strictly decode a PARTIAL_STEP payload: `id` must be present text,
+    /// `deps` (if present) must be an array of text entries. Anything else
+    /// is rejected rather than silently defaulted, since this is untrusted
+    /// input crossing a trust boundary.
+    fn parse_partial_step(&self, payload: &[u8]) -> std::result::Result<(String, Vec<String>), String> {
+        let value: ciborium::value::Value = ciborium::de::from_reader(payload)
+            .map_err(|e| format!("Malformed PARTIAL_STEP chunk: {e}"))?;
+        let ciborium::value::Value::Map(fields) = value else {
+            return Err("PARTIAL_STEP chunk is not a CBOR map".to_string());
+        };
+
+        let mut id: Option<String> = None;
+        let mut deps: Vec<String> = Vec::new();
+        for (k, v) in &fields {
+            let ciborium::value::Value::Text(key) = k else {
+                continue;
+            };
+            match key.as_str() {
+                "id" => match v {
+                    ciborium::value::Value::Text(s) => id = Some(s.clone()),
+                    _ => return Err("PARTIAL_STEP 'id' must be text".to_string()),
+                },
+                "deps" => match v {
+                    ciborium::value::Value::Array(arr) => {
+                        for d in arr {
+                            match d {
+                                ciborium::value::Value::Text(s) => deps.push(s.clone()),
+                                _ => {
+                                    return Err(
+                                        "PARTIAL_STEP 'deps' entries must all be text".to_string(),
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    _ => return Err("PARTIAL_STEP 'deps' must be an array".to_string()),
+                },
+                _ => {}
+            }
+        }
+
+        let id = id.ok_or_else(|| "PARTIAL_STEP chunk missing 'id'".to_string())?;
+        Ok((id, deps))
+    }
+
     fn dispatch(
         &mut self,
         chunk_type: u8,
@@ -403,6 +484,41 @@ impl SPIFStreamReader {
                         events.push(StreamEvent::Error(
                             "PARTIAL_TEXT chunk is not a CBOR map".to_string(),
                         ));
+                        self.state = ReaderState::Done;
+                    }
+                }
+            }
+
+            CHUNK_PARTIAL_STEP => {
+                self.step_count += 1;
+                if self.step_count > MAX_STREAM_STEPS {
+                    events.push(StreamEvent::Error(format!(
+                        "Stream exceeds max PARTIAL_STEP count ({MAX_STREAM_STEPS})"
+                    )));
+                    self.state = ReaderState::Done;
+                    return;
+                }
+
+                match self.parse_partial_step(payload) {
+                    Ok((id, deps)) => {
+                        if deps.len() > MAX_DEPS_PER_STEP {
+                            events.push(StreamEvent::Error(format!(
+                                "TraceStep '{id}' has {} deps, exceeds max {MAX_DEPS_PER_STEP}",
+                                deps.len()
+                            )));
+                            self.state = ReaderState::Done;
+                            return;
+                        }
+                        match self.dag.add_step(&id, &deps) {
+                            Ok(()) => events.push(StreamEvent::StepAccepted { id }),
+                            Err(e) => {
+                                events.push(StreamEvent::Error(e.to_string()));
+                                self.state = ReaderState::Done;
+                            }
+                        }
+                    }
+                    Err(msg) => {
+                        events.push(StreamEvent::Error(msg));
                         self.state = ReaderState::Done;
                     }
                 }

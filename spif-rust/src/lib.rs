@@ -1,4 +1,5 @@
 pub mod ffi;
+pub mod incremental_dag;
 pub mod reader;
 pub mod renderer;
 pub mod streaming;
