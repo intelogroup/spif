@@ -7,7 +7,7 @@ from typing import Any
 
 from .crypto import sign_document
 from .format import NODE_CONCEPT
-from .keystore import SPIFKeyStore
+from .keystore import SPIFKeyStore, SPIFRevokedSignerError
 from .reader import SPIFReader, SPIFSignatureError
 from .types import Node, Provenance, SPIFDocument
 
@@ -195,40 +195,54 @@ def verify_event(
     keystore: SPIFKeyStore,
     *,
     expected_signer: str | None = None,
-    now_ms: int | None = None,
 ) -> TrustDecision:
     """Verify a signed governance event against a registered actor key.
 
     Malformed SPIF bytes raise the reader's format exceptions. Expected trust
     failures return an invalid :class:`TrustDecision`, preserving the decoded
-    event identifiers whenever they are available. ``now_ms`` is accepted for
-    callers that evaluate a chain against a policy timestamp; revocation is
-    intentionally checked against the keystore's current trust state.
+    event identifiers whenever they are available. For a known signer, the
+    raw signature is verified before revocation or any event profile claim is
+    interpreted.
     """
-    del now_ms
     doc = SPIFReader().decode(data)
 
     if doc.signature is None or doc.signatures:
         return _decision(doc, valid=False, reason="missing_signature")
+
+    event_id, signer_id, event_type = _trust_fields(doc)
+    signature_signer = doc.signature.signer
+    if not isinstance(signature_signer, str) or not signature_signer:
+        return TrustDecision(event_id, signer_id, event_type, False, "missing_signer_binding")
+    if not keystore.has_key(signature_signer):
+        return TrustDecision(event_id, signature_signer, event_type, False, "unknown_signer")
+
+    try:
+        keystore.verify(data)
+    except SPIFRevokedSignerError:
+        return TrustDecision(event_id, signature_signer, event_type, False, "revoked_signer")
+    except SPIFSignatureError:
+        return TrustDecision(event_id, signature_signer, event_type, False, "invalid_signature")
 
     try:
         event = event_from_document(doc)
     except ValueError:
         return _decision(doc, valid=False, reason="invalid_event")
 
-    event_id, signer_id, event_type = _trust_fields(doc)
     if not signer_id:
         return TrustDecision(event_id, signer_id, event_type, False, "missing_signer_binding")
-    if doc.signature.signer != signer_id:
+    if signature_signer != signer_id:
         return TrustDecision(event_id, signer_id, event_type, False, "signer_mismatch")
     if event.actor != signer_id:
         return TrustDecision(event_id, signer_id, event_type, False, "actor_signer_mismatch")
     if expected_signer is not None and signer_id != expected_signer:
         return TrustDecision(event_id, signer_id, event_type, False, "expected_signer_mismatch")
-    if keystore.is_revoked(signer_id):
-        return TrustDecision(event_id, signer_id, event_type, False, "revoked_signer")
-    if not keystore.has_key(signer_id):
-        return TrustDecision(event_id, signer_id, event_type, False, "unknown_signer")
+
+    if doc.provenance is None:
+        return TrustDecision(event_id, signer_id, event_type, False, "missing_provenance")
+    if doc.provenance.source_model != event.actor:
+        return TrustDecision(event_id, signer_id, event_type, False, "provenance_actor_mismatch")
+    if doc.provenance.timestamp_ms != event.timestamp_ms:
+        return TrustDecision(event_id, signer_id, event_type, False, "provenance_timestamp_mismatch")
 
     expected_role = EVENT_ROLE_BY_TYPE[event.event_type]
     if doc.signer_roles.get(signer_id) != expected_role:
@@ -243,30 +257,56 @@ def verify_event(
     except SPIFSignatureError:
         return TrustDecision(event_id, signer_id, event_type, False, "unauthorized_role")
 
-    try:
-        keystore.verify(data)
-    except SPIFSignatureError:
-        return TrustDecision(event_id, signer_id, event_type, False, "invalid_signature")
-
     return TrustDecision(event_id, signer_id, event_type, True, "verified")
 
 
 def verify_chain(
     events: list[bytes],
     keystore: SPIFKeyStore,
-    *,
-    now_ms: int | None = None,
 ) -> list[TrustDecision]:
-    """Verify event signatures and require declared parents to precede children."""
+    """Verify event signatures and enforce clinical-governance topology."""
     decisions: list[TrustDecision] = []
-    present_ids: set[str] = set()
+    verified_events: dict[str, GovernanceEvent] = {}
 
     for data in events:
-        decision = verify_event(data, keystore, now_ms=now_ms)
+        decision = verify_event(data, keystore)
         if decision.valid:
             doc = SPIFReader().decode(data)
             event = event_from_document(doc)
-            if any(parent_id not in present_ids for parent_id in event.parent_ids):
+            if event.event_id in verified_events:
+                decision = TrustDecision(
+                    decision.event_id,
+                    decision.signer_id,
+                    decision.event_type,
+                    False,
+                    "duplicate_event_id",
+                )
+            elif (
+                event.event_type == "Decision"
+                and (
+                    event.parent_ids
+                    or any(
+                        previous.event_type == "Decision"
+                        for previous in verified_events.values()
+                    )
+                )
+            ) or (event.event_type != "Decision" and not event.parent_ids):
+                decision = TrustDecision(
+                    decision.event_id,
+                    decision.signer_id,
+                    decision.event_type,
+                    False,
+                    "invalid_root",
+                )
+            elif len(set(event.parent_ids)) != len(event.parent_ids):
+                decision = TrustDecision(
+                    decision.event_id,
+                    decision.signer_id,
+                    decision.event_type,
+                    False,
+                    "duplicate_parent",
+                )
+            elif any(parent_id not in verified_events for parent_id in event.parent_ids):
                 decision = TrustDecision(
                     decision.event_id,
                     decision.signer_id,
@@ -274,8 +314,20 @@ def verify_chain(
                     False,
                     "missing_parent",
                 )
+            elif any(
+                EVENT_TYPES.index(verified_events[parent_id].event_type)
+                >= EVENT_TYPES.index(event.event_type)
+                for parent_id in event.parent_ids
+            ):
+                decision = TrustDecision(
+                    decision.event_id,
+                    decision.signer_id,
+                    decision.event_type,
+                    False,
+                    "parent_order",
+                )
             else:
-                present_ids.add(event.event_id)
+                verified_events[event.event_id] = event
         decisions.append(decision)
 
     return decisions

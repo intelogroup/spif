@@ -5,6 +5,7 @@
 - [IETF draft](../draft-ietf-spif-00.md) — standards-track draft of the format.
 - [Benchmarks](BENCHMARKS.md) — serialization and provenance/attestation comparisons.
 - [EU AI Act integration](#eu-ai-act-integration) — how to use SPIF as a provenance component in a deployer workflow.
+- [Clinical governance application profile](../spif-py/README.md#clinical-governance-application-profile) — a synthetic, prototype-scoped cross-system evidence-chain walkthrough.
 
 ## EU AI Act integration
 
