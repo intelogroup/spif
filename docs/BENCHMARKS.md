@@ -84,7 +84,12 @@ committed and reproducible live-infrastructure harness.
 **C2PA** was not measured quantitatively because the native library rejects
 the self-signed test certificate. C2PA requires a CA-chain-issued certificate
 or configured trust-anchor bundle before producing a signed manifest. This
-limitation was verified by direct API testing.
+limitation was verified by direct API testing, and independently
+cross-checked with `c2patool` (the reference Rust CLI, a separate binary from
+`c2pa-python`): pointing it at the same self-signed cert via
+`C2PATOOL_ALLOWED_LIST` still fails with "the certificate is invalid" —
+`--allowed_list` alone isn't sufficient to admit it, confirming the
+CA-chain requirement isn't a `c2pa-python`-specific quirk.
 
 ### Feature / Guarantee Matrix
 
