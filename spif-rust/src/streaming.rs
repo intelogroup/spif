@@ -32,6 +32,7 @@
 //! }
 //! ```
 
+use crate::incremental_dag::IncrementalDagChecker;
 use crate::reader::SPIFReader;
 use crate::types::*;
 use crate::writer::SPIFWriter;
@@ -42,6 +43,9 @@ use sha2::{Digest, Sha256};
 
 pub const CHUNK_PARTIAL_TEXT: u8 = 0x10;
 pub const CHUNK_STREAM_META: u8 = 0x11;
+/// Announces a TraceStep's id + deps as soon as it's known, ahead of the
+/// full PAYLOAD chunk, so the reader can cycle-check incrementally.
+pub const CHUNK_PARTIAL_STEP: u8 = 0x12;
 pub const FLAG_STREAMING: u8 = 0b10000000;
 
 // ---------------------------------------------------------------------------
@@ -59,6 +63,8 @@ pub enum StreamEvent {
         text: String,
         seq: u32,
     },
+    /// A TraceStep's id + deps arrived and passed the incremental cycle check.
+    StepAccepted { id: String },
     /// The full document has been verified (checksum matched).
     Verified { document: Box<SPIFDocument> },
     /// An unrecoverable error occurred; the stream is done.
@@ -146,6 +152,21 @@ impl SPIFStreamWriter {
         map.insert("text", Value::Text(text.to_string()));
 
         let chunk = Self::cbor_chunk(CHUNK_PARTIAL_TEXT, &map)?;
+        self.body.extend_from_slice(&chunk);
+        Ok(chunk)
+    }
+
+    /// Emit a PARTIAL_STEP chunk announcing a TraceStep's id + deps ahead of
+    /// the full PAYLOAD, so the reader can cycle-check it immediately.
+    pub fn partial_step(&mut self, id: &str, deps: &[String]) -> Result<Vec<u8>> {
+        self.require_open()?;
+        let mut map = std::collections::BTreeMap::new();
+        map.insert("id", Value::Text(id.to_string()));
+        map.insert(
+            "deps",
+            Value::Array(deps.iter().cloned().map(Value::Text).collect()),
+        );
+        let chunk = Self::cbor_chunk(CHUNK_PARTIAL_STEP, &map)?;
         self.body.extend_from_slice(&chunk);
         Ok(chunk)
     }
@@ -266,6 +287,7 @@ pub struct SPIFStreamReader {
     pos: usize,
     state: ReaderState,
     require_signature: bool,
+    dag: IncrementalDagChecker,
 }
 
 #[derive(PartialEq)]
@@ -282,6 +304,7 @@ impl Default for SPIFStreamReader {
             pos: 0,
             state: ReaderState::Header,
             require_signature: false,
+            dag: IncrementalDagChecker::new(),
         }
     }
 }
@@ -402,6 +425,60 @@ impl SPIFStreamReader {
                     _ => {
                         events.push(StreamEvent::Error(
                             "PARTIAL_TEXT chunk is not a CBOR map".to_string(),
+                        ));
+                        self.state = ReaderState::Done;
+                    }
+                }
+            }
+
+            CHUNK_PARTIAL_STEP => {
+                match ciborium::de::from_reader::<ciborium::value::Value, _>(payload) {
+                    Ok(ciborium::value::Value::Map(fields)) => {
+                        let mut id = String::new();
+                        let mut deps: Vec<String> = Vec::new();
+                        for (k, v) in &fields {
+                            if let ciborium::value::Value::Text(key) = k {
+                                match key.as_str() {
+                                    "id" => {
+                                        if let ciborium::value::Value::Text(s) = v {
+                                            id = s.clone();
+                                        }
+                                    }
+                                    "deps" => {
+                                        if let ciborium::value::Value::Array(arr) = v {
+                                            deps = arr
+                                                .iter()
+                                                .filter_map(|d| {
+                                                    if let ciborium::value::Value::Text(s) = d {
+                                                        Some(s.clone())
+                                                    } else {
+                                                        None
+                                                    }
+                                                })
+                                                .collect();
+                                        }
+                                    }
+                                    _ => {}
+                                }
+                            }
+                        }
+                        match self.dag.add_step(&id, &deps) {
+                            Ok(()) => events.push(StreamEvent::StepAccepted { id }),
+                            Err(e) => {
+                                events.push(StreamEvent::Error(e.to_string()));
+                                self.state = ReaderState::Done;
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        events.push(StreamEvent::Error(format!(
+                            "Malformed PARTIAL_STEP chunk: {e}"
+                        )));
+                        self.state = ReaderState::Done;
+                    }
+                    _ => {
+                        events.push(StreamEvent::Error(
+                            "PARTIAL_STEP chunk is not a CBOR map".to_string(),
                         ));
                         self.state = ReaderState::Done;
                     }

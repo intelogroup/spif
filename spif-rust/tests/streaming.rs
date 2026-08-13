@@ -224,6 +224,7 @@ fn test_incremental_feed_same_as_bulk() {
             StreamEvent::Opened => "opened",
             StreamEvent::PartialText { .. } => "partial_text",
             StreamEvent::Verified { .. } => "verified",
+            StreamEvent::StepAccepted { .. } => "step_accepted",
             StreamEvent::Error(_) => "error",
         })
         .collect();
@@ -239,6 +240,7 @@ fn test_incremental_feed_same_as_bulk() {
             StreamEvent::Opened => "opened",
             StreamEvent::PartialText { .. } => "partial_text",
             StreamEvent::Verified { .. } => "verified",
+            StreamEvent::StepAccepted { .. } => "step_accepted",
             StreamEvent::Error(_) => "error",
         })
         .collect();
