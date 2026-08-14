@@ -14,8 +14,10 @@ integrations, or the synthetic/no-PHI nature of the walkthrough.
   known non-revoked signer, verifies the raw Ed25519 signature before it uses
   event actor, signer binding, role, or provenance claims for policy decisions.
 - Unknown and revoked signature signers retain their stable trust failures
-  (`unknown_signer` and `revoked_signer`) because no trusted key is available
-  for signature verification.
+  (`unknown_signer` and `revoked_signer`). A revoked signer can still have a
+  registered public key: verification validates the registered key and
+  signature before applying the revocation decision. Only an unknown signer
+  lacks a registered key.
 - Signed profile documents now require provenance. Its `source_model` must
   equal `event.actor` and its `timestamp_ms` must equal `event.timestamp_ms`.
   Stable failures are `missing_provenance`, `provenance_actor_mismatch`, and
