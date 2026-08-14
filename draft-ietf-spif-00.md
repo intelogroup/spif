@@ -85,6 +85,7 @@ All SPIF chunks share a 5-byte header:
 | `0x07` | SIGNATURE | No | No | Single ed25519 signature |
 | `0x08` | MULTISIG | No | No | Multiple ed25519 signatures |
 | `0x09` | TASK | No | No | Task envelope metadata (attempt, counts, status) |
+| `0x0A` | REVOCATION | No | No | Document-level key revocation records (informational, see docs/SPEC.md §6.12, §7.6) |
 | `0xFF` | CHECKSUM | Yes | No | SHA-256 over all preceding bytes |
 
 # 5. CBOR Custom Tags
@@ -121,6 +122,9 @@ A policy JSON contains:
 
 ## 6.2 Key Revocation Checking
 The sidecar checks the signer key of incoming `X-Spif` headers against a Certificate Revocation List (CRL) fetched from `crl_check.endpoint`. If the signer is revoked, it MUST block the response.
+
+## 6.3 Post-Quantum and Long-Term Trust (informational)
+`Signature.algorithm` also accepts `"ml-dsa-65"` (FIPS 204 post-quantum) and the hybrid form `"ed25519+ml-dsa-65"`, and the in-document REVOCATION chunk (`0x0A`) carries timestamp-bound revocation records independent of the sidecar's CRL. See docs/SPEC.md §7.5–§7.6 for the full, non-breaking specification; this draft's CRL protocol and the in-document REVOCATION chunk are complementary — the CRL covers live enforcement at the network boundary, REVOCATION covers offline/archival verification of a standalone `.spif` file.
 
 ## 6.3 Failing Provenance Record (FPR)
 Upon blocking, the sidecar generates and returns an FPR SPIF document with a payload node of type `verification_failure` documenting the failure code:
