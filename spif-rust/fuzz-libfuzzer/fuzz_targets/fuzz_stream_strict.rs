@@ -1,7 +1,7 @@
 #![no_main]
 
 use libfuzzer_sys::fuzz_target;
-use spif_rust::SPIFStreamReader;
+use spif_rust::streaming::SPIFStreamReader;
 
 fuzz_target!(|data: &[u8]| {
     const CHUNK: usize = 7;

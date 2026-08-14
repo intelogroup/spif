@@ -1,7 +1,7 @@
 #![no_main]
 
 use libfuzzer_sys::fuzz_target;
-use spif_rust::SPIFStreamReader;
+use spif_rust::streaming::SPIFStreamReader;
 
 // Feeds the input in small, deterministic chunks rather than all at once so the
 // fuzzer exercises the reader's partial-buffer / resume state machine (ReaderState::Header
