@@ -101,12 +101,13 @@ The payload is a CBOR-encoded value (see §4), except CHECKSUM whose payload is 
 | `0x07` | SIGNATURE      | No       | No           | Single ed25519 signature (v0.2+)                |
 | `0x08` | MULTISIG       | No       | No           | Multiple ed25519 signatures (v0.2+)             |
 | `0x09` | TASK           | No       | No           | Task/run envelope metadata (v1.1)               |
+| `0x0A` | REVOCATION     | No       | No           | Key revocation records (v1.2, informational)    |
 | `0xFF` | CHECKSUM       | Yes      | No           | SHA-256 over all preceding bytes                |
 | `0x10` | PARTIAL_TEXT   | No       | No           | Streaming text fragment (SSPIF only)            |
 | `0x11` | STREAM_META    | No       | No           | Early stream metadata (SSPIF, reserved)         |
 | `0x12` | STREAM_RESUME  | No       | No           | Resume point for dropped streams (SSPIF v0.2+)  |
 
-IDs `0x0A`–`0x0F` and `0x13`–`0xFE` are reserved for future use. Readers MUST skip them.
+IDs `0x0B`–`0x0F` and `0x13`–`0xFE` are reserved for future use. Readers MUST skip them.
 
 ### 3.2 Required Chunk Order
 
@@ -150,7 +151,7 @@ SPIF reserves tag numbers 1000–1099 for its own types:
 | Tag    | Name         | Value type              | Description                            |
 |--------|--------------|-------------------------|----------------------------------------|
 | `1000` | Distribution | CBOR map (see §5.1)     | Probability distribution over [0, 1]  |
-| `1001` | NodeRef      | CBOR text string        | Reference to another node by `id`      |
+| `1001` | NodeRef      | CBOR text string        | Reference to another node by `id`, or cross-document (see below) |
 | `1002` | Embedding    | CBOR array of float32   | Dense vector (semantic embedding)      |
 
 Readers MUST resolve these tags to their typed representations. Unknown tags MUST be passed through unmodified.
@@ -307,12 +308,14 @@ Encoded as a CBOR map:
 
 ```
 {
-  "algorithm": text   (required) — "ed25519"
+  "algorithm": text   (required) — "ed25519" | "ml-dsa-65" | "ed25519+ml-dsa-65" (see §7.5)
   "signer":    text   (required) — URL or stable identifier for the signing key
-  "signature": bytes  (required) — raw 64-byte ed25519 signature
+  "signature": bytes  (required) — raw signature; length depends on `algorithm` (see §7.5)
   "key_id":    text   (optional) — rotation hint or secondary key identifier
 }
 ```
+
+Readers MUST treat an unrecognized `algorithm` value as "signature present but unverifiable by this reader" rather than a format error — they SHOULD still parse and expose the chunk, but MUST NOT report the document as VALID on the strength of a signature they cannot check. This lets older readers coexist with documents signed under algorithms introduced after they were built.
 
 ---
 
@@ -421,6 +424,27 @@ The TASK chunk MUST be emitted immediately after the HEADER chunk. Old readers (
 
 Raw 32 bytes — SHA-256 digest. **Not CBOR-encoded.** The `payload_length` field will be exactly `32`. Readers MUST verify this and raise `SPIFFormatError` if the length differs.
 
+### 6.12 REVOCATION (`0x0A`) — v1.2, informational
+
+A CBOR array of revocation records, appended by a verifier or archival service to a copy of the
+document — never by the original signer as part of the initial signing pass (see §7.6). Never
+compressed.
+
+```
+[{
+  "key_id":       text    (optional) — matches Signature.key_id, if present
+  "signer":       text    (required) — matches Signature.signer
+  "revoked_ms":   uint64  (required) — Unix epoch ms when the key was revoked
+  "reason":       text    (optional) — free-text or "compromised" | "rotated" | "expired"
+  "issuer":       text    (optional) — stable identifier for who is asserting the revocation
+}, ...]
+```
+
+Because REVOCATION is intended to be appended to an archived *copy* alongside the original
+SIGNATURE/MULTISIG chunks, and CHECKSUM is always last (§3.2), adding a REVOCATION record
+changes that copy's checksum — it does not and cannot retroactively alter the originally-signed
+bytes. See §7.6 for verification semantics.
+
 ---
 
 ## 7. Integrity and Authentication
@@ -476,6 +500,66 @@ Production deployments SHOULD:
 - Rotate keys periodically via mnemonic-derived key generation
 - Use the `signer` URL as the stable identifier in `Signature.signer`
 
+### 7.5 Post-Quantum and Hybrid Signatures (v1.2, informational)
+
+This section describes a **forward-compatible, non-breaking** extension to §7.2. It does not
+change the wire format locked in v1.0/v1.1; it defines new `Signature.algorithm` values that
+existing MULTISIG framing already accommodates. Adoption is OPTIONAL until a future major
+version mandates it.
+
+**Rationale.** Ed25519 is a classical elliptic-curve scheme. A sufficiently capable quantum
+computer breaks it retroactively — an adversary can record a signed `.spif` document today and
+forge or repudiate equivalent signatures once such hardware exists ("harvest now, forge later").
+Because SPIF documents are meant to remain independently verifiable for decades (§1, §8), the
+signature layer needs an upgrade path that does not require re-issuing every historical document.
+
+**Algorithm values:**
+
+| `algorithm` value      | Meaning                                                        | `signature` length |
+|-------------------------|------------------------------------------------------------------|---------------------|
+| `"ed25519"`             | Classical only (existing v0.2 behavior)                          | 64 bytes            |
+| `"ml-dsa-65"`            | Post-quantum only — FIPS 204 (ML-DSA / CRYSTALS-Dilithium, level 3) | 3309 bytes          |
+| `"ed25519+ml-dsa-65"`    | **Hybrid**: concatenation of an ed25519 signature and an ML-DSA-65 signature over the same `signing_body` | 64 + 3309 bytes, ed25519 first |
+
+**Hybrid signing (recommended during the transition period).** A writer produces a hybrid
+signature by signing the same `signing_body` (§7.2) independently under both algorithms and
+concatenating the raw signature bytes, ed25519 first. A document is considered validly signed
+if the **classical component** verifies; PQ verification is additionally REQUIRED once a reader
+operates in `require_pq=True` mode. This means:
+
+- Readers without PQ support can still verify the ed25519 component and treat the document as
+  signed exactly as they do today — full backward compatibility.
+- Readers with PQ support SHOULD verify both components and MUST report a hybrid signature as
+  INVALID if either component fails, when operating in a mode that checks PQ signatures.
+- A document signed only with `"ml-dsa-65"` is invisible (unverifiable, not invalid — see §7.2
+  amendment above) to readers that lack a PQ implementation; writers targeting mixed reader
+  populations SHOULD prefer the hybrid form over PQ-only.
+
+MULTISIG (§6.9) MAY also be used to attach independent single-algorithm signatures from
+different keys rather than a single hybrid entry — both patterns are valid; hybrid concatenation
+is preferred when the two components represent the *same* signer's key material.
+
+### 7.6 Key Revocation and Re-attestation (v1.2, informational)
+
+Long-lived documents need a way to express "this key was later revoked" without invalidating
+signatures that were legitimate at signing time, and a way to extend trust in an old document
+once its original algorithm is considered weak.
+
+- **Revocation chunk** `REVOCATION` (`0x0A`, previously reserved) — see §6.12. Carries a list of
+  revoked `key_id`/`signer` pairs with revocation timestamps, optionally embedded by a verifier
+  or archival service into a copy of the document (not by the original signer).
+- **Timestamp-bound trust**: a reader encountering a REVOCATION entry for the signing key MUST
+  still report the signature as having been VALID_AT(`signed_ms`) if `signed_ms` in HEADER
+  predates the revocation timestamp, and SHOULD surface both facts to the caller rather than
+  collapsing them into a single boolean. Production pipelines that only care about present-day
+  trust SHOULD treat any revoked key as untrusted regardless of timestamp.
+- **Re-attestation**: an archival service holding a v0.2-signed (ed25519-only) document
+  approaching cryptographic obsolescence MAY re-sign it by appending a new MULTISIG entry under
+  a current algorithm (e.g. `"ml-dsa-65"`) whose `signing_body` is the *original* signing body —
+  i.e. re-attestation adds a chunk, it does not rewrite history. Readers MUST NOT assume the
+  newest signature is the only one that matters; all present, verifiable signatures remain
+  meaningful provenance.
+
 ---
 
 ## 8. Content Identity
@@ -498,6 +582,27 @@ Use `content_id()` to populate `Provenance.context_ref` for multi-turn conversat
 response2 = adapter.complete("follow-up", context=response1)
 # response2.provenance.context_ref == response1.content_id()
 ```
+
+### 8.1 Cross-Document NodeRef (v1.2, informational)
+
+`Provenance.context_ref` chains documents at the whole-document level. Multi-agent pipelines
+often need to reference a specific *node* inside another agent's document — e.g. "this claim
+was derived from node `n7` of the upstream retrieval agent's output" — rather than the document
+as a whole.
+
+NodeRef (tag `1001`, §4.2) values MAY use an extended, still-plain-CBOR-text-string form to
+point outside the current document:
+
+```
+"n1"                                        — in-document reference (existing v0.2 behavior)
+"spif:sha256:<content_id>#<node_id>"        — cross-document reference (v1.2)
+```
+
+Readers that do not implement cross-document resolution MUST treat a `spif:` prefixed NodeRef
+as an opaque string (per the general unknown-tag-content forward-compatibility rule) rather than
+attempting to resolve it as a local node ID. A reader that does resolve it SHOULD verify the
+referenced document's `content_id()` matches `<content_id>` before trusting the linked node,
+so provenance composes across a chain of signed documents without re-embedding upstream payloads.
 
 ---
 
@@ -606,8 +711,11 @@ After `"verified"` or `"error"`, further `feed()` calls return empty lists.
 | `0x01`  | Initial: HEADER, PROVENANCE, SEMANTIC, TRACE, PAYLOAD, ALTS, DELTA, CHECKSUM |
 | `0x02`  | SIGNATURE, MULTISIG; `flags2` in HEADER; Distribution `semantics`; FLAG_STREAMING; PARTIAL_TEXT, STREAM_RESUME; zlib compression; NODE_TOOL_CALL, NODE_TOOL_RESULT; content_id |
 | v1.1†  | CHUNK_TASK (`0x09`); FLAG_ZSTD (`flags2 & 0x02`); FLAG_HAS_TASK (`flags2 & 0x04`); Provenance `attempt`/`task_id`; NODE_TOOL_RESULT `error_type`/`error_code`/`latency_ms` |
+| v1.2‡  | REVOCATION chunk (`0x0A`); `Signature.algorithm` values `"ml-dsa-65"` and `"ed25519+ml-dsa-65"` for post-quantum/hybrid signing (§7.5); timestamp-bound key revocation (§7.6); cross-document NodeRef via `spif:sha256:<content_id>#<node_id>` (§8.1) |
 
 † v1.1 additions are backward-compatible extensions to wire format `0x02`. Old readers skip CHUNK_TASK and ignore unknown CBOR keys per the forward-compatibility rules.
+
+‡ v1.2 is an **informational, non-breaking** addendum: no wire-format version bump, no required chunks, no change to existing chunk semantics. Every addition is opt-in and degrades gracefully on older readers per §3.1 (unknown chunks skipped) and §7.2 (unknown `algorithm` values treated as unverifiable, not invalid).
 
 Readers MUST support both versions. Writers SHOULD emit version `0x02`.
 
@@ -728,6 +836,13 @@ The PAYLOAD CBOR array contains one map:
 ---
 
 ## Appendix B: Changelog
+
+**v1.2** (informational addendum, see §7.5, §7.6, §8.1):
+- `Signature.algorithm` values `"ml-dsa-65"` (FIPS 204 post-quantum) and `"ed25519+ml-dsa-65"` (hybrid)
+- REVOCATION chunk (`0x0A`) for timestamp-bound key revocation records
+- Re-attestation guidance for extending trust in older documents via additional MULTISIG entries
+- Cross-document NodeRef form `spif:sha256:<content_id>#<node_id>` for multi-agent provenance chains that span documents
+- No wire-format version bump; fully backward-compatible with v0.2/v1.1 readers
 
 **v0.2** (current):
 - SIGNATURE (`0x07`) and MULTISIG (`0x08`) chunks for ed25519 authentication
