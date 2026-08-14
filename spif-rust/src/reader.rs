@@ -10,6 +10,11 @@ use std::borrow::Cow;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::io::{Cursor, Read};
 
+/// Cap on decompressed chunk payload size, mirroring `MAX_DECOMPRESSED_SIZE` in
+/// spif-py's reader.py. Without this, a small zlib-bombed chunk (SEMANTIC, TRACE,
+/// PAYLOAD, ALTS, or DELTA) drives unbounded allocation via `read_to_end`.
+const MAX_DECOMPRESSED_SIZE: u64 = 10 * 1024 * 1024; // 10MB
+
 /// Deserializes SPIF documents from raw bytes.
 ///
 /// # Security model
@@ -329,11 +334,20 @@ fn cbor_payload<'a>(payload: &'a [u8], compressed: bool) -> Result<Cow<'a, [u8]>
     if !compressed {
         return Ok(Cow::Borrowed(payload));
     }
-    let mut decoder = ZlibDecoder::new(payload);
+    let decoder = ZlibDecoder::new(payload);
+    // Read one byte past the cap so a bomb that produces exactly MAX_DECOMPRESSED_SIZE
+    // bytes isn't silently truncated into looking like a valid, in-limit payload.
+    let mut limited = decoder.take(MAX_DECOMPRESSED_SIZE + 1);
     let mut decompressed = Vec::new();
-    decoder
+    limited
         .read_to_end(&mut decompressed)
         .map_err(|e| anyhow!("zlib decompress failed: {}", e))?;
+    if decompressed.len() as u64 > MAX_DECOMPRESSED_SIZE {
+        return Err(anyhow!(
+            "Decompressed data size exceeds safety limit of {} bytes",
+            MAX_DECOMPRESSED_SIZE
+        ));
+    }
     Ok(Cow::Owned(decompressed))
 }
 
