@@ -26,3 +26,24 @@ path = "fuzz_targets/fuzz_read_strict.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "fuzz_stream"
+path = "fuzz_targets/fuzz_stream.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_stream_strict"
+path = "fuzz_targets/fuzz_stream_strict.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_verify"
+path = "fuzz_targets/fuzz_verify.rs"
+test = false
+doc = false
+bench = false
