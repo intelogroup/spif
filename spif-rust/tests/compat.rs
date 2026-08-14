@@ -216,3 +216,45 @@ fn test_writer_emits_compressed_chunks_and_flags2() -> Result<()> {
 
     Ok(())
 }
+
+#[test]
+fn test_reader_rejects_decompression_bomb() -> Result<()> {
+    // Highly repetitive text compresses to a tiny fraction of its size, so this is a
+    // small document on the wire but decompresses past reader.rs's 10MB safety cap.
+    let huge_text = "a".repeat(11 * 1024 * 1024);
+    let doc = spif_rust::SPIFDocument {
+        payload: vec![spif_rust::Node {
+            id: "bomb".to_string(),
+            node_type: "text".to_string(),
+            value: spif_rust::Value::Text(huge_text),
+            confidence: spif_rust::Distribution::certain("epistemic"),
+            refs: vec![],
+        }],
+        provenance: None,
+        semantic: None,
+        trace: vec![],
+        trace_method: "post-hoc".to_string(),
+        alternatives: vec![],
+        delta: None,
+        signature: None,
+        signatures: vec![],
+        task_info: None,
+    };
+
+    let compressed = SPIFWriter::compressed().encode(&doc)?;
+    assert!(
+        compressed.len() < 1024 * 1024,
+        "highly repetitive payload should compress far below the decompressed cap, got {} bytes",
+        compressed.len()
+    );
+
+    let err = SPIFReader::new()
+        .read(&compressed)
+        .expect_err("reader must reject a payload that decompresses past the safety limit");
+    assert!(
+        err.to_string().contains("safety limit"),
+        "unexpected error: {err}"
+    );
+
+    Ok(())
+}
