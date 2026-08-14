@@ -15,6 +15,8 @@ from spif import SPIFDocument, SPIFReader, SPIFWriter, Node, Provenance, Distrib
 from spif.crypto import derive_key_from_mnemonic
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 
+pytestmark = pytest.mark.local_sockets
+
 # Helper to find a free local port
 def get_free_port():
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -22,6 +24,28 @@ def get_free_port():
     port = s.getsockname()[1]
     s.close()
     return port
+
+
+def wait_for_sidecar(port: int, process: subprocess.Popen, timeout: float = 5.0) -> None:
+    """Wait for the child server and preserve startup stderr on failure."""
+    deadline = time.monotonic() + timeout
+    url = f"http://127.0.0.1:{port}/health"
+    while time.monotonic() < deadline:
+        if process.poll() is not None:
+            stderr = process.stderr.read().decode(errors="replace") if process.stderr else ""
+            if "Operation not permitted" in stderr:
+                pytest.skip(f"Rust sidecar child cannot bind sockets in this environment: {stderr.strip()}")
+            pytest.fail(f"Rust sidecar exited before readiness (code {process.returncode}): {stderr.strip()}")
+        try:
+            urllib.request.urlopen(url, timeout=0.2)
+        except urllib.error.HTTPError:
+            # Any HTTP response means the listener is ready; /health is not a
+            # production endpoint and may correctly return 404.
+            return
+        except urllib.error.URLError:
+            time.sleep(0.05)
+    stderr = process.stderr.read().decode(errors="replace") if process.stderr else ""
+    pytest.fail(f"Rust sidecar did not become ready within {timeout}s: {stderr.strip()}")
 
 def sign_doc(doc: SPIFDocument, private_key, signer_id: str) -> bytes:
     from spif import Signature
@@ -145,8 +169,7 @@ def test_rust_sidecar_http_server(compile_rust_sidecar, keys, tmp_keystore, poli
         "--keystore", str(tmp_keystore)
     ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
-    # Allow startup
-    time.sleep(0.5)
+    wait_for_sidecar(sidecar_port, sidecar_proc)
 
     try:
         # Create valid doc signed by Alice

@@ -21,6 +21,8 @@ from spif import SPIFDocument, Node, Distribution, Provenance, SPIFWriter, Signa
 from spif.crypto import derive_key_from_mnemonic
 from spif.sidecar import CRLClient, PolicyEvaluator, SidecarHTTPHandler, generate_fpr_document, start_sidecar
 
+pytestmark = pytest.mark.local_sockets
+
 
 # Helper to find a free port
 def get_free_port() -> int:

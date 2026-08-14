@@ -42,6 +42,13 @@ from .crypto import (
     export_pem_private_key,
     export_pem_public_key,
 )
+from .nostr import (
+    EMBEDDED_MODE, NOSTR_SPIF_KIND, POINTER_MODE, SPIF_MIME_TYPE,
+    NostrEvent, NostrKeyPair, NostrRelay, NostrRelayError,
+    RelayPublishResult, SPIFEventVerification, SPIFNostrTrustPolicy,
+    build_spif_event,
+    verify_nostr_signature, verify_spif_event,
+)
 from .eu_ai_act import DeployerOutput, build_deployer_output
 from .governance import (
     EVENT_TYPES,
@@ -74,6 +81,10 @@ __all__ = [
     "to_msgpack", "from_msgpack",
     "derive_key_from_mnemonic", "load_pem_private_key",
     "generate_key", "export_pem_private_key", "export_pem_public_key",
+    "NostrEvent", "SPIFEventVerification", "build_spif_event", "verify_spif_event",
+    "NostrKeyPair", "NostrRelay", "NostrRelayError", "RelayPublishResult",
+    "SPIFNostrTrustPolicy", "verify_nostr_signature",
+    "NOSTR_SPIF_KIND", "EMBEDDED_MODE", "POINTER_MODE", "SPIF_MIME_TYPE",
     "DeployerOutput", "build_deployer_output",
     "EVENT_TYPES", "EVENT_ROLE_BY_TYPE", "GovernanceEvent", "TrustDecision",
     "build_event_document", "event_from_document", "sign_event", "verify_event", "verify_chain",

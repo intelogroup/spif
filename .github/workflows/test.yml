@@ -14,5 +14,8 @@ jobs:
           python-version: "3.11"
       - run: pip install -e ".[dev]"
         working-directory: spif-py
+      - name: Verify localhost socket support for integration tests
+        working-directory: spif-py
+        run: python -c "import socket; s=socket.socket(); s.bind(('127.0.0.1', 0)); s.close()"
       - run: make test
         working-directory: spif-py
