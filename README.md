@@ -11,7 +11,8 @@ tools, agents, and organizational boundaries.
 <p>
   <a href="spif-rust/README.md">Use the Rust engine</a> ·
   <a href="spif-py/README.md">Install the Python package</a> ·
-  <a href="docs/SPEC.md">Read the specification</a>
+  <a href="docs/SPEC.md">Read the specification</a> ·
+  <a href="docs/ROADMAP.md">Roadmap</a>
 </p>
 
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-000000?style=flat-square)](LICENSE)
