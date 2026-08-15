@@ -71,7 +71,12 @@ fn get_map_f64(map: &[(Value, Value)], key: &str) -> Option<f64> {
 }
 
 impl SpifDocumentWrapper {
-    fn new(doc: SPIFDocument) -> Self {
+    /// `verification_status_str` must reflect an actual cryptographic verification
+    /// outcome ("valid"/"unsigned"/"invalid"), computed by the caller — never derived
+    /// here from mere presence of a SIGNATURE/MULTISIG chunk. A chunk being present
+    /// only means the bytes deserialized as a Signature struct; it says nothing about
+    /// whether they verify. See spif_document_parse / spif_document_parse_strict.
+    fn new(doc: SPIFDocument, verification_status_str: &str) -> Self {
         let (source_model, model_version, prompt_hash, task_id) = if let Some(ref prov) = doc.provenance {
             (
                 CString::new(prov.source_model.as_str()).unwrap_or_else(|_| CString::new("").unwrap()),
@@ -102,13 +107,7 @@ impl SpifDocumentWrapper {
         };
         let signer = CString::new(signer_str).unwrap_or_else(|_| CString::new("").unwrap());
 
-        // Verification status
-        let verification_status_str = if doc.signature.is_some() || !doc.signatures.is_empty() {
-            "valid"
-        } else {
-            "untrusted"
-        };
-        let verification_status = CString::new(verification_status_str).unwrap();
+        let verification_status = CString::new(verification_status_str).unwrap_or_else(|_| CString::new("invalid").unwrap());
 
         // Calculate confidence averages
         let mut total_mean = 0.0;
@@ -171,6 +170,13 @@ impl SpifDocumentWrapper {
 }
 
 /// Parse a SPIF document in lenient/standard mode.
+///
+/// Unlike a bare structural presence check, this actively verifies any present
+/// SIGNATURE/MULTISIG chunk and reports the real outcome via
+/// spif_document_get_verification_status ("valid" / "unsigned" / "invalid") — a
+/// signature chunk existing in the bytes is not itself proof of anything.
+/// Verification failure does NOT fail the parse in lenient mode; use
+/// spif_document_parse_strict to reject unsigned/invalid documents outright.
 /// Returns a pointer to a SPIF document wrapper on success, or NULL on failure.
 #[no_mangle]
 pub unsafe extern "C" fn spif_document_parse(
@@ -183,12 +189,19 @@ pub unsafe extern "C" fn spif_document_parse(
     let slice = slice::from_raw_parts(data, size);
     let reader = SPIFReader::new();
     match reader.read(slice) {
-        Ok(doc) => Box::into_raw(Box::new(SpifDocumentWrapper::new(doc))),
+        Ok(doc) => {
+            let status = match reader.verify_signature(slice) {
+                Ok(true) => "valid",
+                Ok(false) => "unsigned",
+                Err(_) => "invalid",
+            };
+            Box::into_raw(Box::new(SpifDocumentWrapper::new(doc, status)))
+        }
         Err(_) => std::ptr::null_mut(),
     }
 }
 
-/// Parse a SPIF document in strict mode (requires signature).
+/// Parse a SPIF document in strict mode (requires a signature that verifies).
 /// Returns a pointer to a SPIF document wrapper on success, or NULL on failure.
 #[no_mangle]
 pub unsafe extern "C" fn spif_document_parse_strict(
@@ -201,7 +214,9 @@ pub unsafe extern "C" fn spif_document_parse_strict(
     let slice = slice::from_raw_parts(data, size);
     let reader = SPIFReader::strict();
     match reader.read(slice) {
-        Ok(doc) => Box::into_raw(Box::new(SpifDocumentWrapper::new(doc))),
+        // read() with require_signature=true already verified every present
+        // signature before returning Ok, so "valid" is not an assumption here.
+        Ok(doc) => Box::into_raw(Box::new(SpifDocumentWrapper::new(doc, "valid"))),
         Err(_) => std::ptr::null_mut(),
     }
 }
@@ -214,7 +229,9 @@ pub unsafe extern "C" fn spif_document_free(wrapper: *mut SpifDocumentWrapper) {
     }
 }
 
-/// Get the verification status of the SPIF document ("valid" or "untrusted").
+/// Get the cryptographic verification status of the SPIF document:
+/// "valid" (a present signature verified), "unsigned" (no signature chunk),
+/// or "invalid" (a signature chunk is present but failed verification).
 /// Returned pointer points to memory owned by the wrapper.
 #[no_mangle]
 pub unsafe extern "C" fn spif_document_get_verification_status(
