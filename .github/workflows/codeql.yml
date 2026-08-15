@@ -24,7 +24,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        language: ["rust"]
+        language: ["rust", "python"]
 
     steps:
       - name: Checkout repository

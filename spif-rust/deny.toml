@@ -1,0 +1,47 @@
+# cargo-deny configuration. Run locally with `cargo deny check`.
+# CI: .github/workflows/cargo-deny.yml
+
+[graph]
+targets = []
+
+[advisories]
+db-urls = ["https://github.com/rustsec/advisory-db"]
+# Known-vulnerable dependencies fail CI. Unmaintained/unsound crates only warn for
+# now — those need a human triage pass (upgrade or accept-with-reason) before we
+# turn them into hard failures, same reasoning as leaving license bans loose below.
+yanked = "deny"
+ignore = []
+
+[licenses]
+version = 2
+# Deny anything not explicitly allowed below, rather than allow-by-default —
+# an unrecognized license on a new transitive dependency should surface for
+# review, not silently pass.
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    # Used by webpki-roots (transitive via ureq); a permissive data-only license
+    # for the bundled Mozilla root certificate list, not code.
+    "CDLA-Permissive-2.0",
+    "Unicode-3.0",
+    "Zlib",
+    "Unlicense",
+]
+confidence-threshold = 0.8
+
+[bans]
+# Multiple versions of the same crate in the dependency tree are common and
+# usually benign (different major versions pulled in transitively); warn
+# rather than fail so this doesn't block merges on normal ecosystem churn.
+multiple-versions = "warn"
+wildcards = "deny"
+deny = []
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
