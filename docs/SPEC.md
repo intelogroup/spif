@@ -491,6 +491,8 @@ reader = SPIFReader.strict()        # Python
 let reader = SPIFReader::strict();  // Rust
 ```
 
+**Caller guidance:** A successful lenient parse MUST NOT be treated as authenticity. Authenticity requires `SPIFReader::strict()` or equivalent verify path; lenient readers are for inspection only.
+
 ### 7.4 Key Management
 
 Keys are managed outside the format. The `SPIFKeyStore` reference implementation stores raw 32-byte ed25519 public keys as `{key_id_slug}.pub` files in a directory, with `revoked.json` for revocation.
