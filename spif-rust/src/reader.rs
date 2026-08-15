@@ -116,6 +116,18 @@ impl SPIFReader {
                         flags2: u8,
                     }
                     if let Ok(h) = from_reader::<HeaderPayload, _>(payload) {
+                        // zstd support (v1.1, FLAG_ZSTD) is not yet implemented in
+                        // spif-rust — spif-py can write it, so without this check a
+                        // zstd-compressed document would silently fall through to
+                        // cbor_payload() as if uncompressed and fail with a confusing
+                        // "Malformed CBOR" error instead of naming the real cause.
+                        if h.flags2 & FLAG_ZSTD != 0 {
+                            return Err(anyhow!(
+                                "Document uses zstd compression (FLAG_ZSTD), which spif-rust \
+                                 does not yet support reading. Only zlib-compressed \
+                                 (FLAG_COMPRESSED) and uncompressed documents can be read."
+                            ));
+                        }
                         if h.flags2 & FLAG_COMPRESSED != 0 {
                             compressed = true;
                         }

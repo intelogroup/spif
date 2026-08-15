@@ -218,6 +218,72 @@ fn test_writer_emits_compressed_chunks_and_flags2() -> Result<()> {
 }
 
 #[test]
+fn test_reader_names_zstd_as_unsupported_instead_of_malformed_cbor() -> Result<()> {
+    // spif-rust cannot read FLAG_ZSTD documents yet (no zstd dependency wired up),
+    // even though spif-py can write them (v1.1). Without an explicit check, the
+    // reader would silently treat the zstd-compressed bytes as uncompressed CBOR
+    // and fail with a confusing "Malformed CBOR" error instead of naming the real
+    // cause. This constructs a document whose HEADER declares FLAG_ZSTD (by
+    // flipping the flags2 byte in an otherwise-valid encoded document and
+    // recomputing the checksum) and asserts the reader names the actual problem.
+    let doc = spif_rust::SPIFDocument {
+        payload: vec![spif_rust::Node {
+            id: "n1".to_string(),
+            node_type: "text".to_string(),
+            value: spif_rust::Value::Text("hello".to_string()),
+            confidence: spif_rust::Distribution::certain("epistemic"),
+            refs: vec![],
+        }],
+        provenance: None,
+        semantic: None,
+        trace: vec![],
+        trace_method: "post-hoc".to_string(),
+        alternatives: vec![],
+        delta: None,
+        signature: None,
+        signatures: vec![],
+        task_info: None,
+    };
+    let mut bytes = SPIFWriter::new().encode(&doc)?;
+
+    let header_len = u32::from_be_bytes(bytes[12..16].try_into().unwrap()) as usize;
+    let header_start = 16;
+    let header_payload = &bytes[header_start..header_start + header_len];
+    // BTreeMap key order in writer.rs is alphabetical, so "flags2" is present as a
+    // CBOR text key (0x66 'f' 'l' 'a' 'g' 's' '2') immediately followed by its
+    // single-byte integer value (0x00, since this doc is uncompressed).
+    let key_pattern = b"\x66flags2";
+    let key_offset = header_payload
+        .windows(key_pattern.len())
+        .position(|w| w == key_pattern)
+        .ok_or_else(|| anyhow!("could not locate 'flags2' key in HEADER CBOR"))?;
+    let value_offset = header_start + key_offset + key_pattern.len();
+    assert_eq!(bytes[value_offset], 0, "expected flags2 == 0 on an uncompressed doc");
+    bytes[value_offset] = spif_rust::FLAG_ZSTD;
+
+    let checksum_len = bytes.len() - 32;
+    let mut hasher = sha2::Sha256::new();
+    hasher.update(&bytes[..checksum_len]);
+    let new_checksum = hasher.finalize();
+    bytes[checksum_len..].copy_from_slice(&new_checksum);
+
+    let err = SPIFReader::new()
+        .read(&bytes)
+        .expect_err("reader must reject a FLAG_ZSTD document it cannot decompress");
+    let msg = err.to_string();
+    assert!(
+        msg.contains("zstd"),
+        "error should name zstd as the actual unsupported feature, got: {msg}"
+    );
+    assert!(
+        !msg.contains("Malformed CBOR"),
+        "error should not misreport this as a CBOR parsing problem, got: {msg}"
+    );
+
+    Ok(())
+}
+
+#[test]
 fn test_reader_rejects_decompression_bomb() -> Result<()> {
     // Highly repetitive text compresses to a tiny fraction of its size, so this is a
     // small document on the wire but decompresses past reader.rs's 10MB safety cap.
