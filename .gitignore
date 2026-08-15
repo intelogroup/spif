@@ -97,3 +97,6 @@ spif/results/
 # Claude agent config
 .claude/
 AGENTS.md
+
+# Local-only research and strategy archive
+.private-spif-materials/
