@@ -18,14 +18,27 @@ extern "C" {
 #endif
 
 /**
- * @brief Opaque handle representing a parsed and verified SPIF Document.
+ * @brief Opaque handle representing a parsed SPIF Document.
+ *
+ * A handle returned by spif_document_parse() is NOT necessarily verified —
+ * check spif_document_get_verification_status() before trusting its contents
+ * for any security-relevant decision. Only spif_document_parse_strict()
+ * guarantees the returned handle carries a verified signature.
  */
 typedef struct spif_document spif_document_t;
 
 /**
  * @brief Parse a raw SPIF CBOR binary payload in standard/lenient mode.
  *
- * This validates the CBOR structure and reads all contained fields.
+ * This validates the CBOR structure, reads all contained fields, and — if a
+ * SIGNATURE/MULTISIG chunk is present — attempts to cryptographically verify
+ * it, exposing the real outcome via spif_document_get_verification_status().
+ * Unlike spif_document_parse_strict(), a missing or invalid signature does
+ * NOT cause this function to fail; it returns the document with status
+ * "unsigned" or "invalid" so callers can inspect untrusted content
+ * deliberately. Security-sensitive callers MUST check
+ * spif_document_get_verification_status() before trusting the result, or use
+ * spif_document_parse_strict() instead.
  *
  * @param data Pointer to the start of the binary payload buffer.
  * @param size The size of the payload buffer in bytes.
@@ -57,8 +70,15 @@ void spif_document_free(spif_document_t* document);
 /**
  * @brief Get the cryptographic verification status of the document.
  *
+ * This reflects an actual signature verification outcome, not merely whether
+ * a SIGNATURE/MULTISIG chunk is present in the bytes.
+ *
  * @param document Pointer to the spif_document_t.
- * @return "valid" if signature verified, or "untrusted" if unsigned/unverified.
+ * @return "valid" if a present signature cryptographically verified,
+ *         "unsigned" if the document carries no signature chunk, or
+ *         "invalid" if a signature chunk is present but failed verification
+ *         (malformed key/signature bytes or a verification mismatch).
+ *         A handle from spif_document_parse_strict() is always "valid".
  *         Memory is owned by the document and remains valid until spif_document_free is called.
  */
 const char* spif_document_get_verification_status(const spif_document_t* document);
