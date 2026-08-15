@@ -24,10 +24,11 @@ allow = [
     "BSD-2-Clause",
     "BSD-3-Clause",
     "ISC",
-    "MPL-2.0",
+    # Used by webpki-roots (transitive via ureq); a permissive data-only license
+    # for the bundled Mozilla root certificate list, not code.
+    "CDLA-Permissive-2.0",
     "Unicode-3.0",
     "Zlib",
-    "CC0-1.0",
     "Unlicense",
 ]
 confidence-threshold = 0.8
