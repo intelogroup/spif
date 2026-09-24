@@ -6,7 +6,7 @@ updates:
       interval: "weekly"
 
   - package-ecosystem: "pip"
-    directory: "/spif"
+    directory: "/spif-py"
     schedule:
       interval: "weekly"
 
