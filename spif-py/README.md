@@ -188,7 +188,7 @@ prov = to_prov(doc)
 json.dumps(prov)  # ready for any PROV-JSON consumer
 ```
 
-This is a **lossy** export — SPIF-native features with no PROV equivalent are dropped or degraded rather than silently discarded. What's preserved: the provenance chain (who/what/when), trace step ordering, node values and confidence means, and signer identity (as a `prov:Agent`). What's lost: `Distribution.shape`/`semantics` typing (stored as plain attributes), ed25519 signature bytes (signer identity survives, the bytes don't), `CHUNK_ALTS` alternatives, `CHUNK_SEMANTIC` embeddings, and trace-edge weights/types. The export itself lists every loss under an inline `_sif_export_losses` key, so a downstream consumer can see exactly what didn't make the trip.
+This is a **lossy** export — SPIF-native features with no PROV equivalent are dropped or degraded rather than silently discarded. The export represents the provenance chain (who/what/when), emits trace dependencies as `prov:wasDerivedFrom` relations, converts node values to strings, and carries signer identity as a `prov:Agent`; it does not guarantee recovery of the original value types or source ordering beyond the identifiers and dependency relations. What's lost or degraded: `Distribution.shape`/`semantics` typing (stored as plain attributes), ed25519 signature bytes (signer identity survives, the bytes don't), `CHUNK_ALTS` alternatives, `CHUNK_SEMANTIC` embeddings, and trace-edge weights/types. The exporter includes a fixed manifest of known loss categories under `_sif_export_losses`; consumers should treat it as a format-level disclosure, not an exact per-document diff.
 
 ---
 
