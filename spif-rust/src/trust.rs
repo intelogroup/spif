@@ -990,6 +990,22 @@ pub fn verify_artifact(data: &[u8], opts: &VerifyOptions) -> VerificationReport 
                 .push(format!("revocation_file: {e}")),
         }
     }
+    // Identical statements (same signed fields + same signature) are one
+    // statement however many times they are supplied: process each unique
+    // statement once so duplicates cannot amplify verification cost or
+    // inflate the forgery count. Mirrors spif-py's verify_artifact
+    // (Phase B parity); identity is the canonical signing bytes + signature.
+    let mut seen: HashSet<Vec<u8>> = HashSet::new();
+    let mut unique: Vec<RevocationStatement> = Vec::with_capacity(candidates.len());
+    for stmt in candidates {
+        let mut identity = statement_signing_bytes(&stmt);
+        identity.extend_from_slice(b"|");
+        identity.extend_from_slice(&stmt.signature);
+        if seen.insert(identity) {
+            unique.push(stmt);
+        }
+    }
+    let candidates = unique;
     for stmt in &candidates {
         if stmt.artifact_digest != digest {
             continue; // about a different artifact — not a forgery signal

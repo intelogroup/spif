@@ -349,3 +349,101 @@ fn reader_accepts_crossdoc_downstream() {
     let downstream = vector("artifacts/10_downstream.spif");
     assert!(spif_rust::SPIFReader::new().read(&downstream).is_ok());
 }
+
+// --- Phase B parity: statement cap, dedupe, parse-boundary types ----------------
+// spif-py gained these semantics in Phase B (commits ab7150e, 5b7319d); the
+// Rust side is pinned to the same behavior here.
+
+fn dummy_statement(issued_ms: u64) -> spif_rust::RevocationStatement {
+    spif_rust::RevocationStatement {
+        artifact_digest: "00".repeat(32),
+        signer: "dummy".to_string(),
+        issued_ms,
+        reason: "other".to_string(),
+        signature: vec![0u8; 64],
+    }
+}
+
+#[test]
+fn revocation_chunk_at_cap_reads_over_cap_is_rejected() {
+    let data = vector("artifacts/01_valid_py.spif");
+    let cap = spif_rust::reader::MAX_REVOCATION_STATEMENTS;
+
+    let at_cap: Vec<spif_rust::RevocationStatement> =
+        (0..cap as u64).map(dummy_statement).collect();
+    let embedded = attach_revocations(&data, &at_cap).unwrap();
+    let doc = spif_rust::SPIFReader::new().read(&embedded).unwrap();
+    assert_eq!(doc.revocations.len(), cap);
+
+    let mut over_cap = at_cap;
+    over_cap.push(dummy_statement(cap as u64));
+    let embedded = attach_revocations(&data, &over_cap).unwrap();
+    let err = spif_rust::SPIFReader::new().read(&embedded).unwrap_err();
+    assert!(
+        err.to_string().contains("exceeding the limit"),
+        "error: {err}"
+    );
+}
+
+#[test]
+fn duplicate_revocation_candidates_are_processed_once() {
+    let data = vector("artifacts/01_valid_py.spif");
+
+    // A forged statement supplied three times counts once (pre-parity it
+    // counted per copy, and each copy cost a signature verification).
+    let attacker = test_key("attacker");
+    let forged = create_revocation(&data, &attacker, "compromised", None, Some(TS0)).unwrap();
+    let mut opts = default_opts();
+    opts.revocations = vec![forged.clone(), forged.clone(), forged];
+    let report = verify_artifact(&data, &opts);
+    assert_eq!(report.trust_status, TRUST_VALID);
+    assert_eq!(report.forged_revocations, 1);
+
+    // An authoritative statement supplied three times applies once.
+    let signer = test_key("signer");
+    let stmt = create_revocation(&data, &signer, "retracted", None, Some(TS0)).unwrap();
+    let mut opts = default_opts();
+    opts.revocations = vec![stmt.clone(), stmt.clone(), stmt];
+    let report = verify_artifact(&data, &opts);
+    assert_eq!(report.trust_status, TRUST_REVOKED);
+    assert_eq!(report.revocations_applied.len(), 1);
+}
+
+#[test]
+fn revocation_chunk_with_wrong_typed_field_is_rejected() {
+    let data = vector("artifacts/01_valid_py.spif");
+    // Hand-build a REVOCATION payload whose statement carries a CBOR array
+    // where `signer` (a string field) belongs. Serde's typed decode is the
+    // parse boundary: the reader must reject the document with a clean
+    // error — never panic, never silently accept (spif-py Phase B, 5b7319d).
+    let entry = ciborium::Value::Map(vec![
+        (
+            ciborium::Value::Text("artifact_digest".to_string()),
+            ciborium::Value::Text("00".repeat(32)),
+        ),
+        (
+            ciborium::Value::Text("signer".to_string()),
+            ciborium::Value::Array(vec![]),
+        ),
+        (
+            ciborium::Value::Text("issued_ms".to_string()),
+            ciborium::Value::Integer(0.into()),
+        ),
+        (
+            ciborium::Value::Text("reason".to_string()),
+            ciborium::Value::Text("other".to_string()),
+        ),
+        (
+            ciborium::Value::Text("signature".to_string()),
+            ciborium::Value::Bytes(vec![0u8; 64]),
+        ),
+    ]);
+    let mut payload = Vec::new();
+    ciborium::ser::into_writer(&ciborium::Value::Array(vec![entry]), &mut payload).unwrap();
+    let crafted = attach_chunk(&data, spif_rust::CHUNK_REVOCATION, &payload).unwrap();
+    assert!(spif_rust::SPIFReader::new().read(&crafted).is_err());
+    // verify_artifact surfaces it as an INVALID report with errors.
+    let report = verify_artifact(&crafted, &default_opts());
+    assert_eq!(report.trust_status, TRUST_INVALID);
+    assert!(!report.errors.is_empty());
+}

@@ -15,6 +15,12 @@ use std::io::{Cursor, Read};
 /// PAYLOAD, ALTS, or DELTA) drives unbounded allocation via `read_to_end`.
 const MAX_DECOMPRESSED_SIZE: u64 = 10 * 1024 * 1024; // 10MB
 
+/// Cap on embedded REVOCATION statements, mirroring
+/// `MAX_REVOCATION_STATEMENTS` in spif-py's reader.py (Phase B parity).
+/// Without this, a document could embed an unbounded number of statements
+/// and amplify verification cost for every verifier.
+pub const MAX_REVOCATION_STATEMENTS: usize = 4096;
+
 /// Deserializes SPIF documents from raw bytes.
 ///
 /// # Security model
@@ -204,6 +210,13 @@ impl SPIFReader {
                     // Post-signature chunk (v1.3, SPEC §6.12): CBOR array of
                     // signed revocation statements. Never compressed.
                     document_data.revocations = from_reader(payload)?;
+                    if document_data.revocations.len() > MAX_REVOCATION_STATEMENTS {
+                        return Err(anyhow!(
+                            "REVOCATION chunk has {} statements, exceeding the limit of {}",
+                            document_data.revocations.len(),
+                            MAX_REVOCATION_STATEMENTS
+                        ));
+                    }
                 }
                 CHUNK_TIMESTAMP => {
                     // Post-signature chunk (v1.3, SPEC §6.13): TSA timestamp
