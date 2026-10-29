@@ -215,16 +215,141 @@ def sign(
     typer.echo(f"Signed  {out_path}  (signer: {doc.signature.signer[:32]}{'...' if len(doc.signature.signer) > 32 else ''})")
 
 
+import re as _re
+
+# A base64 raw ed25519 public key: 43 base64 chars + optional padding.
+# Names (authority / signer id) may themselves be base64 ending in "="
+# or URLs containing "=", so NAME=VALUE cannot be split on the first
+# "=" — anchor on the trailing key token instead ("=" is not a base64
+# char, so the match can never span the separator).
+_KV_VALUE_RE = _re.compile(r"[A-Za-z0-9+/]{40,}={0,2}$")
+
+
+def _parse_kv_options(items, flag: str) -> dict[str, str]:
+    """Parse repeatable NAME=BASE64KEY options; clean error on bad shape."""
+    out: dict[str, str] = {}
+    for item in items or []:
+        m = _KV_VALUE_RE.search(item)
+        if not m or m.start() < 2 or item[m.start() - 1] != "=":
+            typer.echo(
+                f"ERROR: {flag} expects NAME=BASE64KEY, got {item!r}", err=True)
+            raise typer.Exit(1)
+        out[item[: m.start() - 1]] = m.group(0)
+    return out
+
+
+def _run_trust_verify(
+    path: Path,
+    data: bytes,
+    *,
+    pubkey: str | None,
+    revocation_files,
+    tsa_key_items,
+    bundle_paths,
+    known_key_items,
+) -> None:
+    """v1.3 trust-report verification (spif.trust.verify_artifact)."""
+    from .trust import verify_artifact, load_revocation_statements
+
+    tsa_keys = _parse_kv_options(tsa_key_items, "--tsa-key")
+    known_keys = _parse_kv_options(known_key_items, "--known-key")
+
+    if pubkey:
+        # Map the explicit key onto the artifact's signer ids (the trust
+        # layer's equivalent of the legacy --pubkey override).
+        try:
+            doc0 = SPIFReader().decode(data)
+            ids = ([doc0.signature.signer] if doc0.signature else []) + [
+                s.signer for s in doc0.signatures]
+            for sid in ids:
+                known_keys.setdefault(sid, pubkey)
+        except SPIFError:
+            pass  # verify_artifact will surface the parse failure
+
+    statements = []
+    for rfile in revocation_files or []:
+        try:
+            statements.extend(load_revocation_statements(rfile))
+        except Exception as e:
+            typer.echo(f"ERROR: cannot load revocation file {rfile}: {e}", err=True)
+            raise typer.Exit(1)
+
+    bundle: list[bytes] = []
+    for bpath in bundle_paths or []:
+        try:
+            if bpath.is_dir():
+                bundle.extend(
+                    f.read_bytes() for f in sorted(bpath.iterdir()) if f.is_file())
+            else:
+                bundle.append(bpath.read_bytes())
+        except OSError as e:
+            typer.echo(f"ERROR: cannot read bundle {bpath}: {e}", err=True)
+            raise typer.Exit(1)
+
+    report = verify_artifact(
+        data,
+        revocations=statements,
+        tsa_keys=tsa_keys or None,
+        bundle=bundle or None,
+        known_keys=known_keys or None,
+    )
+
+    typer.echo(f"{report.trust_status}  {path}  (trust report)")
+    typer.echo(f"  signature: {report.signature_status}")
+    typer.echo(f"  digest:    {report.artifact_digest}")
+    typer.echo(f"  signers:   {', '.join(report.signers) or 'none'}")
+    if report.revocations_applied:
+        typer.echo(f"  revocations applied: {len(report.revocations_applied)}")
+    if report.forged_revocations:
+        typer.echo(f"  forged revocations: {report.forged_revocations}")
+    typer.echo(f"  timestamp: {report.timestamp_status}")
+    cross = [r for r in report.references if r.kind == "cross-document"]
+    if cross:
+        resolved = sum(1 for r in cross if r.status == "resolved")
+        typer.echo(
+            f"  references: {len(cross)} cross-document "
+            f"({resolved} resolved, {len(cross) - resolved} unresolved)")
+    for err in report.errors:
+        typer.echo(f"  error: {err}")
+
+    if report.trust_status == "VALID":
+        raise typer.Exit(0)
+    if report.trust_status == "UNSIGNED":
+        raise typer.Exit(2)
+    raise typer.Exit(1)
+
+
 @app.command()
 def verify(
     path: Path = typer.Argument(..., help="Path to a signed .spif file"),
     pubkey: str = typer.Option(None, help="Base64 ed25519 public key (overrides signer field)"),
+    trust: bool = typer.Option(False, "--trust", help="Print the v1.3 trust report (revocation, timestamp, cross-document status)"),
+    revocation_files: list[Path] = typer.Option(None, "--revocations", help="Revocation-list file (v1.3; repeatable)"),
+    tsa_key_items: list[str] = typer.Option(None, "--tsa-key", help="Pinned TSA key as AUTHORITY=BASE64 (repeatable)"),
+    bundle_paths: list[Path] = typer.Option(None, "--bundle", help="Local bundle .spif file or directory for cross-document resolution (repeatable)"),
+    known_key_items: list[str] = typer.Option(None, "--known-key", help="Signer key as SIGNER_ID=BASE64 for non-self-describing signers (repeatable)"),
 ):
-    """Verify the ed25519 signature in a SPIF file."""
+    """Verify the ed25519 signature in a SPIF file.
+
+    With --trust or any v1.3 trust input (--revocations, --tsa-key,
+    --bundle, --known-key), prints the full trust report instead:
+    status VALID/REVOKED/INVALID/UNSIGNED/UNVERIFIABLE, forged
+    revocations, timestamp state, and cross-document resolution.
+    Exit codes: 0 = VALID, 1 = INVALID/REVOKED/UNVERIFIABLE or error,
+    2 = UNSIGNED.
+    """
     from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
     from cryptography.exceptions import InvalidSignature
 
     data = path.read_bytes()
+
+    if trust or revocation_files or tsa_key_items or bundle_paths or known_key_items:
+        _run_trust_verify(
+            path, data, pubkey=pubkey,
+            revocation_files=revocation_files, tsa_key_items=tsa_key_items,
+            bundle_paths=bundle_paths, known_key_items=known_key_items,
+        )
+        return
     try:
         doc = SPIFReader().decode(data)
     except SPIFError as e:
