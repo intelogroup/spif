@@ -369,6 +369,29 @@ def verify(
         typer.echo("UNSIGNED  no signature chunk present")
         raise typer.Exit(2)
 
+    if doc.signature.algorithm in ("ed25519+ml-dsa-65", "ml-dsa-65"):
+        # v1.4 (SPEC §7.9.2): PQ-bearing entries are assessed through
+        # the gate machinery in classical mode (use --require-pq for
+        # the strict mode). The legacy path below only understands a
+        # bare ed25519 signer/signature pair and would misreport these.
+        from .pq_hybrid import assess_pq_entry
+        from .trust import signing_body_of
+
+        assessment = assess_pq_entry(
+            doc.signature.algorithm,
+            doc.signature.signer,
+            doc.signature.signature,
+            signing_body_of(data),
+        )
+        if assessment.status == "valid":
+            typer.echo(f"VALID  {path}  (signer: {doc.signature.signer[:40]})")
+            return
+        if assessment.status == "invalid":
+            typer.echo(f"INVALID  signature verification failed for {path}", err=True)
+            raise typer.Exit(1)
+        typer.echo(f"UNVERIFIABLE  {assessment.detail} for {path}", err=True)
+        raise typer.Exit(1)
+
     # Find body_to_sign
     from .format import MAGIC as _MAGIC
     offset = len(_MAGIC) + 2
