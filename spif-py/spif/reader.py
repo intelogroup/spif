@@ -18,13 +18,14 @@ from .format import (
     MAGIC,
     CHUNK_HEADER, CHUNK_PROVENANCE, CHUNK_SEMANTIC, CHUNK_TRACE,
     CHUNK_PAYLOAD, CHUNK_ALTS, CHUNK_DELTA, CHUNK_SIGNATURE, CHUNK_MULTISIG,
-    CHUNK_TASK, CHUNK_ROLES, CHUNK_CHECKSUM,
+    CHUNK_TASK, CHUNK_ROLES, CHUNK_REVOCATION, CHUNK_CHECKSUM,
     TAG_DISTRIBUTION, TAG_NODEREF, TAG_EMBEDDING,
     TRACE_POSTHOC, FLAG_COMPRESSED, FLAG_ZSTD,
 )
 from .types import (
     SPIFDocument, Distribution, NodeRef, Node, TraceStep,
     Provenance, SemanticLayer, Alternative, Delta, Signature, TaskInfo,
+    RevocationStatement,
 )
 
 SUPPORTED_VERSIONS = {0x01, 0x02}
@@ -682,6 +683,24 @@ class SPIFReader:
                 raise SPIFFormatError("ROLES chunk keys and values must all be strings")
             signer_roles = dict(r)
 
+        # 15. REVOCATION chunk (v1.3+) — signed revocation statements,
+        # post-signature chunk, never compressed. Parsing only: trust
+        # semantics (REVOKED status, forgery detection) live in spif.trust.
+        revocations: list[RevocationStatement] = []
+        if CHUNK_REVOCATION in chunks:
+            raw = _cbor_load(chunks[CHUNK_REVOCATION][0], "REVOCATION")
+            if not isinstance(raw, list):
+                raise SPIFFormatError("REVOCATION chunk must decode to a list")
+            for entry in raw:
+                if not isinstance(entry, dict):
+                    raise SPIFFormatError(
+                        f"REVOCATION entry must be a dict, got {type(entry).__name__}"
+                    )
+                try:
+                    revocations.append(RevocationStatement.from_cbor_dict(entry))
+                except (KeyError, TypeError, ValueError) as e:
+                    raise SPIFFormatError(f"Malformed REVOCATION entry: {e}") from e
+
         doc = SPIFDocument(
             payload=payload,
             provenance=provenance,
@@ -694,6 +713,7 @@ class SPIFReader:
             signatures=signatures,
             task_info=task_info,
             signer_roles=signer_roles,
+            revocations=revocations,
         )
 
         # Signature enforcement — must come after full parse so that the

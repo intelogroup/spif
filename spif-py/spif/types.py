@@ -175,6 +175,66 @@ class Signature:
 
 
 @dataclass
+class RevocationStatement:
+    """A signer-issued, signed revocation of one specific artifact (v1.3+).
+
+    Binds the artifact by ``artifact_digest`` (SHA-256 hex of the signing
+    body — see spif.trust.artifact_digest). Only a key that signed or
+    co-signed the artifact can issue a statement a verifier will honor;
+    verification logic lives in spif.trust.
+    """
+    artifact_digest: str   # sha256 hex of the artifact's signing body
+    signer: str            # signer identifier, as it appears in Signature.signer
+    issued_ms: int         # Unix epoch ms when the revocation was issued
+    reason: str            # "compromised" | "retracted" | "superseded" | "other"
+    signature: bytes       # ed25519 signature over unsigned_dict() in canonical CBOR
+
+    def unsigned_dict(self) -> dict:
+        """The statement fields covered by the signature (canonical-CBOR encoded by callers)."""
+        return {
+            "artifact_digest": self.artifact_digest,
+            "signer":          self.signer,
+            "issued_ms":       self.issued_ms,
+            "reason":          self.reason,
+        }
+
+    def to_cbor_dict(self) -> dict:
+        d = self.unsigned_dict()
+        d["signature"] = self.signature
+        return d
+
+    @classmethod
+    def from_cbor_dict(cls, d: dict) -> "RevocationStatement":
+        sig = d.get("signature", b"")
+        if isinstance(sig, memoryview):
+            sig = bytes(sig)
+        return cls(
+            artifact_digest=d["artifact_digest"],
+            signer=d["signer"],
+            issued_ms=d["issued_ms"],
+            reason=d["reason"],
+            signature=sig,
+        )
+
+    def to_json_dict(self) -> dict:
+        import base64
+        d = self.unsigned_dict()
+        d["signature"] = base64.b64encode(self.signature).decode("ascii")
+        return d
+
+    @classmethod
+    def from_json_dict(cls, d: dict) -> "RevocationStatement":
+        import base64
+        return cls(
+            artifact_digest=d["artifact_digest"],
+            signer=d["signer"],
+            issued_ms=d["issued_ms"],
+            reason=d["reason"],
+            signature=base64.b64decode(d["signature"]),
+        )
+
+
+@dataclass
 class SPIFDocument:
     """A complete SPIF document."""
     payload: list[Node]
@@ -188,6 +248,7 @@ class SPIFDocument:
     signatures: list[Signature] = field(default_factory=list)  # v0.2: multi-signature list
     signer_roles: dict[str, str] = field(default_factory=dict)  # v1.1+: signer_id -> claimed role, bound into the signed body
     task_info: "TaskInfo | None" = field(default=None)          # v1.1+: task/run envelope
+    revocations: list[RevocationStatement] = field(default_factory=list)  # v1.3+: embedded signed revocation statements (post-signature chunk)
     pending_tool_results: bool = field(                          # runtime only — not serialized
         default=False, compare=False, repr=False
     )
