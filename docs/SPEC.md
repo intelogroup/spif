@@ -550,6 +550,11 @@ change the wire format locked in v1.0/v1.1; it defines new `Signature.algorithm`
 existing MULTISIG framing already accommodates. Adoption is OPTIONAL until a future major
 version mandates it.
 
+**Status update (v1.4):** the hybrid form defined here is now **normative and
+implemented** — see §7.9, which governs the signer encoding, the reader gate modes,
+and the revocation binding wherever this informational text is silent or differs.
+PQ-only (`"ml-dsa-65"`) signing remains spec-only in v1.4 (§7.9.5).
+
 **Rationale.** Ed25519 is a classical elliptic-curve scheme. A sufficiently capable quantum
 computer breaks it retroactively — an adversary can record a signed `.spif` document today and
 forge or repudiate equivalent signatures once such hardware exists ("harvest now, forge later").
@@ -624,8 +629,10 @@ document's REVOCATION chunk and/or a caller-supplied revocation-list file — a 
 1. Verifies the document's own signature(s) exactly as in §7.2.
 2. For each statement whose `artifact_digest` equals this document's digest:
    - checks that `signer` is one of the document's signers (SIGNATURE or MULTISIG), and
-   - verifies the statement's ed25519 `signature` over the canonical CBOR of the statement
-     map without its `signature` field, under `signer`'s key.
+   - verifies the statement's `signature` over the canonical CBOR of the statement
+     map without its `signature` field, under `signer`'s key — an ed25519 signature
+     for an ed25519 signer; a hybrid signer signs statements with the hybrid
+     algorithm instead (§7.9.4), and verifiers apply the full hybrid check there.
    A statement passing both checks is a **valid revocation**. A statement matching the
    digest but failing either check is a **forged revocation**: it MUST be ignored for
    trust purposes, and the verifier SHOULD report that a forgery was seen.
@@ -669,6 +676,121 @@ A TIMESTAMP chunk (§6.13) carries a TSA countersignature over
 The token is an ed25519 countersignature so the model is testable end-to-end with a local
 test TSA key. Network timestamp protocols (e.g. RFC 3161) are out of scope for v1.3: a
 deployment MAY obtain a token by any means, but verification never performs network I/O.
+
+### 7.9 Post-Quantum Hybrid Signing (v1.4, normative)
+
+This section makes the hybrid algorithm of §7.5 (`"ed25519+ml-dsa-65"`)
+normative and implementable. It is a **non-breaking** addendum: no
+wire-format version bump, no new chunks. Where §7.5 (informational) and
+this section differ, this section governs.
+
+#### 7.9.1 Signer encoding (decided)
+
+§7.5 registered the algorithm values but did not say where the ML-DSA-65
+public key lives. v1.4 decides this in favour of SPIF's defining property —
+self-contained, offline verification with no key lookup:
+
+- A **hybrid** entry's `signer` field is the base64 encoding of the
+  concatenated public keys, ed25519 first:
+  `base64(ed25519_public_key ‖ ml_dsa_65_public_key)` — 32 + 1952 = 1984
+  raw bytes. Hybrid writers MUST use this self-describing form. A verifier
+  holding only the artifact MUST be able to verify both components.
+- A **PQ-only** entry's `signer` field is the base64 encoding of the raw
+  1952-byte ML-DSA-65 public key (relevant to readers per §7.9.2; PQ-only
+  signing itself is not implemented in v1.4, §7.9.5).
+
+Measured cost of this encoding (reference implementation, medians of 50):
+a hybrid artifact is **+5,925 bytes** over its ed25519-signed equivalent
+at any payload size — +3,321 bytes of signature (3373 vs 64) and ~2,604
+bytes of base64 key material in `signer`. The delta is constant, not
+proportional. The alternative (a short key-id `signer` with out-of-band key
+lookup) was rejected for the hybrid form because it costs exactly the
+offline property the format exists to provide. Named (non-self-describing)
+signer ids remain legal for ed25519 entries, and MAY be used for hybrid
+entries only when the verifier is provisioned with the signer's full key
+material out-of-band (the `known_keys` mechanism); the self-describing
+form is the interoperable default.
+
+#### 7.9.2 Reader gate modes
+
+A reader operates in exactly one of two gate modes:
+
+- **classical** (default): PQ components are not checked.
+- **require_pq**: PQ components are checked strictly.
+
+Per signature entry, by `algorithm`:
+
+| `algorithm` | classical | require_pq |
+|---|---|---|
+| `"ed25519"` | ed25519 verification | ed25519 verification |
+| `"ed25519+ml-dsa-65"` | the **ed25519 component** is verified (the §7.5 backward-compatibility rule: classical-only readers treat the document as signed exactly as today) | **both** components MUST verify; failure of either is INVALID |
+| `"ml-dsa-65"` | **unverifiable** — an unsupported-algorithm status | ML-DSA-65 verification (for readers with an ML-DSA implementation) |
+
+Rules that apply in both modes:
+
+- A hybrid entry whose `signature` is not exactly 3373 bytes is malformed
+  and MUST be reported **INVALID** in both modes: it does not carry the
+  registered components in the registered shape, so there is no classical
+  component to fall back to. (An ed25519-only signature relabelled
+  `"ed25519+ml-dsa-65"` is exactly this case.)
+- A PQ-only entry is **invisible, not invalid**, to a classical reader:
+  it MUST be surfaced as an unsupported-algorithm status — `UNVERIFIABLE`
+  in the §7.7 trust taxonomy — never INVALID and never VALID. A document
+  whose only signature is PQ-only is therefore UNVERIFIABLE (not
+  UNSIGNED, not INVALID) to a classical verifier.
+- A require_pq reader **without** an ML-DSA-65 implementation reports PQ
+  entries UNVERIFIABLE. It MUST NOT silently degrade a require_pq request
+  to classical treatment: an operator who asked for PQ assurance gets an
+  explicit "cannot check", never a quiet classical pass.
+- MULTISIG entries are assessed per entry under the same table; the
+  document-level outcome follows the verifier's existing aggregation
+  (any INVALID entry poisons the result; otherwise any UNVERIFIABLE
+  entry makes it UNVERIFIABLE).
+
+#### 7.9.3 Hybrid key management
+
+- A hybrid signer is **one identity with two key components**. Keystores
+  bind both public keys under the single signer id; there is no separate
+  identity for the ML-DSA component.
+- Key-level revocation (§7.4 lists, keystore revocation) names the signer
+  id and therefore revokes the whole hybrid identity at once. There is no
+  component-level revocation in v1.4: a compromised component compromises
+  the signer.
+- A rotation record (§7.4 ceremony) for a hybrid signer MUST carry proofs
+  from **both** components of the old keypair and counter-proofs from
+  **both** components of the new keypair, over the same rotation payload
+  an ed25519 rotation uses. A rotation proven by only one component is
+  not a hybrid rotation and MUST NOT be honoured as one.
+- ML-DSA-65 secret keys are 4032 raw bytes. v1.4 defines **no** mnemonic
+  or passphrase derivation for them; they are generated randomly and
+  stored as opaque key material. (The ed25519 component MAY still be
+  mnemonic-derived exactly as in §7.4 — the two components have
+  independent generation stories under one identity.)
+
+#### 7.9.4 Revocation statements by hybrid signers
+
+A revocation statement (§7.7) is signed with the issuing signer's own
+algorithm, over the same canonical-CBOR statement body §7.7 defines:
+
+- An ed25519 signer signs statements with ed25519 (the §7.7 baseline).
+- A **hybrid signer MUST sign statements with the hybrid algorithm**: the
+  statement's `signature` is the 3373-byte concatenation (ed25519 first)
+  over the statement body, and verifiers MUST apply the full hybrid check
+  (both components, as in require_pq) before honouring the statement. An
+  ed25519-only statement signature offered for a hybrid signer is a
+  forgery under §7.7's rules: ignored for trust, reported as forged.
+- The statement's `signer` field is the signer's id exactly as it appears
+  in the artifact's signature entry (for hybrid signers, the §7.9.1
+  self-describing form), so the §7.7 signer-match check is unchanged.
+
+#### 7.9.5 Scope: PQ-only signing stays spec-only
+
+Hybrid is the implemented PQ mode of v1.4. Writers MUST NOT emit
+`"ml-dsa-65"` (PQ-only) primary or MULTISIG signatures in v1.4: the value
+stays registered (§7.5) and readers treat such entries per §7.9.2, but no
+conforming v1.4 writer produces them. The §7.6 re-attestation flow
+(appending a PQ MULTISIG entry to a historical document) likewise remains
+guidance, not implemented behaviour, in v1.4.
 
 ---
 
@@ -843,12 +965,15 @@ After `"verified"` or `"error"`, further `feed()` calls return empty lists.
 | v1.1†  | CHUNK_TASK (`0x09`); FLAG_ZSTD (`flags2 & 0x02`); FLAG_HAS_TASK (`flags2 & 0x04`); Provenance `attempt`/`task_id`; NODE_TOOL_RESULT `error_type`/`error_code`/`latency_ms` |
 | v1.2‡  | REVOCATION chunk (`0x0A`); `Signature.algorithm` values `"ml-dsa-65"` and `"ed25519+ml-dsa-65"` for post-quantum/hybrid signing (§7.5); timestamp-bound key revocation (§7.6); cross-document NodeRef via `spif:sha256:<content_id>#<node_id>` (§8.1) |
 | v1.3§  | Signed revocation statements in REVOCATION chunk (`0x0B`) with the REVOKED trust status (§6.12, §7.7); TIMESTAMP anchor chunk (`0x0C`) with TSA countersignatures (§6.13, §7.8); offline bundle-only cross-document resolution with explicit UNRESOLVED reporting (§8.1); chunk registry correction (`0x0A` = ROLES, as implemented since v1.1); conformance kit in `vectors/` |
+| v1.4¶  | Hybrid post-quantum signing made normative and implemented (§7.9): self-describing signer encoding for `"ed25519+ml-dsa-65"` (both public keys in `signer`); reader gate modes classical / require_pq; PQ-only entries report UNVERIFIABLE ("invisible, not invalid") to classical readers; hybrid key management and hybrid-signed revocation statements (§7.9.3–§7.9.4); PQ-only signing remains spec-only (§7.9.5) |
 
 † v1.1 additions are backward-compatible extensions to wire format `0x02`. Old readers skip CHUNK_TASK and ignore unknown CBOR keys per the forward-compatibility rules.
 
 ‡ v1.2 is an **informational, non-breaking** addendum: no wire-format version bump, no required chunks, no change to existing chunk semantics. Every addition is opt-in and degrades gracefully on older readers per §3.1 (unknown chunks skipped) and §7.2 (unknown `algorithm` values treated as unverifiable, not invalid).
 
 § v1.3 is a **normative, non-breaking** addendum: no wire-format version bump. The v1.2 revocation sketch (§7.6) is superseded by §7.7; the chunk registry is corrected to match the implementations (`0x0A` = ROLES). New chunks degrade gracefully on older readers per §3.1.
+
+¶ v1.4 is a **normative, non-breaking** addendum: no wire-format version bump. Hybrid signing (§7.5, informational in v1.2) becomes implemented and normative (§7.9); PQ-only signing remains spec-only. Older readers degrade gracefully: a classical reader verifies the ed25519 component of a hybrid entry and reports PQ-only entries as unverifiable per §7.9.2.
 
 Readers MUST support both versions. Writers SHOULD emit version `0x02`.
 
@@ -974,6 +1099,28 @@ The PAYLOAD CBOR array contains one map:
 ---
 
 ## Appendix B: Changelog
+
+**v1.4** (normative addendum, see §7.9):
+- Hybrid post-quantum signing (`"ed25519+ml-dsa-65"`, §7.5) is now normative and
+  implemented; the signer encoding is decided: both public keys embedded in
+  `signer` (base64 of ed25519 ‖ ML-DSA-65, 1984 raw bytes), preserving
+  self-contained offline verification at a measured +5,925 bytes per artifact
+- Reader gate modes: classical (default; ed25519 component of a hybrid entry)
+  and require_pq (both components MUST verify); a hybrid entry with a
+  wrong-length signature is INVALID in both modes
+- PQ-only (`"ml-dsa-65"`) entries are UNVERIFIABLE — "invisible, not invalid" —
+  to classical readers, never INVALID and never VALID; PQ-only *signing*
+  remains spec-only in v1.4
+- Hybrid key management: one signer identity over two key components,
+  whole-identity revocation, dual-component rotation proofs; no mnemonic
+  derivation for ML-DSA secret keys
+- Revocation statements by a hybrid signer are hybrid-signed and verified
+  with the full hybrid check; an ed25519-only statement from a hybrid
+  signer is a forgery
+- Conformance kit grows to 15 cases (hybrid cases 12–15 promoted from the
+  Phase D spike)
+- Implementation versions aligned to 1.4.0 (Python, Rust)
+- No wire-format version bump; fully backward-compatible with v0.2/v1.1 readers
 
 **v1.3** (normative addendum, see §6.12, §6.13, §7.7, §7.8, §8.1):
 - Signed revocation statements (REVOCATION `0x0B`): signer-issued, digest-bound, with the
