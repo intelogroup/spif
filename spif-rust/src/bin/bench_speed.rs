@@ -90,6 +90,8 @@ fn doc_minimal() -> SPIFDocument {
         signature: None,
         signatures: vec![],
         task_info: None,
+        revocations: Vec::new(),
+        timestamp_anchor: None,
     }
 }
 
@@ -169,6 +171,8 @@ fn doc_full() -> SPIFDocument {
         signature: None,
         signatures: vec![],
         task_info: None,
+        revocations: Vec::new(),
+        timestamp_anchor: None,
     }
 }
 

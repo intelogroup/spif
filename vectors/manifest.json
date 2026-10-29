@@ -29,9 +29,7 @@
         "timestamp_status": "absent",
         "forged_revocations": 0,
         "references": []
-      },
-      "executable": false,
-      "blocked_reason": "requires the Rust toolchain (cargo/rustc) to build the spif-rust reader; not available in every environment. Run in a Rust-equipped checkout."
+      }
     },
     {
       "id": "03",

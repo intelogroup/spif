@@ -117,10 +117,9 @@ def main() -> None:
         "expected": {"trust_status": "VALID", "signature_status": "valid",
                      "timestamp_status": "absent", "forged_revocations": 0,
                      "references": []},
-        "executable": False,
-        "blocked_reason": "requires the Rust toolchain (cargo/rustc) to build "
-                          "the spif-rust reader; not available in every "
-                          "environment. Run in a Rust-equipped checkout.",
+        # Executed by run_conformance.py's cross-implementation adapter
+        # (Rust trust_conformance binary, both directions); the runner
+        # reports it BLOCKED only when Rust is unavailable.
     })
 
     # 03 — tampered -----------------------------------------------------------

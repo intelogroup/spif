@@ -55,6 +55,10 @@ name = "spif-sidecar"
 path = "src/bin/sidecar.rs"
 
 [[bin]]
+name = "trust_conformance"
+path = "src/bin/trust_conformance.rs"
+
+[[bin]]
 name = "crypto_conformance"
 path = "src/bin/crypto_conformance.rs"
 
