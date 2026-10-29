@@ -213,9 +213,19 @@ def _validate_payload_dag(nodes: list[Node]) -> None:
 
     ids = {n.id for n in nodes}
 
+    # Cross-document references (SPEC §8.1: "spif:sha256:<content_id>#<node_id>")
+    # point outside this document by design. They are external: exempt from
+    # the local dangling-reference check and the local cycle graph. Whether
+    # they resolve is a verification-time question (spif.trust), never a
+    # parse error.
+    def _is_cross_doc(ref_id: str) -> bool:
+        return ref_id.startswith("spif:")
+
     # Dangling reference check
     for n in nodes:
         for ref in (n.refs or []):
+            if _is_cross_doc(ref.node_id):
+                continue
             if ref.node_id not in ids:
                 raise SPIFFormatError(
                     f"Node '{n.id}' references unknown node_id '{ref.node_id}'"
@@ -226,6 +236,8 @@ def _validate_payload_dag(nodes: list[Node]) -> None:
     dependents: dict[str, list[str]] = {n.id: [] for n in nodes}
     for n in nodes:
         for ref in (n.refs or []):
+            if _is_cross_doc(ref.node_id):
+                continue
             in_degree[n.id] += 1
             dependents[ref.node_id].append(n.id)
 

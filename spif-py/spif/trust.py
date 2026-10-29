@@ -500,7 +500,10 @@ CROSS_DOC_PREFIX = "spif:sha256:"
 def _resolve_references(doc: SPIFDocument, bundle) -> list[ReferenceResolution]:
     bundle_index: dict[str, SPIFDocument] = {}
     for item in bundle or []:
-        bdoc = item if isinstance(item, SPIFDocument) else SPIFReader().decode(item)
+        try:
+            bdoc = item if isinstance(item, SPIFDocument) else SPIFReader().decode(item)
+        except SPIFError:
+            continue  # an undecodable bundle entry resolves nothing
         bundle_index[bdoc.content_id()] = bdoc
 
     out: list[ReferenceResolution] = []
