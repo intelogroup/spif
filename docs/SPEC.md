@@ -3,7 +3,7 @@
 
 **MIME type:** `application/x-spif`  
 **File extension:** `.spif`  
-**Status:** v1.0 wire contract is locked and stable. All implementations MUST support reading v0.2 documents for backward compatibility.
+**Status:** v1.0 wire contract is locked and stable. All implementations MUST support reading v0.2 documents for backward compatibility. Addenda through **v1.3** (see Appendix B) extend the format without changing the wire contract: v1.2 was informational; v1.3 makes the trust layer (revocation, timestamp anchoring, cross-document resolution) normative and adds a conformance kit (`vectors/`).
 
 ---
 
@@ -101,13 +101,21 @@ The payload is a CBOR-encoded value (see §4), except CHECKSUM whose payload is 
 | `0x07` | SIGNATURE      | No       | No           | Single ed25519 signature (v0.2+)                |
 | `0x08` | MULTISIG       | No       | No           | Multiple ed25519 signatures (v0.2+)             |
 | `0x09` | TASK           | No       | No           | Task/run envelope metadata (v1.1)               |
-| `0x0A` | REVOCATION     | No       | No           | Key revocation records (v1.2, informational)    |
+| `0x0A` | ROLES          | No       | No           | Signer-role manifest (v1.1; see registry note)   |
+| `0x0B` | REVOCATION     | No       | No           | Signed revocation statements (v1.3, §6.12)       |
+| `0x0C` | TIMESTAMP      | No       | No           | TSA timestamp anchor (v1.3, §6.13)               |
 | `0xFF` | CHECKSUM       | Yes      | No           | SHA-256 over all preceding bytes                |
 | `0x10` | PARTIAL_TEXT   | No       | No           | Streaming text fragment (SSPIF only)            |
 | `0x11` | STREAM_META    | No       | No           | Early stream metadata (SSPIF, reserved)         |
 | `0x12` | STREAM_RESUME  | No       | No           | Resume point for dropped streams (SSPIF v0.2+)  |
 
-IDs `0x0B`–`0x0F` and `0x13`–`0xFE` are reserved for future use. Readers MUST skip them.
+IDs `0x0D`–`0x0F` and `0x13`–`0xFE` are reserved for future use. Readers MUST skip them.
+
+**Registry note (v1.3 correction):** earlier drafts of this registry listed `0x0A` as
+REVOCATION. The reference implementations have shipped `0x0A` as ROLES since v1.1, and
+documents in the wild rely on that assignment, so v1.3 corrects the registry to match the
+implementations: `0x0A` is ROLES. The signed revocation statements sketched in v1.2 are
+assigned `0x0B` (see §6.12, §7.7).
 
 ### 3.2 Required Chunk Order
 
@@ -124,8 +132,15 @@ PAYLOAD
 [DELTA]
 [SIGNATURE]
 [MULTISIG]
+[REVOCATION]
+[TIMESTAMP]
 CHECKSUM
 ```
+
+REVOCATION and TIMESTAMP (v1.3) are **post-signature** chunks: they are emitted after the
+auth chunks, are never part of the signing body (§7.2), and may also be attached to an
+existing document later (by the signer or an archival service) provided CHECKSUM is
+recomputed. Attaching them does not alter the signed bytes.
 
 Readers MUST NOT require this order but SHOULD process chunks in order of appearance. Missing a required chunk (HEADER, PAYLOAD, CHECKSUM) MUST raise `SPIFFormatError`.
 
@@ -424,26 +439,52 @@ The TASK chunk MUST be emitted immediately after the HEADER chunk. Old readers (
 
 Raw 32 bytes — SHA-256 digest. **Not CBOR-encoded.** The `payload_length` field will be exactly `32`. Readers MUST verify this and raise `SPIFFormatError` if the length differs.
 
-### 6.12 REVOCATION (`0x0A`) — v1.2, informational
+### 6.12 REVOCATION (`0x0B`) — v1.3
 
-A CBOR array of revocation records, appended by a verifier or archival service to a copy of the
-document — never by the original signer as part of the initial signing pass (see §7.6). Never
-compressed.
+A CBOR array of **signed revocation statements** (§7.7). Never compressed. A statement is
+issued by one of the document's own signers, after signing, to retract trust in this specific
+artifact; it is never part of the initial signing pass. Statements may also travel
+out-of-band in a revocation-list file (§7.7) instead of, or in addition to, this chunk.
 
 ```
 [{
-  "key_id":       text    (optional) — matches Signature.key_id, if present
-  "signer":       text    (required) — matches Signature.signer
-  "revoked_ms":   uint64  (required) — Unix epoch ms when the key was revoked
-  "reason":       text    (optional) — free-text or "compromised" | "rotated" | "expired"
-  "issuer":       text    (optional) — stable identifier for who is asserting the revocation
+  "artifact_digest": text  (required) — SHA-256 hex of the signing body (§7.7)
+  "signer":          text  (required) — base64 raw ed25519 public key of the revoking signer;
+                                        MUST be one of the document's SIGNATURE/MULTISIG signers
+  "issued_ms":       uint64 (required) — Unix epoch ms when the revocation was issued
+  "reason":          text  (required) — "compromised" | "retracted" | "superseded" | "other"
+  "signature":       bytes (required) — ed25519 signature by `signer`'s key over the canonical
+                                        CBOR of this map without the "signature" field
 }, ...]
 ```
 
-Because REVOCATION is intended to be appended to an archived *copy* alongside the original
-SIGNATURE/MULTISIG chunks, and CHECKSUM is always last (§3.2), adding a REVOCATION record
-changes that copy's checksum — it does not and cannot retroactively alter the originally-signed
-bytes. See §7.6 for verification semantics.
+Because REVOCATION is a post-signature chunk and CHECKSUM is always last (§3.2), attaching a
+statement to an existing document changes that copy's checksum — it does not and cannot
+retroactively alter the originally-signed bytes. See §7.7 for verification semantics,
+including the REVOKED trust status and the treatment of forged statements.
+
+> **History:** v1.2 sketched this chunk at `0x0A` carrying *unsigned key-revocation records*
+> asserted by third parties. That design was never implemented; `0x0A` shipped as ROLES
+> (see the §3.1 registry note), and unsigned third-party assertions cannot ground a trust
+> status. v1.3 supersedes the sketch with the signer-issued signed-statement model above.
+
+### 6.13 TIMESTAMP (`0x0C`) — v1.3
+
+An optional timestamp anchor: a timestamp authority's (TSA) countersignature binding this
+artifact to a point in time. Never compressed. Post-signature chunk (§3.2).
+
+```
+{
+  "authority": text  (required) — stable identifier for the TSA; for a self-describing TSA,
+                                   the base64 raw ed25519 public key
+  "time_ms":   uint64 (required) — Unix epoch ms asserted by the TSA
+  "token":     bytes (required) — ed25519 countersignature by the TSA key over the canonical
+                                   CBOR of {"artifact_digest": <hex>, "time_ms": <uint64>}
+}
+```
+
+Absence of a TIMESTAMP chunk never invalidates a document. See §7.8 for verification
+semantics (verified / unverified / absent).
 
 ---
 
@@ -547,9 +588,10 @@ Long-lived documents need a way to express "this key was later revoked" without 
 signatures that were legitimate at signing time, and a way to extend trust in an old document
 once its original algorithm is considered weak.
 
-- **Revocation chunk** `REVOCATION` (`0x0A`, previously reserved) — see §6.12. Carries a list of
-  revoked `key_id`/`signer` pairs with revocation timestamps, optionally embedded by a verifier
-  or archival service into a copy of the document (not by the original signer).
+- **Revocation chunk** — as sketched here in v1.2 (unsigned key-revocation records at `0x0A`),
+  this mechanism was never implemented. v1.3 replaces it with signer-issued **signed
+  revocation statements** at `0x0B` — see §6.12 and §7.7, which are normative. Key-level
+  revocation lists (§7.4) remain a separate, complementary mechanism.
 - **Timestamp-bound trust**: a reader encountering a REVOCATION entry for the signing key MUST
   still report the signature as having been VALID_AT(`signed_ms`) if `signed_ms` in HEADER
   predates the revocation timestamp, and SHOULD surface both facts to the caller rather than
@@ -561,6 +603,66 @@ once its original algorithm is considered weak.
   i.e. re-attestation adds a chunk, it does not rewrite history. Readers MUST NOT assume the
   newest signature is the only one that matters; all present, verifiable signatures remain
   meaningful provenance.
+
+### 7.7 Revocation Verification (v1.3, normative)
+
+A **revocation statement** (§6.12) retracts trust in one specific artifact. The statement
+binds the artifact by `artifact_digest`:
+
+```
+artifact_digest = SHA-256(signing_body)   — hex-encoded; signing_body as defined in §7.2.
+For an unsigned document, signing_body is all bytes before the CHECKSUM chunk.
+```
+
+This digest is stable under post-signature attachment: adding REVOCATION or TIMESTAMP
+chunks, or recomputing CHECKSUM, does not change it.
+
+**Verification procedure.** Given a document and a set of candidate statements (from the
+document's REVOCATION chunk and/or a caller-supplied revocation-list file — a JSON object
+`{"revocations": [<statement>, ...]}` with `signature` base64-encoded), the verifier:
+
+1. Verifies the document's own signature(s) exactly as in §7.2.
+2. For each statement whose `artifact_digest` equals this document's digest:
+   - checks that `signer` is one of the document's signers (SIGNATURE or MULTISIG), and
+   - verifies the statement's ed25519 `signature` over the canonical CBOR of the statement
+     map without its `signature` field, under `signer`'s key.
+   A statement passing both checks is a **valid revocation**. A statement matching the
+   digest but failing either check is a **forged revocation**: it MUST be ignored for
+   trust purposes, and the verifier SHOULD report that a forgery was seen.
+3. Reports a **trust status** distinct from raw signature validity:
+
+   | Trust status   | Meaning                                                        |
+   |----------------|----------------------------------------------------------------|
+   | `VALID`        | Signature valid; no valid revocation applies                   |
+   | `REVOKED`      | Signature cryptographically valid, but a valid revocation applies |
+   | `INVALID`      | A present signature fails verification, or the checksum fails  |
+   | `UNSIGNED`     | No signature present                                           |
+   | `UNVERIFIABLE` | A signature is present under an algorithm this reader cannot check |
+
+   REVOKED MUST NOT be reported as VALID, and MUST NOT be collapsed into INVALID: the
+   cryptography is sound; the signer has retracted the artifact.
+
+Verification is fully offline. Revocations are distributed out-of-band (list files,
+archives, the chunk itself); a verifier MUST NOT fetch anything to apply them.
+
+### 7.8 Timestamp Anchoring (v1.3, normative)
+
+A TIMESTAMP chunk (§6.13) carries a TSA countersignature over
+`(artifact_digest, time_ms)`, where `artifact_digest` is as defined in §7.7.
+
+- If the chunk is **absent**, the verification report marks the timestamp `absent`.
+  This never affects the trust status.
+- If the chunk is **present** and the verifier is configured with the TSA's pinned key
+  (by `authority`), the verifier checks the countersignature and, when digest and time
+  match, marks the timestamp `verified`. A countersignature that fails under the pinned
+  key is reported as `unverified` with the failure surfaced — it is not a trust failure
+  of the artifact itself.
+- If the chunk is **present** but the verifier has no pinned key for that authority, the
+  timestamp is reported `unverified` — not a failure.
+
+The token is an ed25519 countersignature so the model is testable end-to-end with a local
+test TSA key. Network timestamp protocols (e.g. RFC 3161) are out of scope for v1.3: a
+deployment MAY obtain a token by any means, but verification never performs network I/O.
 
 ---
 
@@ -606,6 +708,20 @@ attempting to resolve it as a local node ID. A reader that does resolve it SHOUL
 referenced document's `content_id()` matches `<content_id>` before trusting the linked node,
 so provenance composes across a chain of signed documents without re-embedding upstream payloads.
 
+**Resolution policy (v1.3, normative).** Verification NEVER performs network access to
+resolve a cross-document reference. References resolve only from a **local bundle**:
+a set of documents the caller supplies alongside the document under verification. For
+each cross-document NodeRef, the verification report carries one of:
+
+- `resolved` — the bundle contains a document whose `content_id()` equals `<content_id>`
+  and which contains a node with id `<node_id>`;
+- `unresolved` — no such document/node is in the bundle.
+
+An `unresolved` reference is reported explicitly; it is never a silent pass and never a
+failure of the referring document's own signature or trust status. Local (non-`spif:`)
+references are reported as `local` and are validated by the usual payload-DAG rules;
+cross-document references are exempt from the local dangling-reference check.
+
 ---
 
 ## 9. Compression
@@ -615,7 +731,7 @@ so provenance composes across a chain of signed documents without re-embedding u
 When `FLAG_COMPRESSED` is set in the HEADER chunk:
 
 - The SEMANTIC, TRACE, PAYLOAD, ALTS, and DELTA chunk payloads are zlib-compressed (RFC 1950, level 9)
-- HEADER, PROVENANCE, TASK, SIGNATURE, MULTISIG, and CHECKSUM are **never compressed**
+- HEADER, PROVENANCE, TASK, SIGNATURE, MULTISIG, REVOCATION, TIMESTAMP, and CHECKSUM are **never compressed**
 - The `payload_length` field in each chunk header is the **compressed** length
 - The SHA-256 checksum covers compressed payloads — readers verify before decompressing
 - Readers auto-detect compression from `flags2`; callers do not need to signal it
@@ -714,10 +830,13 @@ After `"verified"` or `"error"`, further `feed()` calls return empty lists.
 | `0x02`  | SIGNATURE, MULTISIG; `flags2` in HEADER; Distribution `semantics`; FLAG_STREAMING; PARTIAL_TEXT, STREAM_RESUME; zlib compression; NODE_TOOL_CALL, NODE_TOOL_RESULT; content_id |
 | v1.1†  | CHUNK_TASK (`0x09`); FLAG_ZSTD (`flags2 & 0x02`); FLAG_HAS_TASK (`flags2 & 0x04`); Provenance `attempt`/`task_id`; NODE_TOOL_RESULT `error_type`/`error_code`/`latency_ms` |
 | v1.2‡  | REVOCATION chunk (`0x0A`); `Signature.algorithm` values `"ml-dsa-65"` and `"ed25519+ml-dsa-65"` for post-quantum/hybrid signing (§7.5); timestamp-bound key revocation (§7.6); cross-document NodeRef via `spif:sha256:<content_id>#<node_id>` (§8.1) |
+| v1.3§  | Signed revocation statements in REVOCATION chunk (`0x0B`) with the REVOKED trust status (§6.12, §7.7); TIMESTAMP anchor chunk (`0x0C`) with TSA countersignatures (§6.13, §7.8); offline bundle-only cross-document resolution with explicit UNRESOLVED reporting (§8.1); chunk registry correction (`0x0A` = ROLES, as implemented since v1.1); conformance kit in `vectors/` |
 
 † v1.1 additions are backward-compatible extensions to wire format `0x02`. Old readers skip CHUNK_TASK and ignore unknown CBOR keys per the forward-compatibility rules.
 
 ‡ v1.2 is an **informational, non-breaking** addendum: no wire-format version bump, no required chunks, no change to existing chunk semantics. Every addition is opt-in and degrades gracefully on older readers per §3.1 (unknown chunks skipped) and §7.2 (unknown `algorithm` values treated as unverifiable, not invalid).
+
+§ v1.3 is a **normative, non-breaking** addendum: no wire-format version bump. The v1.2 revocation sketch (§7.6) is superseded by §7.7; the chunk registry is corrected to match the implementations (`0x0A` = ROLES). New chunks degrade gracefully on older readers per §3.1.
 
 Readers MUST support both versions. Writers SHOULD emit version `0x02`.
 
@@ -795,6 +914,11 @@ disagree on behavior, Python is correct.
 
 ### 14.1 Test Vectors
 
+The conformance kit in `vectors/` (repo root) is the normative cross-implementation
+test set for the v1.3 trust layer: numbered cases with expected verification outcomes,
+a deterministic builder (`build_vectors.py`), and a runner (`run_conformance.py`) that
+any implementation can execute.
+
 The Python test suite (`spif-py/tests/`) serves as executable format tests:
 
 | File                       | Coverage                                              |
@@ -838,6 +962,21 @@ The PAYLOAD CBOR array contains one map:
 ---
 
 ## Appendix B: Changelog
+
+**v1.3** (normative addendum, see §6.12, §6.13, §7.7, §7.8, §8.1):
+- Signed revocation statements (REVOCATION `0x0B`): signer-issued, digest-bound, with the
+  distinct REVOKED trust status; forged statements are flagged and ignored
+- TIMESTAMP anchor chunk (`0x0C`): TSA ed25519 countersignature over (artifact digest, time);
+  verified / unverified / absent reporting, absence never invalidates
+- Cross-document resolution policy: local-bundle only, never network; per-reference
+  resolved / unresolved reporting
+- Chunk registry correction: `0x0A` is ROLES (as implemented since v1.1); the v1.2
+  revocation sketch at `0x0A` was never implemented and is superseded
+- Conformance kit (`vectors/`) with deterministic vectors and a runner
+- Implementation versions aligned to 1.3.0 (Python, Rust)
+- Post-quantum signatures (§7.5) remain spec-only in both implementations; implementation
+  is the next rung (see `docs/UPGRADE_PLAN.md`)
+- No wire-format version bump; fully backward-compatible with v0.2/v1.1 readers
 
 **v1.2** (informational addendum, see §7.5, §7.6, §8.1):
 - `Signature.algorithm` values `"ml-dsa-65"` (FIPS 204 post-quantum) and `"ed25519+ml-dsa-65"` (hybrid)

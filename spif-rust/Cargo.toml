@@ -1,6 +1,6 @@
 [package]
 name = "spif-rust"
-version = "0.2.0"
+version = "1.3.0"
 edition = "2021"
 description = "Semantic Provenance Inference Format (SPIF) — Rust implementation. Binary format for AI outputs with provenance, uncertainty distributions, reasoning traces, and ed25519 signatures."
 license = "Apache-2.0"

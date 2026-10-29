@@ -2,6 +2,43 @@
 
 All notable changes to SPIF are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.3.0] - 2026-10-29
+
+The "world-ready" trust-layer release. Spec v1.3 (docs/SPEC.md §6.12–§6.13, §7.7–§7.8,
+§8.1); plan in docs/UPGRADE_PLAN.md. No wire-format version bump.
+
+### Added
+- **Signed revocation statements** (REVOCATION chunk `0x0B`): a signer can retract a
+  specific artifact with an ed25519-signed, digest-bound statement (reason codes:
+  compromised / retracted / superseded / other). `spif.trust.verify_artifact()` reports a
+  distinct **REVOKED** trust status — never VALID, never conflated with INVALID. Forged
+  statements (non-signer key or bad signature) are ignored for trust and flagged in the
+  report. Statements distribute out-of-band via revocation-list files and/or the embedded
+  chunk; verification stays offline.
+- **Timestamp anchor** (TIMESTAMP chunk `0x0C`): optional TSA ed25519 countersignature
+  over (artifact digest, time). Reported as verified / unverified / absent; absence never
+  invalidates an artifact.
+- **Cross-document resolution policy**: `spif:` NodeRefs resolve only from a
+  caller-supplied local bundle — never the network — with explicit per-reference
+  resolved / unresolved reporting.
+- **Conformance kit** (`vectors/`): numbered deterministic vectors, a builder, and a
+  runner any implementation can execute.
+
+### Changed
+- **Chunk registry corrected**: `0x0A` is ROLES, as the implementations have shipped
+  since v1.1. Earlier spec drafts reserved `0x0A` for an unsigned key-revocation record
+  design that was never implemented; v1.3 supersedes it (see SPEC §3.1 registry note).
+- Cross-document (`spif:`) NodeRefs no longer fail payload-DAG validation as dangling
+  local references; they are treated as external, per SPEC §8.1.
+- Implementation package versions aligned to 1.3.0 (Python and Rust).
+
+### Notes
+- Post-quantum / hybrid signatures (SPEC §7.5) remain **spec-only** in both
+  implementations; implementing ML-DSA-65 is the next rung (docs/UPGRADE_PLAN.md, rung 6).
+- The Rust implementation does not yet have the v1.3 trust layer (revocation, timestamp,
+  bundle resolution); Python is complete. The conformance kit's cross-implementation
+  case records this gap.
+
 ## [Unreleased]
 
 ### Fixed
