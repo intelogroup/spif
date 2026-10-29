@@ -176,6 +176,66 @@
           }
         ]
       }
+    },
+    {
+      "id": "12",
+      "name": "hybrid_valid",
+      "description": "Hybrid ed25519+ml-dsa-65 signed artifact (SPEC 7.9). Strict hybrid verification (require_pq gate mode): both components valid -> VALID. Executed by the pq_hybrid adapter (spif.trust, require_pq).",
+      "artifact": "artifacts/12_hybrid_valid.spif",
+      "adapter": "pq_hybrid",
+      "inputs": {},
+      "expected": {
+        "trust_status": "VALID",
+        "signature_status": "valid",
+        "timestamp_status": "absent",
+        "forged_revocations": 0,
+        "references": []
+      }
+    },
+    {
+      "id": "13",
+      "name": "hybrid_tampered_ml_dsa",
+      "description": "ML-DSA-65 component byte flipped, checksum repaired. Hybrid verification requires BOTH components -> INVALID.",
+      "artifact": "artifacts/13_hybrid_tampered_ml_dsa.spif",
+      "adapter": "pq_hybrid",
+      "inputs": {},
+      "expected": {
+        "trust_status": "INVALID",
+        "signature_status": "invalid",
+        "timestamp_status": "absent",
+        "forged_revocations": 0,
+        "references": []
+      }
+    },
+    {
+      "id": "14",
+      "name": "hybrid_tampered_ed25519",
+      "description": "ed25519 component byte flipped, checksum repaired. Hybrid verification requires BOTH components -> INVALID.",
+      "artifact": "artifacts/14_hybrid_tampered_ed25519.spif",
+      "adapter": "pq_hybrid",
+      "inputs": {},
+      "expected": {
+        "trust_status": "INVALID",
+        "signature_status": "invalid",
+        "timestamp_status": "absent",
+        "forged_revocations": 0,
+        "references": []
+      }
+    },
+    {
+      "id": "15",
+      "name": "hybrid_ed25519_only_relabelled",
+      "description": "ed25519-only signature with the algorithm field relabelled to ed25519+ml-dsa-65 (64-byte signature, no ML-DSA component). The hybrid verifier must reject it -> INVALID.",
+      "artifact": "artifacts/15_hybrid_ed25519_only_relabelled.spif",
+      "adapter": "pq_hybrid",
+      "inputs": {},
+      "expected": {
+        "trust_status": "INVALID",
+        "signature_status": "invalid",
+        "timestamp_status": "absent",
+        "forged_revocations": 0,
+        "references": []
+      }
     }
   ]
 }

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-SPIF v1.3 conformance runner.
+SPIF conformance runner (v1.3 kit, extended by v1.4).
 
 Executes every case in manifest.json against an implementation and prints
 per-case PASS / FAIL / BLOCKED against the expected verification outcome.
@@ -10,10 +10,14 @@ The default implementation adapter is spif-py
 special: it runs the Rust implementation's `trust_conformance` binary
 (spif-rust) in both directions — Rust verifying the Python-produced
 artifact, and spif-py verifying a Rust-produced signed artifact. It is
-BLOCKED only when no Rust toolchain/binary is available. To run another
-implementation for the remaining cases, replace `verify_with_spif_py`
-with an equivalent adapter that maps a case's artifact + inputs to the
-same report fields — the manifest is implementation-agnostic.
+BLOCKED only when no Rust toolchain/binary is available. Cases 12-15
+(hybrid PQ, v1.4) carry ``adapter: pq_hybrid`` and run through
+`verify_artifact` in the require_pq gate mode (SPEC §7.9.2); they are
+BLOCKED when the ML-DSA backend (pqcrypto) is unavailable. To run
+another implementation for the remaining cases, replace
+`verify_with_spif_py` with an equivalent adapter that maps a case's
+artifact + inputs to the same report fields — the manifest is
+implementation-agnostic.
 
 Usage:  python run_conformance.py [--verbose]
 Exit:   0 when no case FAILs (BLOCKED cases do not fail the run), else 1.
@@ -61,6 +65,34 @@ def verify_with_spif_py(case: dict) -> dict:
     if "bundle" in inputs:
         kwargs["bundle"] = [(HERE / p).read_bytes() for p in inputs["bundle"]]
     return report_fields(verify_artifact(data, **kwargs))
+
+
+class CaseBlocked(Exception):
+    """Raised by an adapter when a case cannot execute in this
+    environment (reported BLOCKED, never FAIL — same contract as the
+    manifest's non-executable cases)."""
+
+
+def verify_with_pq_hybrid(case: dict) -> dict:
+    """Adapter for the hybrid PQ cases (12-15, v1.4): run the case
+    through spif-py's trust layer in the require_pq gate mode (SPEC
+    §7.9.2), which is the strict hybrid assessment the cases pin."""
+    from spif.pq_hybrid import pq_available
+
+    if not pq_available():
+        raise CaseBlocked(
+            "requires the ML-DSA-65 backend (pqcrypto; pip install "
+            "'spif[pq]'); not available in this environment"
+        )
+    data = (HERE / case["artifact"]).read_bytes()
+    return report_fields(verify_artifact(data, require_pq=True))
+
+
+def verify_case(case: dict) -> dict:
+    """Dispatch on the case's adapter (default: the trust layer)."""
+    if case.get("adapter") == "pq_hybrid":
+        return verify_with_pq_hybrid(case)
+    return verify_with_spif_py(case)
 
 
 RUST_BIN = HERE.parent / "spif-rust" / "target" / "release" / "trust_conformance"
@@ -164,7 +196,12 @@ def evaluate_cases() -> list[dict]:
             results.append(entry)
             continue
         try:
-            got = verify_with_spif_py(case)
+            got = verify_case(case)
+        except CaseBlocked as e:
+            entry["result"] = "BLOCKED"
+            entry["reason"] = str(e)
+            results.append(entry)
+            continue
         except Exception as e:  # a crash is a FAIL, not a runner abort
             entry["result"] = "FAIL"
             entry["reason"] = f"verifier raised: {e!r}"
