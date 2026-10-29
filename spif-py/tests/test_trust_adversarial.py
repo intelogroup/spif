@@ -412,3 +412,302 @@ def test_large_revocation_file_filtered_by_digest(tmp_path):
     assert report.trust_status == TRUST_REVOKED
     assert report.revocations_applied == [valid]
     assert report.forged_revocations == 0  # other digests are not forgeries
+
+
+# ---------------------------------------------------------------------------
+# (a) Replay: a statement binds (artifact_digest, signer) under the
+#     signer's signature. Replaying it onto any other artifact — via
+#     list, via attach, or as a raw transplanted chunk — must do
+#     nothing. Rebinding the digest field breaks the statement
+#     signature: forged.
+# ---------------------------------------------------------------------------
+
+def test_replay_raw_chunk_transplant_onto_other_artifact():
+    key_a, data_a = _signed("artifact A")
+    _key_b, data_b = _signed("artifact B")
+    embedded_a = attach_revocations(data_a, [create_revocation(data_a, key_a)])
+    payload = _chunk_payload(embedded_a, CHUNK_REVOCATION)
+    transplanted = attach_chunk(data_b, CHUNK_REVOCATION, payload)
+    report = verify_artifact(transplanted)
+    assert report.trust_status == TRUST_VALID
+    assert report.revocations_applied == []
+    assert report.forged_revocations == 0  # about A, not B: not a forgery
+
+
+def test_replay_same_signer_other_artifact_no_effect():
+    key = generate_key()
+    data_a = sign_document(_doc("artifact A"), key)
+    data_b = sign_document(_doc("artifact B"), key)
+    stmt_a = create_revocation(data_a, key)
+    report = verify_artifact(attach_revocations(data_b, [stmt_a]))
+    assert report.trust_status == TRUST_VALID
+    assert report.forged_revocations == 0
+
+
+def test_rebind_digest_breaks_statement_signature():
+    key = generate_key()
+    data_a = sign_document(_doc("artifact A"), key)
+    data_b = sign_document(_doc("artifact B"), key)
+    stmt = create_revocation(data_a, key)
+    stmt.artifact_digest = artifact_digest(data_b)  # rebind after signing
+    report = verify_artifact(data_b, revocations=[stmt])
+    assert report.trust_status == TRUST_VALID
+    assert report.forged_revocations == 1
+
+
+# ---------------------------------------------------------------------------
+# (d) issued_ms semantics. SPEC §7.7's verification procedure checks
+#     digest, signer membership, and the statement signature — it never
+#     compares issued_ms against the artifact's timestamps. That is the
+#     safer reading and is pinned here: issued_ms is signer-asserted
+#     (and covered by the statement signature, so it cannot be altered
+#     post-hoc), but it is produced by a different clock than the
+#     artifact's provenance timestamp. Gating applicability on it would
+#     let ordinary clock skew silently suppress a legitimate revocation
+#     and leave a retracted artifact reporting VALID — the unsafe
+#     direction. SPEC-CLARIFICATION CANDIDATE: §7.7 should state
+#     explicitly that issued_ms is informational and MUST NOT gate
+#     applicability.
+# ---------------------------------------------------------------------------
+
+def test_predated_revocation_still_applies():
+    key, data = _signed(ts=1_700_000_000_000)
+    stmt = create_revocation(
+        data, key, issued_ms=1_700_000_000_000 - 86_400_000)  # a day earlier
+    report = verify_artifact(data, revocations=[stmt])
+    assert report.trust_status == TRUST_REVOKED
+
+
+def test_future_dated_revocation_still_applies():
+    key, data = _signed()
+    stmt = create_revocation(data, key, issued_ms=4_102_444_800_000)  # year 2100
+    report = verify_artifact(data, revocations=[stmt])
+    assert report.trust_status == TRUST_REVOKED
+
+
+# ---------------------------------------------------------------------------
+# (e) Timestamp transplants: the token countersigns (artifact_digest,
+#     time_ms) under the TSA key and the authority field only selects
+#     which pinned key to check. Moving an anchor across artifacts,
+#     editing its time, or relabeling its authority can never produce
+#     "verified".
+# ---------------------------------------------------------------------------
+
+def test_timestamp_raw_chunk_transplant_does_not_verify():
+    _k, data_a = _signed("artifact A")
+    _k2, data_b = _signed("artifact B")
+    tsa = generate_key()
+    stamped_a = attach_timestamp(data_a, create_timestamp_anchor(data_a, tsa))
+    payload = _chunk_payload(stamped_a, CHUNK_TIMESTAMP)
+    transplanted = attach_chunk(data_b, CHUNK_TIMESTAMP, payload)
+    anchor = extract_timestamp(transplanted)
+    report = verify_artifact(transplanted, tsa_keys={anchor.authority: _b64(tsa)})
+    assert report.timestamp_status == TS_UNVERIFIED
+    assert report.trust_status == TRUST_VALID
+
+
+def test_timestamp_time_tamper_does_not_verify():
+    _k, data = _signed()
+    tsa = generate_key()
+    anchor = create_timestamp_anchor(data, tsa, time_ms=1_700_000_100_000)
+    forged = {"authority": anchor.authority,
+              "time_ms": anchor.time_ms + 1, "token": anchor.token}
+    mutated = attach_chunk(
+        data, CHUNK_TIMESTAMP, cbor2.dumps(forged, canonical=True))
+    report = verify_artifact(mutated, tsa_keys={anchor.authority: _b64(tsa)})
+    assert report.timestamp_status == TS_UNVERIFIED
+    assert report.trust_status == TRUST_VALID
+
+
+def test_timestamp_authority_relabel_does_not_verify():
+    _k, data = _signed()
+    tsa, other = generate_key(), generate_key()
+    anchor = create_timestamp_anchor(data, tsa)
+    relabeled = {"authority": _b64(other), "time_ms": anchor.time_ms,
+                 "token": anchor.token}
+    mutated = attach_chunk(
+        data, CHUNK_TIMESTAMP, cbor2.dumps(relabeled, canonical=True))
+    # The pinned key for the relabeled authority is the OTHER key — which
+    # never signed this token.
+    report = verify_artifact(mutated, tsa_keys={_b64(other): _b64(other)})
+    assert report.timestamp_status == TS_UNVERIFIED
+    assert report.trust_status == TRUST_VALID
+
+
+# ---------------------------------------------------------------------------
+# (f) Bundle poisoning. Resolution binds content_id() — SHA-256 over
+#     {payload, trace, provenance} — plus node presence (§8.1). A bundle
+#     entry that merely looks similar (same node id, different content
+#     or different provenance) has a different content_id and MUST NOT
+#     resolve. Per §8.1 resolution is content identity only: the trust
+#     state of bundle entries is not consulted, so a revoked copy of
+#     the exact upstream still resolves (its content is bit-identical);
+#     pinned here as the spec'd semantics.
+# ---------------------------------------------------------------------------
+
+from spif import NodeRef, SPIFWriter  # noqa: E402
+
+
+def _upstream(node_id="n7", value="upstream evidence", ts=1_700_000_000_000):
+    return SPIFDocument(
+        payload=[Node(id=node_id, type="fact", value=value)],
+        provenance=Provenance(source_model="retriever", timestamp_ms=ts),
+    )
+
+
+def _downstream_bytes(ref: str) -> bytes:
+    doc = SPIFDocument(
+        payload=[Node(id="n1", type="fact", value="derived claim",
+                      refs=[NodeRef(ref)])],
+        provenance=Provenance(source_model="reasoner", timestamp_ms=1_700_000_100_000),
+    )
+    return SPIFWriter().encode(doc)
+
+
+def _xref(doc) -> str:
+    return f"spif:sha256:{doc.content_id()}#n7"
+
+
+def test_bundle_same_node_different_provenance_does_not_resolve():
+    up = _upstream()
+    lookalike = _upstream(ts=1_700_000_999_999)  # same payload, new provenance
+    assert lookalike.content_id() != up.content_id()
+    report = verify_artifact(
+        _downstream_bytes(_xref(up)), bundle=[SPIFWriter().encode(lookalike)])
+    assert report.references[0].status == "unresolved"
+
+
+def test_bundle_revoked_copy_of_exact_upstream_resolves():
+    up = _upstream()
+    up_key = generate_key()
+    up_signed = sign_document(up, up_key)
+    up_revoked = attach_revocations(
+        up_signed, [create_revocation(up_signed, up_key)])
+    report = verify_artifact(
+        _downstream_bytes(_xref(up)), bundle=[up_revoked])
+    assert report.references[0].status == "resolved"
+
+
+def test_bundle_garbage_entries_resolve_nothing_but_do_not_crash():
+    up = _upstream()
+    garbage = [b"", b"not a spif file", b"\x00" * 64]
+    report = verify_artifact(_downstream_bytes(_xref(up)), bundle=garbage)
+    assert report.references[0].status == "unresolved"
+    # ... and a good entry alongside the garbage still resolves.
+    report = verify_artifact(
+        _downstream_bytes(_xref(up)),
+        bundle=garbage + [SPIFWriter().encode(up)])
+    assert report.references[0].status == "resolved"
+
+
+def test_bundle_document_object_form_resolves():
+    up = _upstream()
+    report = verify_artifact(_downstream_bytes(_xref(up)), bundle=[up])
+    assert report.references[0].status == "resolved"
+
+
+# ---------------------------------------------------------------------------
+# (h) Mutation fuzzing of the new chunk parsers. Structured byte
+#     mutations (deterministic seed) of valid revocation / timestamp
+#     chunk payloads, spliced back with a repaired checksum so the
+#     trust layer — not the checksum — decides. Invariants:
+#       * verify_artifact always returns a report (nothing escapes),
+#       * statuses stay within the defined sets,
+#       * starting from a FORGED revocation, no mutation mints REVOKED;
+#         starting from a VALID revocation, no mutation preserves
+#         REVOKED (any content change breaks the statement signature);
+#       * starting from an unverifiable anchor, no mutation mints a
+#         "verified" timestamp.
+# ---------------------------------------------------------------------------
+
+import random  # noqa: E402
+
+_FUZZ_SEED = 20261029
+_FUZZ_ITERS = 1200
+
+
+def _mutate(rng: random.Random, payload: bytes) -> bytes:
+    """A mutated copy of `payload`, guaranteed to differ from it (an
+    identity 'mutation' would legitimately preserve REVOKED)."""
+    b = bytearray(payload)
+    if rng.random() < 0.25 and len(b) > 1:
+        return bytes(b[: rng.randrange(len(b))])  # strict truncation
+    for _ in range(rng.randrange(1, 9)):
+        b[rng.randrange(len(b))] = rng.randrange(256)
+    if bytes(b) == payload:
+        b[0] ^= 0xFF
+    return bytes(b)
+
+
+def _fuzz_base(kind: str):
+    key, data = _signed(f"fuzz base {kind}")
+    tsa = generate_key()
+    if kind == "forged-revocation":
+        attacker = generate_key()
+        stmt = create_revocation(data, attacker, reason="compromised")
+        return data, attach_revocations(data, [stmt]), CHUNK_REVOCATION, {}
+    if kind == "valid-revocation":
+        stmt = create_revocation(data, key, reason="retracted")
+        return data, attach_revocations(data, [stmt]), CHUNK_REVOCATION, {}
+    anchor = create_timestamp_anchor(data, tsa)
+    bad = {"authority": anchor.authority, "time_ms": anchor.time_ms,
+           "token": b"\x00" * 64}
+    mutated = attach_chunk(data, CHUNK_TIMESTAMP, cbor2.dumps(bad, canonical=True))
+    return data, mutated, CHUNK_TIMESTAMP, {anchor.authority: _b64(tsa)}
+
+
+@pytest.mark.parametrize("kind,forbidden", [
+    ("forged-revocation", TRUST_REVOKED),
+    ("valid-revocation", TRUST_REVOKED),
+])
+def test_fuzz_revocation_chunk_mutations(kind, forbidden):
+    _data, base, chunk_type, _kw = _fuzz_base(kind)
+    payload = _chunk_payload(base, chunk_type)
+    rng = random.Random(_FUZZ_SEED)
+    for i in range(_FUZZ_ITERS):
+        mutated = attach_chunk(base, chunk_type, _mutate(rng, payload))
+        report = verify_artifact(mutated)  # any escape fails the test
+        assert report.trust_status in ALL_TRUST, (kind, i)
+        assert report.trust_status != forbidden, (kind, i)
+
+
+def test_fuzz_timestamp_chunk_mutations():
+    _data, base, chunk_type, tsa_keys = _fuzz_base("bad-timestamp")
+    payload = _chunk_payload(base, chunk_type)
+    rng = random.Random(_FUZZ_SEED + 1)
+    for i in range(_FUZZ_ITERS):
+        mutated = attach_chunk(base, chunk_type, _mutate(rng, payload))
+        report = verify_artifact(mutated, tsa_keys=tsa_keys)
+        assert report.trust_status in ALL_TRUST, i
+        assert report.timestamp_status in ALL_TS, i
+        assert report.timestamp_status != TS_VERIFIED, i
+
+
+def test_fuzz_whole_file_mutations_without_checksum_repair():
+    _key, data = _signed("fuzz whole file")
+    stmt = create_revocation(data, _key)
+    base = attach_revocations(data, [stmt])
+    rng = random.Random(_FUZZ_SEED + 2)
+    for i in range(300):
+        b = bytearray(base)
+        for _ in range(rng.randrange(1, 9)):
+            b[rng.randrange(len(b))] = rng.randrange(256)
+        report = verify_artifact(bytes(b))  # checksum fails: clean report
+        assert report.trust_status in ALL_TRUST, i
+
+
+def test_fuzz_extractors_never_raise():
+    _k, data = _signed("fuzz extractors")
+    stmt = create_revocation(data, _k)
+    tsa = generate_key()
+    base = attach_timestamp(
+        attach_revocations(data, [stmt]),
+        create_timestamp_anchor(data, tsa))
+    rev_payload = _chunk_payload(base, CHUNK_REVOCATION)
+    ts_payload = _chunk_payload(base, CHUNK_TIMESTAMP)
+    rng = random.Random(_FUZZ_SEED + 3)
+    for _ in range(600):
+        m = attach_chunk(base, CHUNK_REVOCATION, _mutate(rng, rev_payload))
+        assert isinstance(extract_revocations(m), list)
+        m = attach_chunk(base, CHUNK_TIMESTAMP, _mutate(rng, ts_payload))
+        extract_timestamp(m)  # None or an anchor; never an exception
