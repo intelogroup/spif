@@ -235,6 +235,36 @@ class RevocationStatement:
 
 
 @dataclass
+class TimestampAnchor:
+    """A TSA timestamp anchor for one artifact (v1.3+, SPEC §6.13/§7.8).
+
+    ``token`` is the TSA's ed25519 countersignature over the canonical
+    CBOR of {"artifact_digest": <sha256 hex of signing body>, "time_ms"}.
+    """
+    authority: str   # TSA identifier; base64 raw ed25519 pubkey when self-describing
+    time_ms: int     # Unix epoch ms asserted by the TSA
+    token: bytes     # ed25519 countersignature
+
+    def to_cbor_dict(self) -> dict:
+        return {
+            "authority": self.authority,
+            "time_ms":   self.time_ms,
+            "token":     self.token,
+        }
+
+    @classmethod
+    def from_cbor_dict(cls, d: dict) -> "TimestampAnchor":
+        token = d.get("token", b"")
+        if isinstance(token, memoryview):
+            token = bytes(token)
+        return cls(
+            authority=d["authority"],
+            time_ms=d["time_ms"],
+            token=token,
+        )
+
+
+@dataclass
 class SPIFDocument:
     """A complete SPIF document."""
     payload: list[Node]
@@ -249,6 +279,7 @@ class SPIFDocument:
     signer_roles: dict[str, str] = field(default_factory=dict)  # v1.1+: signer_id -> claimed role, bound into the signed body
     task_info: "TaskInfo | None" = field(default=None)          # v1.1+: task/run envelope
     revocations: list[RevocationStatement] = field(default_factory=list)  # v1.3+: embedded signed revocation statements (post-signature chunk)
+    timestamp_anchor: "TimestampAnchor | None" = field(default=None)      # v1.3+: embedded TSA timestamp anchor (post-signature chunk)
     pending_tool_results: bool = field(                          # runtime only — not serialized
         default=False, compare=False, repr=False
     )

@@ -40,12 +40,12 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
 )
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 
-from .format import MAGIC, CHUNK_REVOCATION, CHUNK_CHECKSUM
+from .format import MAGIC, CHUNK_REVOCATION, CHUNK_TIMESTAMP, CHUNK_CHECKSUM
 from .reader import (
     SPIFReader, SPIFError, SPIFChecksumError,
     _find_first_auth_chunk_offset, _iter_chunks,
 )
-from .types import RevocationStatement, SPIFDocument
+from .types import RevocationStatement, TimestampAnchor, SPIFDocument
 
 _CHUNK_STRUCT = struct.Struct(">BI")
 
@@ -271,6 +271,59 @@ def extract_revocations(data: bytes) -> list[RevocationStatement]:
 
 
 # ---------------------------------------------------------------------------
+# Timestamp anchors (SPEC §6.13 / §7.8)
+# ---------------------------------------------------------------------------
+
+def _timestamp_token_body(digest: str, time_ms: int) -> bytes:
+    return cbor2.dumps(
+        {"artifact_digest": digest, "time_ms": time_ms}, canonical=True
+    )
+
+
+def create_timestamp_anchor(
+    artifact: bytes,
+    tsa_private_key: Ed25519PrivateKey,
+    *,
+    authority: str | None = None,
+    time_ms: int | None = None,
+) -> TimestampAnchor:
+    """Create a TSA countersignature anchor for `artifact` (raw SPIF bytes).
+
+    `authority` defaults to the base64 raw public key of the TSA key (the
+    self-describing form). The token countersigns (artifact_digest,
+    time_ms) — testable end-to-end with a locally generated TSA key; no
+    network protocol is involved (SPEC §7.8).
+    """
+    if authority is None:
+        authority = _pubkey_b64(tsa_private_key.public_key())
+    t = time_ms if time_ms is not None else int(time.time() * 1000)
+    token = tsa_private_key.sign(_timestamp_token_body(artifact_digest(artifact), t))
+    return TimestampAnchor(authority=authority, time_ms=t, token=token)
+
+
+def attach_timestamp(data: bytes, anchor: TimestampAnchor) -> bytes:
+    """Return a copy of the artifact with `anchor` embedded in its
+    TIMESTAMP chunk (replacing any existing one)."""
+    payload = cbor2.dumps(anchor.to_cbor_dict(), canonical=True)
+    return attach_chunk(data, CHUNK_TIMESTAMP, payload)
+
+
+def extract_timestamp(data: bytes) -> TimestampAnchor | None:
+    """The artifact's embedded TIMESTAMP anchor, or None (raw scan)."""
+    try:
+        for chunk_type, chunk_data in _iter_chunks(data, len(MAGIC) + 2):
+            if chunk_type == CHUNK_CHECKSUM:
+                break
+            if chunk_type == CHUNK_TIMESTAMP:
+                raw = cbor2.loads(chunk_data)
+                if isinstance(raw, dict):
+                    return TimestampAnchor.from_cbor_dict(raw)
+    except Exception:
+        return None
+    return None
+
+
+# ---------------------------------------------------------------------------
 # Verification report
 # ---------------------------------------------------------------------------
 
@@ -434,11 +487,8 @@ def _timestamp_status(doc: SPIFDocument, digest: str, tsa_keys) -> str:
     key = _pubkey_from_b64(tsa_keys[anchor.authority])
     if key is None:
         return TS_UNVERIFIED
-    token_body = cbor2.dumps(
-        {"artifact_digest": digest, "time_ms": anchor.time_ms}, canonical=True
-    )
     try:
-        key.verify(anchor.token, token_body)
+        key.verify(anchor.token, _timestamp_token_body(digest, anchor.time_ms))
     except Exception:
         return TS_UNVERIFIED
     return TS_VERIFIED

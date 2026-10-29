@@ -18,14 +18,14 @@ from .format import (
     MAGIC,
     CHUNK_HEADER, CHUNK_PROVENANCE, CHUNK_SEMANTIC, CHUNK_TRACE,
     CHUNK_PAYLOAD, CHUNK_ALTS, CHUNK_DELTA, CHUNK_SIGNATURE, CHUNK_MULTISIG,
-    CHUNK_TASK, CHUNK_ROLES, CHUNK_REVOCATION, CHUNK_CHECKSUM,
+    CHUNK_TASK, CHUNK_ROLES, CHUNK_REVOCATION, CHUNK_TIMESTAMP, CHUNK_CHECKSUM,
     TAG_DISTRIBUTION, TAG_NODEREF, TAG_EMBEDDING,
     TRACE_POSTHOC, FLAG_COMPRESSED, FLAG_ZSTD,
 )
 from .types import (
     SPIFDocument, Distribution, NodeRef, Node, TraceStep,
     Provenance, SemanticLayer, Alternative, Delta, Signature, TaskInfo,
-    RevocationStatement,
+    RevocationStatement, TimestampAnchor,
 )
 
 SUPPORTED_VERSIONS = {0x01, 0x02}
@@ -701,6 +701,19 @@ class SPIFReader:
                 except (KeyError, TypeError, ValueError) as e:
                     raise SPIFFormatError(f"Malformed REVOCATION entry: {e}") from e
 
+        # 16. TIMESTAMP chunk (v1.3+) — TSA anchor, post-signature chunk,
+        # never compressed. Parsing only; verified/unverified reporting
+        # lives in spif.trust (SPEC §7.8).
+        timestamp_anchor = None
+        if CHUNK_TIMESTAMP in chunks:
+            raw = _cbor_load(chunks[CHUNK_TIMESTAMP][0], "TIMESTAMP")
+            if not isinstance(raw, dict):
+                raise SPIFFormatError("TIMESTAMP chunk must decode to a dict")
+            try:
+                timestamp_anchor = TimestampAnchor.from_cbor_dict(raw)
+            except (KeyError, TypeError, ValueError) as e:
+                raise SPIFFormatError(f"Malformed TIMESTAMP entry: {e}") from e
+
         doc = SPIFDocument(
             payload=payload,
             provenance=provenance,
@@ -714,6 +727,7 @@ class SPIFReader:
             task_info=task_info,
             signer_roles=signer_roles,
             revocations=revocations,
+            timestamp_anchor=timestamp_anchor,
         )
 
         # Signature enforcement — must come after full parse so that the
