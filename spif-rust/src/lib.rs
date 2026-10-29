@@ -3,6 +3,7 @@ pub mod incremental_dag;
 pub mod reader;
 pub mod renderer;
 pub mod streaming;
+pub mod trust;
 pub mod types;
 pub mod writer;
 
@@ -11,6 +12,7 @@ pub mod wasm;
 
 pub use reader::SPIFReader;
 pub use renderer::SPIFRenderer;
+pub use trust::{verify_artifact, VerificationReport, VerifyOptions};
 pub use types::*;
 pub use writer::SPIFWriter;
 
@@ -48,6 +50,8 @@ mod tests {
             signature: None,
             signatures: vec![],
             task_info: None,
+            revocations: Vec::new(),
+            timestamp_anchor: None,
         };
 
         let writer = SPIFWriter::new();

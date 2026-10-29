@@ -35,6 +35,8 @@ CHUNK_SIGNATURE  = 0x07   # ed25519 signature over body (v0.2+)
 CHUNK_MULTISIG   = 0x08   # list of ed25519 signatures (v0.2+)
 CHUNK_TASK       = 0x09   # task/run envelope — attempt, status, tool counts (v1.1+)
 CHUNK_ROLES      = 0x0A   # signer_id -> role manifest, written before auth chunks (v1.1+)
+CHUNK_REVOCATION = 0x0B   # signed revocation statements, post-signature chunk (v1.3+)
+CHUNK_TIMESTAMP  = 0x0C   # TSA timestamp anchor, post-signature chunk (v1.3+)
 CHUNK_CHECKSUM      = 0xFF
 
 # Streaming-only chunk types (0x10-0x1F reserved for SSPIF)
@@ -54,6 +56,8 @@ CHUNK_NAMES = {
     CHUNK_MULTISIG:   "MULTISIG",
     CHUNK_TASK:       "TASK",
     CHUNK_ROLES:      "ROLES",
+    CHUNK_REVOCATION: "REVOCATION",
+    CHUNK_TIMESTAMP:  "TIMESTAMP",
     CHUNK_CHECKSUM:      "CHECKSUM",
     CHUNK_PARTIAL_TEXT:   "PARTIAL_TEXT",
     CHUNK_STREAM_META:    "STREAM_META",

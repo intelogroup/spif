@@ -16,7 +16,7 @@ tools, agents, and organizational boundaries.
 </p>
 
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-000000?style=flat-square)](LICENSE)
-[![Spec: v0.2](https://img.shields.io/badge/spec-v0.2--active-000000?style=flat-square)](docs/SPEC.md)
+[![Spec: v1.3](https://img.shields.io/badge/spec-v1.3--active-000000?style=flat-square)](docs/SPEC.md)
 [![Rust tests](https://img.shields.io/github/actions/workflow/status/intelogroup/spif/spif-rust-test.yml?style=flat-square&label=rust%20tests&labelColor=000000)](https://github.com/intelogroup/spif/actions/workflows/spif-rust-test.yml)
 [![OpenSSF Scorecard](https://img.shields.io/ossf-scorecard/github.com/intelogroup/spif?style=flat-square&label=scorecard&labelColor=000000)](https://scorecard.dev/viewer/?uri=github.com/intelogroup/spif)
 [![CodeQL](https://img.shields.io/github/actions/workflow/status/intelogroup/spif/codeql.yml?style=flat-square&label=codeql&labelColor=000000)](https://github.com/intelogroup/spif/actions/workflows/codeql.yml)

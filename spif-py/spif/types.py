@@ -174,6 +174,113 @@ class Signature:
     key_id: str = ""     # optional: rotation hint / key identifier for multi-sig
 
 
+def _require_str(value: object, field_name: str) -> str:
+    if not isinstance(value, str):
+        raise TypeError(f"{field_name} must be str, got {type(value).__name__}")
+    return value
+
+
+def _require_int(value: object, field_name: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise TypeError(f"{field_name} must be int, got {type(value).__name__}")
+    return value
+
+
+def _require_bytes(value: object, field_name: str) -> bytes:
+    if isinstance(value, memoryview):
+        return bytes(value)
+    if not isinstance(value, (bytes, bytearray)):
+        raise TypeError(f"{field_name} must be bytes, got {type(value).__name__}")
+    return bytes(value)
+
+
+@dataclass
+class RevocationStatement:
+    """A signer-issued, signed revocation of one specific artifact (v1.3+).
+
+    Binds the artifact by ``artifact_digest`` (SHA-256 hex of the signing
+    body — see spif.trust.artifact_digest). Only a key that signed or
+    co-signed the artifact can issue a statement a verifier will honor;
+    verification logic lives in spif.trust.
+    """
+    artifact_digest: str   # sha256 hex of the artifact's signing body
+    signer: str            # signer identifier, as it appears in Signature.signer
+    issued_ms: int         # Unix epoch ms when the revocation was issued
+    reason: str            # "compromised" | "retracted" | "superseded" | "other"
+    signature: bytes       # ed25519 signature over unsigned_dict() in canonical CBOR
+
+    def unsigned_dict(self) -> dict:
+        """The statement fields covered by the signature (canonical-CBOR encoded by callers)."""
+        return {
+            "artifact_digest": self.artifact_digest,
+            "signer":          self.signer,
+            "issued_ms":       self.issued_ms,
+            "reason":          self.reason,
+        }
+
+    def to_cbor_dict(self) -> dict:
+        d = self.unsigned_dict()
+        d["signature"] = self.signature
+        return d
+
+    @classmethod
+    def from_cbor_dict(cls, d: dict) -> "RevocationStatement":
+        return cls(
+            artifact_digest=_require_str(d["artifact_digest"], "artifact_digest"),
+            signer=_require_str(d["signer"], "signer"),
+            issued_ms=_require_int(d["issued_ms"], "issued_ms"),
+            reason=_require_str(d["reason"], "reason"),
+            signature=_require_bytes(d.get("signature", b""), "signature"),
+        )
+
+    def to_json_dict(self) -> dict:
+        import base64
+        d = self.unsigned_dict()
+        d["signature"] = base64.b64encode(self.signature).decode("ascii")
+        return d
+
+    @classmethod
+    def from_json_dict(cls, d: dict) -> "RevocationStatement":
+        import base64
+        sig = d["signature"]
+        if not isinstance(sig, str):
+            raise TypeError(f"signature must be base64 str, got {type(sig).__name__}")
+        return cls(
+            artifact_digest=_require_str(d["artifact_digest"], "artifact_digest"),
+            signer=_require_str(d["signer"], "signer"),
+            issued_ms=_require_int(d["issued_ms"], "issued_ms"),
+            reason=_require_str(d["reason"], "reason"),
+            signature=base64.b64decode(sig, validate=True),
+        )
+
+
+@dataclass
+class TimestampAnchor:
+    """A TSA timestamp anchor for one artifact (v1.3+, SPEC §6.13/§7.8).
+
+    ``token`` is the TSA's ed25519 countersignature over the canonical
+    CBOR of {"artifact_digest": <sha256 hex of signing body>, "time_ms"}.
+    """
+    authority: str   # TSA identifier; base64 raw ed25519 pubkey when self-describing
+    time_ms: int     # Unix epoch ms asserted by the TSA
+    token: bytes     # ed25519 countersignature
+
+    def to_cbor_dict(self) -> dict:
+        return {
+            "authority": self.authority,
+            "time_ms":   self.time_ms,
+            "token":     self.token,
+        }
+
+    @classmethod
+    def from_cbor_dict(cls, d: dict) -> "TimestampAnchor":
+        return cls(
+            authority=_require_str(d["authority"], "authority"),
+            time_ms=_require_int(d["time_ms"], "time_ms"),
+            token=_require_bytes(d.get("token", b""), "token"),
+        )
+
+
 @dataclass
 class SPIFDocument:
     """A complete SPIF document."""
@@ -188,6 +295,8 @@ class SPIFDocument:
     signatures: list[Signature] = field(default_factory=list)  # v0.2: multi-signature list
     signer_roles: dict[str, str] = field(default_factory=dict)  # v1.1+: signer_id -> claimed role, bound into the signed body
     task_info: "TaskInfo | None" = field(default=None)          # v1.1+: task/run envelope
+    revocations: list[RevocationStatement] = field(default_factory=list)  # v1.3+: embedded signed revocation statements (post-signature chunk)
+    timestamp_anchor: "TimestampAnchor | None" = field(default=None)      # v1.3+: embedded TSA timestamp anchor (post-signature chunk)
     pending_tool_results: bool = field(                          # runtime only — not serialized
         default=False, compare=False, repr=False
     )

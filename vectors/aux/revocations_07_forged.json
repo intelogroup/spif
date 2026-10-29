@@ -1,0 +1,11 @@
+{
+  "revocations": [
+    {
+      "artifact_digest": "592d4952a03f84a71ead97f1f9100182466f094bbddd7adf773c1521db4a1fb2",
+      "signer": "njgb04mIVxPgJfoKjL0WpOZCJRZ1ft7X7Ei4ytGRkKQ=",
+      "issued_ms": 1700000060000,
+      "reason": "compromised",
+      "signature": "Au9J27azg0UdyUsAY79tS4ttHUDFIAEynZ8AN17NfdjXBv6SznPwUUD0TozycVMIuH62+9rwnXjHYxNz5J1DBg=="
+    }
+  ]
+}

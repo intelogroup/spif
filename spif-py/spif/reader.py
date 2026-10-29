@@ -18,18 +18,20 @@ from .format import (
     MAGIC,
     CHUNK_HEADER, CHUNK_PROVENANCE, CHUNK_SEMANTIC, CHUNK_TRACE,
     CHUNK_PAYLOAD, CHUNK_ALTS, CHUNK_DELTA, CHUNK_SIGNATURE, CHUNK_MULTISIG,
-    CHUNK_TASK, CHUNK_ROLES, CHUNK_CHECKSUM,
+    CHUNK_TASK, CHUNK_ROLES, CHUNK_REVOCATION, CHUNK_TIMESTAMP, CHUNK_CHECKSUM,
     TAG_DISTRIBUTION, TAG_NODEREF, TAG_EMBEDDING,
     TRACE_POSTHOC, FLAG_COMPRESSED, FLAG_ZSTD,
 )
 from .types import (
     SPIFDocument, Distribution, NodeRef, Node, TraceStep,
     Provenance, SemanticLayer, Alternative, Delta, Signature, TaskInfo,
+    RevocationStatement, TimestampAnchor,
 )
 
 SUPPORTED_VERSIONS = {0x01, 0x02}
 MAX_DECOMPRESSED_SIZE = 10 * 1024 * 1024  # 10MB safety limit
 MAX_PAYLOAD_NODES = 20_000  # ponytail: flat cap, raise if legit docs hit it
+MAX_REVOCATION_STATEMENTS = 4_096  # ponytail: flat cap on embedded REVOCATION entries
 
 _CHUNK_STRUCT = struct.Struct(">BI")
 
@@ -212,9 +214,19 @@ def _validate_payload_dag(nodes: list[Node]) -> None:
 
     ids = {n.id for n in nodes}
 
+    # Cross-document references (SPEC §8.1: "spif:sha256:<content_id>#<node_id>")
+    # point outside this document by design. They are external: exempt from
+    # the local dangling-reference check and the local cycle graph. Whether
+    # they resolve is a verification-time question (spif.trust), never a
+    # parse error.
+    def _is_cross_doc(ref_id: str) -> bool:
+        return ref_id.startswith("spif:")
+
     # Dangling reference check
     for n in nodes:
         for ref in (n.refs or []):
+            if _is_cross_doc(ref.node_id):
+                continue
             if ref.node_id not in ids:
                 raise SPIFFormatError(
                     f"Node '{n.id}' references unknown node_id '{ref.node_id}'"
@@ -225,6 +237,8 @@ def _validate_payload_dag(nodes: list[Node]) -> None:
     dependents: dict[str, list[str]] = {n.id: [] for n in nodes}
     for n in nodes:
         for ref in (n.refs or []):
+            if _is_cross_doc(ref.node_id):
+                continue
             in_degree[n.id] += 1
             dependents[ref.node_id].append(n.id)
 
@@ -682,6 +696,42 @@ class SPIFReader:
                 raise SPIFFormatError("ROLES chunk keys and values must all be strings")
             signer_roles = dict(r)
 
+        # 15. REVOCATION chunk (v1.3+) — signed revocation statements,
+        # post-signature chunk, never compressed. Parsing only: trust
+        # semantics (REVOKED status, forgery detection) live in spif.trust.
+        revocations: list[RevocationStatement] = []
+        if CHUNK_REVOCATION in chunks:
+            raw = _cbor_load(chunks[CHUNK_REVOCATION][0], "REVOCATION")
+            if not isinstance(raw, list):
+                raise SPIFFormatError("REVOCATION chunk must decode to a list")
+            if len(raw) > MAX_REVOCATION_STATEMENTS:
+                raise SPIFFormatError(
+                    f"REVOCATION chunk has {len(raw)} statements, exceeding "
+                    f"the limit of {MAX_REVOCATION_STATEMENTS}"
+                )
+            for entry in raw:
+                if not isinstance(entry, dict):
+                    raise SPIFFormatError(
+                        f"REVOCATION entry must be a dict, got {type(entry).__name__}"
+                    )
+                try:
+                    revocations.append(RevocationStatement.from_cbor_dict(entry))
+                except (KeyError, TypeError, ValueError) as e:
+                    raise SPIFFormatError(f"Malformed REVOCATION entry: {e}") from e
+
+        # 16. TIMESTAMP chunk (v1.3+) — TSA anchor, post-signature chunk,
+        # never compressed. Parsing only; verified/unverified reporting
+        # lives in spif.trust (SPEC §7.8).
+        timestamp_anchor = None
+        if CHUNK_TIMESTAMP in chunks:
+            raw = _cbor_load(chunks[CHUNK_TIMESTAMP][0], "TIMESTAMP")
+            if not isinstance(raw, dict):
+                raise SPIFFormatError("TIMESTAMP chunk must decode to a dict")
+            try:
+                timestamp_anchor = TimestampAnchor.from_cbor_dict(raw)
+            except (KeyError, TypeError, ValueError) as e:
+                raise SPIFFormatError(f"Malformed TIMESTAMP entry: {e}") from e
+
         doc = SPIFDocument(
             payload=payload,
             provenance=provenance,
@@ -694,6 +744,8 @@ class SPIFReader:
             signatures=signatures,
             task_info=task_info,
             signer_roles=signer_roles,
+            revocations=revocations,
+            timestamp_anchor=timestamp_anchor,
         )
 
         # Signature enforcement — must come after full parse so that the

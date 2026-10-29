@@ -72,6 +72,8 @@ fn bench_batch(n: usize, cycle_at: usize) -> (bool, std::time::Duration) {
         signature: None,
         signatures: vec![],
         task_info: None,
+        revocations: Vec::new(),
+        timestamp_anchor: None,
     };
     let bytes = SPIFWriter::new().encode(&doc).unwrap();
     let start = Instant::now();
@@ -118,6 +120,8 @@ fn bench_clean_overhead(n: usize) -> (std::time::Duration, std::time::Duration) 
         signature: None,
         signatures: vec![],
         task_info: None,
+        revocations: Vec::new(),
+        timestamp_anchor: None,
     };
     let bytes = SPIFWriter::new().encode(&doc).unwrap();
     let start = Instant::now();

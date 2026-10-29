@@ -15,6 +15,8 @@ from .types import (
     Signature,
     SPIFDocument,
     TaskInfo,
+    RevocationStatement,
+    TimestampAnchor,
 )
 from .writer import SPIFWriter, compute_content_id
 from .keystore import SPIFKeyStore, verify_with_keystore
@@ -42,6 +44,20 @@ from .crypto import (
     export_pem_private_key,
     export_pem_public_key,
 )
+from .trust import (
+    VerificationReport,
+    ReferenceResolution,
+    verify_artifact,
+    create_revocation,
+    attach_revocations,
+    extract_revocations,
+    save_revocation_list,
+    load_revocation_statements,
+    create_timestamp_anchor,
+    attach_timestamp,
+    extract_timestamp,
+    artifact_digest,
+)
 from .eu_ai_act import DeployerOutput, build_deployer_output
 from .governance import (
     EVENT_TYPES,
@@ -58,7 +74,12 @@ from .governance import (
 __all__ = [
     "Distribution", "NodeRef", "Node", "TraceStep",
     "Provenance", "SemanticLayer", "Alternative", "Delta", "Signature", "SPIFDocument",
-    "TaskInfo",
+    "TaskInfo", "RevocationStatement", "TimestampAnchor",
+    "VerificationReport", "ReferenceResolution", "verify_artifact",
+    "create_revocation", "attach_revocations", "extract_revocations",
+    "save_revocation_list", "load_revocation_statements",
+    "create_timestamp_anchor", "attach_timestamp", "extract_timestamp",
+    "artifact_digest",
     "SPIFWriter", "SPIFReader", "SPIFRenderer", "compute_content_id",
     "SPIFKeyStore", "verify_with_keystore",
     "SPIFError", "SPIFMagicError", "SPIFVersionError",

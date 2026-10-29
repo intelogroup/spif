@@ -188,6 +188,8 @@ fn test_writer_emits_compressed_chunks_and_flags2() -> Result<()> {
         signature: None,
         signatures: vec![],
         task_info: None,
+        revocations: Vec::new(),
+        timestamp_anchor: None,
     };
 
     let plain = SPIFWriter::new().encode(&doc)?;
@@ -243,6 +245,8 @@ fn test_reader_names_zstd_as_unsupported_instead_of_malformed_cbor() -> Result<(
         signature: None,
         signatures: vec![],
         task_info: None,
+        revocations: Vec::new(),
+        timestamp_anchor: None,
     };
     let mut bytes = SPIFWriter::new().encode(&doc)?;
 
@@ -305,6 +309,8 @@ fn test_reader_rejects_decompression_bomb() -> Result<()> {
         signature: None,
         signatures: vec![],
         task_info: None,
+        revocations: Vec::new(),
+        timestamp_anchor: None,
     };
 
     let compressed = SPIFWriter::compressed().encode(&doc)?;

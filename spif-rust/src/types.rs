@@ -17,6 +17,9 @@ pub const CHUNK_DELTA: u8 = 0x06;
 pub const CHUNK_SIGNATURE: u8 = 0x07;
 pub const CHUNK_MULTISIG: u8 = 0x08;
 pub const CHUNK_TASK: u8 = 0x09;
+pub const CHUNK_ROLES: u8 = 0x0A;
+pub const CHUNK_REVOCATION: u8 = 0x0B;
+pub const CHUNK_TIMESTAMP: u8 = 0x0C;
 pub const CHUNK_CHECKSUM: u8 = 0xFF;
 
 // Flags bitmask
@@ -214,6 +217,35 @@ pub struct Signature {
     pub key_id: String,
 }
 
+/// A signer-issued, signed revocation of one specific artifact (v1.3+,
+/// SPEC §6.12/§7.7). Mirrors `RevocationStatement` in spif-py's types.py.
+///
+/// Binds the artifact by `artifact_digest` (SHA-256 hex of the signing
+/// body). `signature` is an ed25519 signature over the canonical CBOR of
+/// the map without the `signature` field (see `crate::trust`).
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub struct RevocationStatement {
+    pub artifact_digest: String,
+    pub signer: String,
+    pub issued_ms: u64,
+    pub reason: String,
+    #[serde(with = "serde_bytes")]
+    pub signature: Vec<u8>,
+}
+
+/// A TSA timestamp anchor for one artifact (v1.3+, SPEC §6.13/§7.8).
+/// Mirrors `TimestampAnchor` in spif-py's types.py.
+///
+/// `token` is the TSA's ed25519 countersignature over the canonical CBOR
+/// of `{"artifact_digest": <sha256 hex of signing body>, "time_ms": ...}`.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub struct TimestampAnchor {
+    pub authority: String,
+    pub time_ms: u64,
+    #[serde(with = "serde_bytes")]
+    pub token: Vec<u8>,
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct SPIFDocument {
     pub payload: Vec<Node>,
@@ -235,6 +267,12 @@ pub struct SPIFDocument {
     pub signatures: Vec<Signature>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub task_info: Option<TaskInfo>,
+    /// v1.3+: embedded signed revocation statements (post-signature chunk).
+    #[serde(default, skip_serializing)]
+    pub revocations: Vec<RevocationStatement>,
+    /// v1.3+: embedded TSA timestamp anchor (post-signature chunk).
+    #[serde(default, skip_serializing)]
+    pub timestamp_anchor: Option<TimestampAnchor>,
 }
 
 fn default_trace_method() -> String {
