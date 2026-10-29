@@ -210,3 +210,36 @@ environmentally, not in the sign/verify core).
 
 Pushing, GitHub releases, version tags, network timestamp clients
 (RFC 3161), PQ implementation, changes to the v1.0 wire contract.
+
+---
+
+## Rung 6 finding (recorded 2026-10-29, check-only as scoped)
+
+The v1.2 hybrid `ml-dsa-65` path is **spec-only** in both implementations:
+
+- `grep -rn "ml-dsa|ml_dsa|MlDsa|dilithium" spif-py/spif/*.py spif-rust/src/*.rs`
+  → **0 hits**.
+- No PQ dependency (`oqs`, `dilithium`, `pqcrypto`, `liboqs`) in
+  `spif-py/pyproject.toml` or `spif-rust/Cargo.toml` → **0 hits**.
+- `spif-py/spif/reader.py:813` hard-gates verification: any non-`ed25519`
+  algorithm raises "only ed25519 is supported".
+- `docs/SPEC.md` mentions `ml-dsa-65` 7 times — specification text only.
+
+No conformance case was added (there is nothing to execute), and per the
+upgrade scope PQ was **not** implemented in v1.3. It stands as the next
+rung (v1.4 candidate): it needs a vetted ML-DSA implementation choice
+(pure-Python vs binding) and its own conformance vectors; bolting it onto
+the trust-layer release would ship the highest-risk cryptography with the
+least review.
+
+## Implementation status (as built on this branch)
+
+| Rung | Status |
+|------|--------|
+| 0 Plan | done — this document |
+| 1 Version story | done — SPEC v1.3 addendum, badge, versions 1.3.0, CHANGELOG |
+| 2 Revocation (py) | done — chunk 0x0B, `spif/trust.py`, REVOKED status; **Rust: gap (no toolchain)** |
+| 3 Timestamp (py) | done — chunk 0x0C, countersignature verify; **Rust: gap** |
+| 4 Cross-doc (py) | done — bundle resolution, UNRESOLVED, reader DAG fix; **Rust: gap** |
+| 5 Conformance kit | done — 10 PASS / 0 FAIL / 1 BLOCKED (case 02, Rust cross-implementation) |
+| 6 PQ check | done — spec-only, recorded above; not implemented |
