@@ -247,8 +247,12 @@ def _run_trust_verify(
     tsa_key_items,
     bundle_paths,
     known_key_items,
+    require_pq: bool = False,
 ) -> None:
-    """v1.3 trust-report verification (spif.trust.verify_artifact)."""
+    """v1.3 trust-report verification (spif.trust.verify_artifact).
+
+    ``require_pq`` selects the SPEC §7.9.2 require_pq gate mode for
+    PQ-bearing (hybrid / PQ-only) signature entries."""
     from .trust import verify_artifact, load_revocation_statements
 
     tsa_keys = _parse_kv_options(tsa_key_items, "--tsa-key")
@@ -292,6 +296,7 @@ def _run_trust_verify(
         tsa_keys=tsa_keys or None,
         bundle=bundle or None,
         known_keys=known_keys or None,
+        require_pq=require_pq,
     )
 
     typer.echo(f"{report.trust_status}  {path}  (trust report)")
@@ -328,13 +333,16 @@ def verify(
     tsa_key_items: list[str] = typer.Option(None, "--tsa-key", help="Pinned TSA key as AUTHORITY=BASE64 (repeatable)"),
     bundle_paths: list[Path] = typer.Option(None, "--bundle", help="Local bundle .spif file or directory for cross-document resolution (repeatable)"),
     known_key_items: list[str] = typer.Option(None, "--known-key", help="Signer key as SIGNER_ID=BASE64 for non-self-describing signers (repeatable)"),
+    require_pq: bool = typer.Option(False, "--require-pq", help="Require post-quantum verification of hybrid/PQ-only entries (SPEC §7.9.2 gate mode; implies --trust)"),
 ):
-    """Verify the ed25519 signature in a SPIF file.
+    """Verify the signature in a SPIF file.
 
     With --trust or any v1.3 trust input (--revocations, --tsa-key,
     --bundle, --known-key), prints the full trust report instead:
     status VALID/REVOKED/INVALID/UNSIGNED/UNVERIFIABLE, forged
     revocations, timestamp state, and cross-document resolution.
+    --require-pq (v1.4) selects the require_pq gate mode for hybrid
+    (ed25519+ml-dsa-65) and PQ-only entries and implies --trust.
     Exit codes: 0 = VALID, 1 = INVALID/REVOKED/UNVERIFIABLE or error,
     2 = UNSIGNED.
     """
@@ -343,11 +351,12 @@ def verify(
 
     data = path.read_bytes()
 
-    if trust or revocation_files or tsa_key_items or bundle_paths or known_key_items:
+    if trust or revocation_files or tsa_key_items or bundle_paths or known_key_items or require_pq:
         _run_trust_verify(
             path, data, pubkey=pubkey,
             revocation_files=revocation_files, tsa_key_items=tsa_key_items,
             bundle_paths=bundle_paths, known_key_items=known_key_items,
+            require_pq=require_pq,
         )
         return
     try:

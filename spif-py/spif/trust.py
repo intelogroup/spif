@@ -3,11 +3,14 @@ SPIF v1.3 trust layer — revocation statements, timestamp anchors, and the
 verification report.
 
 Implements SPEC §7.7 (revocation), §7.8 (timestamp anchoring), and §8.1
-(cross-document resolution policy). Everything here is offline by
-construction: no function in this module performs network I/O. Revocations
-arrive embedded in the artifact (REVOCATION chunk, 0x0B) or out-of-band in
-a revocation-list file the caller supplies; cross-document references
-resolve only from a caller-supplied local bundle.
+(cross-document resolution policy). v1.4 adds the SPEC §7.9.2 gate modes
+for PQ-bearing signature entries (``require_pq``) and hybrid-signed
+revocation statements (§7.9.4, via create_revocation_hybrid). Everything
+here is offline by construction: no function in this module performs
+network I/O. Revocations arrive embedded in the artifact (REVOCATION
+chunk, 0x0B) or out-of-band in a revocation-list file the caller
+supplies; cross-document references resolve only from a caller-supplied
+local bundle.
 
 Trust statuses (distinct from raw signature validity):
 
@@ -41,6 +44,13 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 
 from .format import MAGIC, CHUNK_REVOCATION, CHUNK_TIMESTAMP, CHUNK_CHECKSUM
+from .pq_hybrid import (
+    HYBRID_ALGORITHM,
+    PQ_ONLY_ALGORITHM,
+    assess_pq_entry,
+    hybrid_sign_message,
+    hybrid_signer_id,
+)
 from .reader import (
     SPIFReader, SPIFError, SPIFChecksumError,
     _find_first_auth_chunk_offset, _iter_chunks,
@@ -166,11 +176,31 @@ def statement_is_authoritative(
     stmt: RevocationStatement,
     artifact_signer_ids: set[str],
     known_keys: dict[str, str] | None = None,
+    signer_algorithms: dict[str, str] | None = None,
 ) -> bool:
     """True iff the statement was issued by one of the artifact's signers
-    and its signature verifies under that signer's key."""
+    and its signature verifies under that signer's key.
+
+    The statement is signed with the signer's own algorithm (SPEC
+    §7.9.4): ``signer_algorithms`` maps signer id -> the algorithm of
+    that signer's artifact entry. A hybrid signer's statement must pass
+    the full hybrid assessment (both components); an ed25519-only
+    statement offered for a hybrid signer fails it and is a forgery.
+    Without ``signer_algorithms`` every signer is treated as ed25519
+    (the v1.3 behaviour).
+    """
     if not isinstance(stmt.signer, str) or stmt.signer not in artifact_signer_ids:
         return False
+    algorithm = (signer_algorithms or {}).get(stmt.signer, "ed25519")
+    if algorithm in (HYBRID_ALGORITHM, PQ_ONLY_ALGORITHM):
+        return assess_pq_entry(
+            algorithm,
+            stmt.signer,
+            stmt.signature,
+            _statement_signing_bytes(stmt),
+            require_pq=True,
+            known_keys=known_keys,
+        ).status == "valid"
     key = _resolve_signer_key(stmt.signer, known_keys)
     if key is None:
         return False
@@ -181,6 +211,48 @@ def statement_is_authoritative(
     except Exception:
         return False
     return True
+
+
+def create_revocation_hybrid(
+    artifact: bytes,
+    ed25519_private_key: Ed25519PrivateKey,
+    ml_dsa_secret_key: bytes,
+    ml_dsa_public_key: bytes,
+    *,
+    reason: str = "retracted",
+    signer_id: str | None = None,
+    issued_ms: int | None = None,
+) -> RevocationStatement:
+    """Create a revocation statement signed by a HYBRID signer (SPEC
+    §7.9.4): the statement signature is the concatenated hybrid
+    signature over the same canonical-CBOR statement body an ed25519
+    statement uses.
+
+    `signer_id` defaults to the §7.9.1 self-describing hybrid form —
+    pass the artifact's Signature.signer value when it differs. The
+    statement only takes effect if `signer_id` is one of the artifact's
+    signers and BOTH signature components verify.
+    """
+    if reason not in REASON_CODES:
+        raise ValueError(
+            f"reason must be one of {sorted(REASON_CODES)}, got {reason!r}"
+        )
+    if signer_id is None:
+        ed_public_bytes = ed25519_private_key.public_key().public_bytes(
+            Encoding.Raw, PublicFormat.Raw
+        )
+        signer_id = hybrid_signer_id(ed_public_bytes, ml_dsa_public_key)
+    stmt = RevocationStatement(
+        artifact_digest=artifact_digest(artifact),
+        signer=signer_id,
+        issued_ms=issued_ms if issued_ms is not None else int(time.time() * 1000),
+        reason=reason,
+        signature=b"",
+    )
+    stmt.signature = hybrid_sign_message(
+        ed25519_private_key, ml_dsa_secret_key, _statement_signing_bytes(stmt)
+    )
+    return stmt
 
 
 def save_revocation_list(statements: list[RevocationStatement], path: str | Path) -> None:
@@ -425,6 +497,7 @@ def verify_artifact(
     tsa_keys: dict[str, str] | None = None,
     bundle=None,
     known_keys: dict[str, str] | None = None,
+    require_pq: bool = False,
 ) -> VerificationReport:
     """Verify an artifact end-to-end and report trust, not just signatures.
 
@@ -441,6 +514,14 @@ def verify_artifact(
         Nothing is ever fetched.
     known_keys : dict signer_id -> base64 raw public key, optional
         Key resolution for non-self-describing (e.g. URL) signer ids.
+        For a hybrid signer the value is the base64 concatenated key
+        material of SPEC §7.9.1.
+    require_pq : bool, optional
+        SPEC §7.9.2 gate mode for PQ-bearing entries. False (classical,
+        default): a hybrid entry is assessed by its ed25519 component
+        and a PQ-only entry is UNVERIFIABLE ("invisible, not invalid").
+        True: both hybrid components must verify, and PQ-only entries
+        are ML-DSA-verified when key and backend are available.
     """
     digest = artifact_digest(data)
     report = VerificationReport(
@@ -464,6 +545,7 @@ def verify_artifact(
     sigs = ([doc.signature] if doc.signature is not None else []) + list(doc.signatures)
     report.signers = [s.signer for s in sigs]
     signer_ids = set(report.signers)
+    signer_algorithms = {s.signer: s.algorithm for s in sigs}
 
     # --- Signature validity -------------------------------------------------
     if not sigs:
@@ -475,6 +557,27 @@ def verify_artifact(
         any_unverifiable = False
         verified = 0
         for sig in sigs:
+            if sig.algorithm in (HYBRID_ALGORITHM, PQ_ONLY_ALGORITHM):
+                # SPEC §7.9.2 gate-mode assessment (v1.4).
+                assessment = assess_pq_entry(
+                    sig.algorithm,
+                    sig.signer,
+                    sig.signature,
+                    body,
+                    require_pq=require_pq,
+                    known_keys=known_keys,
+                )
+                if assessment.status == "valid":
+                    verified += 1
+                elif assessment.status == "invalid":
+                    any_invalid = True
+                else:
+                    any_unverifiable = True
+                    if require_pq and assessment.detail:
+                        report.errors.append(
+                            f"PQ signature unverifiable: {assessment.detail}"
+                        )
+                continue
             if sig.algorithm != "ed25519":
                 any_unverifiable = True
                 continue
@@ -535,7 +638,9 @@ def verify_artifact(
     for stmt in candidates:
         if stmt.artifact_digest != digest:
             continue  # about a different artifact — not a forgery signal
-        if statement_is_authoritative(stmt, signer_ids, known_keys):
+        if statement_is_authoritative(
+            stmt, signer_ids, known_keys, signer_algorithms
+        ):
             if stmt not in report.revocations_applied:
                 report.revocations_applied.append(stmt)
         else:
