@@ -137,6 +137,9 @@ fn cmd_verify(args: &[String]) -> i32 {
                 i += 1;
                 opts.known_keys = load_key_map(&args[i]);
             }
+            "--require-pq" => {
+                opts.require_pq = true;
+            }
             "--bundle" => {
                 i += 1;
                 match std::fs::read(&args[i]) {

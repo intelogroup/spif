@@ -1,8 +1,12 @@
-//! SPIF v1.3 trust layer — revocation statements, timestamp anchors, and
+//! SPIF trust layer — revocation statements, timestamp anchors, and
 //! the verification report. Rust parity for `spif.trust` in spif-py.
 //!
-//! Implements SPEC §7.7 (revocation), §7.8 (timestamp anchoring), and §8.1
-//! (cross-document resolution policy). Everything here is offline by
+//! Implements SPEC §7.7 (revocation), §7.8 (timestamp anchoring), §8.1
+//! (cross-document resolution policy), and — new in v1.4 — the §7.9
+//! hybrid post-quantum gate (`assess_pq_entry`, behind the default-on
+//! `pq` cargo feature; without the feature the assessment degrades
+//! exactly as spif-py does without its backend: classical component
+//! only, UNVERIFIABLE under require_pq). Everything here is offline by
 //! construction: no function in this module performs network I/O.
 //! Revocations arrive embedded in the artifact (REVOCATION chunk, 0x0B)
 //! or out-of-band in a revocation-list file the caller supplies;
@@ -527,6 +531,227 @@ fn verify_ed25519(key: &VerifyingKey, signature_bytes: &[u8], body: &[u8]) -> bo
 }
 
 // ---------------------------------------------------------------------------
+// Hybrid post-quantum gate (SPEC §7.9, v1.4)
+//
+// Mirrors `spif.pq_hybrid` + the gate in `spif.trust` exactly: one
+// assessment function decides every PQ-algorithm entry. Signer
+// encodings (§7.9.1): hybrid signers embed BOTH public keys in the
+// signer id — base64(ed25519 32 B ‖ ML-DSA-65 1952 B); PQ-only signers
+// embed base64(ML-DSA-65 1952 B). Named ids resolve via `known_keys`.
+// ---------------------------------------------------------------------------
+
+pub const ALG_HYBRID: &str = "ed25519+ml-dsa-65";
+pub const ALG_ML_DSA_65: &str = "ml-dsa-65";
+
+const ML_DSA_65_PUBLIC_KEY_LEN: usize = 1952;
+const ML_DSA_65_SIGNATURE_LEN: usize = 3309;
+const HYBRID_PUBLIC_KEY_LEN: usize = 32 + ML_DSA_65_PUBLIC_KEY_LEN;
+const HYBRID_SIGNATURE_LEN: usize = 64 + ML_DSA_65_SIGNATURE_LEN;
+
+/// Outcome of assessing one PQ-algorithm entry (mirrors
+/// `spif.pq_hybrid.PQAssessment`).
+#[derive(Debug, Clone, PartialEq)]
+pub enum PqOutcome {
+    Valid,
+    Invalid,
+    Unverifiable(String),
+}
+
+/// True when this build carries an ML-DSA-65 implementation (the `pq`
+/// cargo feature). Mirrors `spif.pq_hybrid.pq_available`.
+pub fn pq_available() -> bool {
+    cfg!(feature = "pq")
+}
+
+#[cfg(feature = "pq")]
+fn verify_ml_dsa_65(public_key: &[u8], signature_bytes: &[u8], body: &[u8]) -> bool {
+    use ml_dsa::{EncodedSignature, EncodedVerifyingKey, KeyInit, MlDsa65, Signature, Verifier};
+    let Ok(enc_key) = EncodedVerifyingKey::<MlDsa65>::try_from(public_key) else {
+        return false;
+    };
+    let vk = ml_dsa::VerifyingKey::<MlDsa65>::new(&enc_key);
+    let Ok(enc_sig) = EncodedSignature::<MlDsa65>::try_from(signature_bytes) else {
+        return false;
+    };
+    let Ok(sig) = Signature::<MlDsa65>::try_from(enc_sig.as_slice()) else {
+        return false;
+    };
+    vk.verify(body, &sig).is_ok()
+}
+
+#[cfg(not(feature = "pq"))]
+fn verify_ml_dsa_65(_public_key: &[u8], _signature_bytes: &[u8], _body: &[u8]) -> bool {
+    false
+}
+
+/// Parse a self-describing hybrid signer id into (ed25519, ML-DSA-65)
+/// raw public keys; None for any other shape (§7.9.1).
+pub fn parse_hybrid_signer(signer_id: &str) -> Option<(Vec<u8>, Vec<u8>)> {
+    let raw = STANDARD.decode(signer_id).ok()?;
+    if raw.len() != HYBRID_PUBLIC_KEY_LEN {
+        return None;
+    }
+    Some((raw[..32].to_vec(), raw[32..].to_vec()))
+}
+
+/// Parse a self-describing PQ-only signer id into the raw ML-DSA-65
+/// public key; None for any other shape.
+pub fn parse_pq_only_signer(signer_id: &str) -> Option<Vec<u8>> {
+    let raw = STANDARD.decode(signer_id).ok()?;
+    if raw.len() != ML_DSA_65_PUBLIC_KEY_LEN {
+        return None;
+    }
+    Some(raw)
+}
+
+/// Resolve a signer's (ed25519, ML-DSA-65) public keys: `known_keys`
+/// first, then the self-describing signer encoding (§7.9.1). Either
+/// component is None when unavailable. Mirrors
+/// `spif.pq_hybrid.resolve_signer_keys`.
+pub fn resolve_signer_keys(
+    signer_id: &str,
+    algorithm: &str,
+    known_keys: Option<&HashMap<String, String>>,
+) -> (Option<Vec<u8>>, Option<Vec<u8>>) {
+    if let Some(map) = known_keys {
+        if let Some(mapped) = map.get(signer_id) {
+            if let Ok(raw) = STANDARD.decode(mapped) {
+                if algorithm == ALG_HYBRID && raw.len() == HYBRID_PUBLIC_KEY_LEN {
+                    return (Some(raw[..32].to_vec()), Some(raw[32..].to_vec()));
+                }
+                if algorithm == ALG_ML_DSA_65 && raw.len() == ML_DSA_65_PUBLIC_KEY_LEN {
+                    return (None, Some(raw));
+                }
+                if raw.len() == 32 {
+                    return (Some(raw), None);
+                }
+                return (None, None);
+            }
+        }
+    }
+    if algorithm == ALG_HYBRID {
+        match parse_hybrid_signer(signer_id) {
+            Some((ed, ml)) => (Some(ed), Some(ml)),
+            None => (None, None),
+        }
+    } else if algorithm == ALG_ML_DSA_65 {
+        (None, parse_pq_only_signer(signer_id))
+    } else {
+        (None, None)
+    }
+}
+
+/// The §7.9.2 gate assessment for one PQ-algorithm signature entry —
+/// the single function the reader, the trust layer, and revocation
+/// authority all share. Mirrors `spif.pq_hybrid.assess_pq_entry`.
+pub fn assess_pq_entry(
+    algorithm: &str,
+    signer_id: &str,
+    signature_bytes: &[u8],
+    body: &[u8],
+    known_keys: Option<&HashMap<String, String>>,
+    require_pq: bool,
+) -> PqOutcome {
+    if algorithm == ALG_HYBRID {
+        if signature_bytes.len() != HYBRID_SIGNATURE_LEN {
+            // A shortened/relabelled hybrid signature is malformed, not
+            // merely unverified — in BOTH gate modes (§7.9.2).
+            return PqOutcome::Invalid;
+        }
+        let (ed_sig, ml_sig) = signature_bytes.split_at(64);
+        let (ed_pk, ml_pk) = resolve_signer_keys(signer_id, algorithm, known_keys);
+        let ed_key = match &ed_pk {
+            Some(raw) => match <[u8; 32]>::try_from(raw.as_slice()) {
+                Ok(bytes) => match VerifyingKey::from_bytes(&bytes) {
+                    Ok(k) => k,
+                    Err(_) => {
+                        return PqOutcome::Unverifiable(format!(
+                            "unusable ed25519 key for signer {signer_id}"
+                        ))
+                    }
+                },
+                Err(_) => {
+                    return PqOutcome::Unverifiable(format!(
+                        "unusable ed25519 key for signer {signer_id}"
+                    ))
+                }
+            },
+            None => {
+                return PqOutcome::Unverifiable(format!(
+                    "no ed25519 key resolvable for signer {signer_id}"
+                ))
+            }
+        };
+        if !verify_ed25519(&ed_key, ed_sig, body) {
+            return PqOutcome::Invalid;
+        }
+        if !require_pq {
+            // Classical gate: the ed25519 component is the verdict. The
+            // ML-DSA component is checked (and the artifact upgraded)
+            // by require_pq verifiers (§7.9.2).
+            return PqOutcome::Valid;
+        }
+        let ml_pk = match &ml_pk {
+            Some(pk) => pk,
+            None => {
+                return PqOutcome::Unverifiable(format!(
+                    "no ML-DSA-65 key resolvable for signer {signer_id} \
+                     (require_pq)"
+                ))
+            }
+        };
+        if !pq_available() {
+            return PqOutcome::Unverifiable(
+                "ML-DSA-65 backend unavailable (built without the `pq` \
+                 feature); require_pq cannot be satisfied"
+                    .to_string(),
+            );
+        }
+        if verify_ml_dsa_65(ml_pk, ml_sig, body) {
+            PqOutcome::Valid
+        } else {
+            PqOutcome::Invalid
+        }
+    } else if algorithm == ALG_ML_DSA_65 {
+        if !require_pq {
+            // Invisible, not invalid (§7.9.2): a classical reader never
+            // reports a PQ-only entry VALID and never INVALID.
+            return PqOutcome::Unverifiable(format!(
+                "PQ-only entry (signer {signer_id}) is outside the \
+                 classical gate"
+            ));
+        }
+        if signature_bytes.len() != ML_DSA_65_SIGNATURE_LEN {
+            return PqOutcome::Invalid;
+        }
+        let (_, ml_pk) = resolve_signer_keys(signer_id, algorithm, known_keys);
+        let ml_pk = match &ml_pk {
+            Some(pk) => pk,
+            None => {
+                return PqOutcome::Unverifiable(format!(
+                    "no ML-DSA-65 key resolvable for signer {signer_id} \
+                     (require_pq)"
+                ))
+            }
+        };
+        if !pq_available() {
+            return PqOutcome::Unverifiable(
+                "ML-DSA-65 backend unavailable (built without the `pq` \
+                 feature); require_pq cannot be satisfied"
+                    .to_string(),
+            );
+        }
+        if verify_ml_dsa_65(ml_pk, signature_bytes, body) {
+            PqOutcome::Valid
+        } else {
+            PqOutcome::Invalid
+        }
+    } else {
+        PqOutcome::Unverifiable(format!("unsupported algorithm {algorithm}"))
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Revocation statements
 // ---------------------------------------------------------------------------
 
@@ -588,14 +813,35 @@ pub fn create_revocation(
 }
 
 /// True iff the statement was issued by one of the artifact's signers
-/// and its signature verifies under that signer's key.
+/// and its signature verifies under that signer's key. A signer whose
+/// artifact entries are hybrid or PQ-only must sign the statement with
+/// that algorithm, assessed strictly (§7.9.4 — never the classical
+/// downgrade): pass the artifact's signer → algorithm map as
+/// `signer_algorithms`. Mirrors `spif.trust.statement_is_authoritative`.
 pub fn statement_is_authoritative(
     stmt: &RevocationStatement,
     artifact_signer_ids: &HashSet<String>,
     known_keys: Option<&HashMap<String, String>>,
+    signer_algorithms: Option<&HashMap<String, String>>,
 ) -> bool {
     if !artifact_signer_ids.contains(&stmt.signer) {
         return false;
+    }
+    let declared = signer_algorithms.and_then(|m| m.get(&stmt.signer));
+    if let Some(alg) = declared {
+        if alg == ALG_HYBRID || alg == ALG_ML_DSA_65 {
+            return matches!(
+                assess_pq_entry(
+                    alg,
+                    &stmt.signer,
+                    &stmt.signature,
+                    &statement_signing_bytes(stmt),
+                    known_keys,
+                    true,
+                ),
+                PqOutcome::Valid
+            );
+        }
     }
     let key = match resolve_signer_key(&stmt.signer, known_keys) {
         Some(k) => k,
@@ -897,6 +1143,11 @@ pub struct VerifyOptions {
     /// Key resolution for non-self-describing (e.g. URL) signer ids:
     /// signer_id -> base64 raw public key.
     pub known_keys: HashMap<String, String>,
+    /// The §7.9.2 require_pq gate mode (v1.4): hybrid entries must
+    /// verify BOTH components; PQ-only entries become verifiable.
+    /// Default false (classical gate). Mirrors the `require_pq`
+    /// argument of `spif.trust.verify_artifact`.
+    pub require_pq: bool,
 }
 
 /// Verify an artifact end-to-end and report trust, not just signatures.
@@ -938,6 +1189,10 @@ pub fn verify_artifact(data: &[u8], opts: &VerifyOptions) -> VerificationReport 
     sigs.extend(doc.signatures.iter());
     report.signers = sigs.iter().map(|s| s.signer.clone()).collect();
     let signer_ids: HashSet<String> = report.signers.iter().cloned().collect();
+    let signer_algorithms: HashMap<String, String> = sigs
+        .iter()
+        .map(|s| (s.signer.clone(), s.algorithm.clone()))
+        .collect();
 
     // --- Signature validity --------------------------------------------------
     if sigs.is_empty() {
@@ -949,6 +1204,30 @@ pub fn verify_artifact(data: &[u8], opts: &VerifyOptions) -> VerificationReport 
         let mut any_unverifiable = false;
         let mut verified = 0usize;
         for sig in &sigs {
+            if sig.algorithm == ALG_HYBRID || sig.algorithm == ALG_ML_DSA_65 {
+                // §7.9.2 gate assessment (v1.4): one shared function
+                // decides validity for both gate modes.
+                match assess_pq_entry(
+                    &sig.algorithm,
+                    &sig.signer,
+                    sig.signature.as_ref(),
+                    body,
+                    Some(&opts.known_keys),
+                    opts.require_pq,
+                ) {
+                    PqOutcome::Valid => verified += 1,
+                    PqOutcome::Invalid => any_invalid = true,
+                    PqOutcome::Unverifiable(why) => {
+                        any_unverifiable = true;
+                        if opts.require_pq {
+                            report
+                                .errors
+                                .push(format!("PQ signature unverifiable: {why}"));
+                        }
+                    }
+                }
+                continue;
+            }
             if sig.algorithm != "ed25519" {
                 any_unverifiable = true;
                 continue;
@@ -1010,7 +1289,12 @@ pub fn verify_artifact(data: &[u8], opts: &VerifyOptions) -> VerificationReport 
         if stmt.artifact_digest != digest {
             continue; // about a different artifact — not a forgery signal
         }
-        if statement_is_authoritative(stmt, &signer_ids, Some(&opts.known_keys)) {
+        if statement_is_authoritative(
+            stmt,
+            &signer_ids,
+            Some(&opts.known_keys),
+            Some(&signer_algorithms),
+        ) {
             if !report.revocations_applied.contains(stmt) {
                 report.revocations_applied.push(stmt.clone());
             }
