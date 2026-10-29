@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "spif"
-version = "1.3.0"
+version = "1.4.0"
 description = "Semantic Provenance Inference Format — a binary file format for AI outputs with provenance, uncertainty, and signatures"
 readme = "README.md"
 license = {text = "Apache-2.0"}
@@ -34,11 +34,12 @@ dependencies = [
 
 [project.optional-dependencies]
 verify = []                             # verify-only: all deps already in core (cbor2 + cryptography)
+pq = ["pqcrypto>=1.0"]                  # ML-DSA-65 backend for hybrid PQ signing/verification (SPEC §7.9); optional by design — core spif never imports it at module level
 anthropic = ["anthropic>=0.36"]
 openai = ["openai>=1.45"]
 gemini = ["google-generativeai>=0.8"]
 mcp = ["anthropic>=0.36", "fastmcp>=2.0"]
-dev = ["pytest>=8", "pytest-cov", "hypothesis>=6"]
+dev = ["pytest>=8", "pytest-cov", "hypothesis>=6", "dilithium-py>=1.5"]  # dilithium-py: independent FIPS 204 cross-check for the PQ test path
 
 [project.scripts]
 spif = "spif.cli:app"

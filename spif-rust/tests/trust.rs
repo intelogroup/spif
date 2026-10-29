@@ -112,7 +112,7 @@ fn statement_by_non_signer_is_not_authoritative() {
         .signers
         .into_iter()
         .collect();
-    assert!(!statement_is_authoritative(&stmt, &signer_ids, None));
+    assert!(!statement_is_authoritative(&stmt, &signer_ids, None, None));
 
     // Supplied directly (not via file), it must count as forged, not apply.
     let mut opts = default_opts();

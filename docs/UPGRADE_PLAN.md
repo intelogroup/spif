@@ -249,3 +249,18 @@ are the historical record of the upgrade run. Rust parity was completed afterwar
 the Rust engine implements the full v1.3 trust layer (revocation, timestamp, bundle
 resolution), aligned with the Python hardening (statement cap, candidate dedupe), and
 the conformance kit now passes 11 PASS / 0 FAIL / 0 BLOCKED.
+
+**v1.4 rung (2026-10-29, branch `tmp/v14-pq-rung`):** the PQ check of rung 6 became
+the v1.4 rung. SPEC §7.9 addendum (encoding decided in-spec: both public keys embedded
+in `signer`, +5,925 B/artifact measured; gate modes classical / require_pq with PQ-only
+entries "invisible, not invalid"; hybrid key management and hybrid-signed revocation;
+PQ-only signing registered but not implemented). Python: `spif.pq_hybrid` promoted from
+the Phase D prototype to a supported module, integrated with the reader gate, the
+trust layer, the keystore, and `spif verify --require-pq`; `pqcrypto` is an optional
+extra. Conformance kit grows to 15 cases (12–15 promoted from the spike; 15/15 PASS).
+Rust: hybrid *verify* parity landed via RustCrypto `ml-dsa` 0.1.1 behind the default-on
+`pq` feature (cargo 102 passed / 2 ignored); Rust hybrid *signing* is a recorded gap —
+the crate cannot import the FIPS 204 expanded secret keys SPIF keystores hold.
+Performance re-checked on the integrated path: no regression vs the spike
+(sign 15.20 ms, strict verify 0.55 ms; medians of 50). Versions aligned to 1.4.0.
+Built and committed locally only — merge/release are a separate decision, as v1.3 was.

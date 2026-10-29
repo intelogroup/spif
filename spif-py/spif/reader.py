@@ -394,9 +394,15 @@ class SPIFReader:
         require_signature: bool = False,
         revocation_list_path: str | Path | None = None,
         max_signature_age_seconds: int | None = None,
+        require_pq: bool = False,
     ) -> None:
         env_strict = os.environ.get("SPIF_REQUIRE_SIGNATURE", "").strip() in ("1", "true", "yes")
         self._require_signature = require_signature or env_strict
+        # SPEC §7.9.2 gate mode: False = classical (a hybrid entry is
+        # verified by its ed25519 component; PQ-only entries are
+        # unverifiable), True = require_pq (both hybrid components must
+        # verify; PQ-only entries are ML-DSA-verified when possible).
+        self._require_pq = require_pq
         self._revocation_list: set[str] = set()
         if revocation_list_path is not None:
             from .crypto import load_revocation_list
@@ -761,7 +767,9 @@ class SPIFReader:
             # Cryptographically verify the signature — not just its presence.
             # A stale or forged signature chunk with a recomputed checksum would
             # otherwise pass decode() silently.
-            self._verify_sig_inner(doc, data, self._revocation_list)
+            self._verify_sig_inner(
+                doc, data, self._revocation_list, require_pq=self._require_pq
+            )
 
         # Time-bounded signature age limit check
         if self._max_signature_age_seconds is not None:
@@ -792,14 +800,25 @@ class SPIFReader:
         doc: "SPIFDocument",
         data: bytes,
         revocation_list: set[str],
+        require_pq: bool = False,
     ) -> bool:
         """
-        Core ed25519 verification. Takes an already-decoded doc and the raw bytes
+        Core signature verification. Takes an already-decoded doc and the raw bytes
         it was decoded from. Separated from decode() to avoid circular calls.
+
+        ed25519 entries are verified classically. Hybrid
+        (``ed25519+ml-dsa-65``) and PQ-only (``ml-dsa-65``) entries go
+        through the SPEC §7.9.2 gate assessment in spif.pq_hybrid:
+        classical mode (require_pq=False) checks a hybrid entry's
+        ed25519 component only and treats PQ-only entries as
+        unverifiable ("invisible, not invalid"); require_pq mode
+        requires both hybrid components and ML-DSA-verifies PQ-only
+        entries when the backend is available.
 
         Returns True if all signatures are valid.
         Returns False if no signatures are present.
-        Raises SPIFSignatureError if any signature fails.
+        Raises SPIFSignatureError if any signature fails or cannot be
+        verified under the active gate mode.
         """
         import base64
         from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
@@ -813,6 +832,27 @@ class SPIFReader:
 
         def _verify_one(sig_obj, body_to_sign: bytes) -> None:
             _check_revoked(sig_obj.signer)
+            if sig_obj.algorithm in ("ed25519+ml-dsa-65", "ml-dsa-65"):
+                # SPEC §7.9.2 gate assessment (lazy import: pq_hybrid
+                # imports this module).
+                from .pq_hybrid import assess_pq_entry
+
+                assessment = assess_pq_entry(
+                    sig_obj.algorithm,
+                    sig_obj.signer,
+                    sig_obj.signature,
+                    body_to_sign,
+                    require_pq=require_pq,
+                )
+                if assessment.status == "valid":
+                    return
+                if assessment.status == "invalid":
+                    raise SPIFSignatureError(
+                        f"Signature verification failed: {assessment.detail}"
+                    )
+                raise SPIFSignatureError(
+                    f"Signature cannot be verified: {assessment.detail}"
+                )
             if sig_obj.algorithm != "ed25519":
                 raise SPIFSignatureError(
                     f"Unsupported signature algorithm '{sig_obj.algorithm}'; "
@@ -857,14 +897,25 @@ class SPIFReader:
         data: bytes,
         revocation_list_path: str | Path | None = None,
         max_signature_age_seconds: int | None = None,
+        require_pq: bool | None = None,
     ) -> bool:
         """
-        Verify the ed25519 signature(s) in a SPIF document.
+        Verify the signature(s) in a SPIF document.
 
         body_to_sign = all bytes before the first SIGNATURE or MULTISIG chunk
         in the file.
-        The signer field must be a base64-encoded raw ed25519 public key (32 bytes).
-        For URL-based signers, the caller must resolve the key externally.
+        For ed25519 entries the signer field must be a base64-encoded raw
+        ed25519 public key (32 bytes); hybrid and PQ-only entries carry
+        their key material per the SPEC §7.9.1 encoding. For URL-based
+        signers, the caller must resolve the key externally.
+
+        ``require_pq`` selects the SPEC §7.9.2 gate mode for PQ-bearing
+        entries (hybrid: both components required; PQ-only: ML-DSA
+        verification). None (default) uses this reader's own gate mode
+        (classical unless the reader was constructed with
+        require_pq=True). In classical mode a hybrid entry is verified
+        by its ed25519 component and a PQ-only entry raises
+        SPIFSignatureError as unverifiable — invisible, not invalid.
 
         If both SIGNATURE and MULTISIG are present, every signature in both
         chunks is verified against the same signing body: the bytes before the
@@ -875,7 +926,8 @@ class SPIFReader:
 
         Returns True if all present signatures are valid.
         Returns False if no signature chunk is present.
-        Raises SPIFSignatureError if any signature is present but invalid.
+        Raises SPIFSignatureError if any signature is present but invalid
+        or unverifiable under the active gate mode.
         """
         # Use a non-strict reader to parse without triggering crypto verification
         # a second time — _verify_sig_inner does the actual check below.
@@ -886,8 +938,12 @@ class SPIFReader:
             from .crypto import load_revocation_list
             revocation_list = load_revocation_list(revocation_list_path)
 
+        effective_require_pq = self._require_pq if require_pq is None else require_pq
+
         # Crytographically verify signatures first
-        has_sigs = self._verify_sig_inner(doc, data, revocation_list)
+        has_sigs = self._verify_sig_inner(
+            doc, data, revocation_list, require_pq=effective_require_pq
+        )
         if not has_sigs:
             return False
 

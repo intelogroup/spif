@@ -2,6 +2,78 @@
 
 All notable changes to SPIF are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.4.0] - 2026-10-29
+
+The post-quantum release. Spec v1.4 (docs/SPEC.md §7.9) adds hybrid
+`ed25519+ml-dsa-65` signatures on top of the v1.3 trust layer, built on
+the Phase D spike's ADOPT-WITH-CONDITIONS verdict; all six spike
+conditions are discharged here. No wire-format version bump; classical
+artifacts and verifiers are unaffected.
+
+### Added
+- **Hybrid PQ signing and verification** (SPEC §7.9): algorithm
+  `ed25519+ml-dsa-65`, signature = ed25519 (64 B) ‖ ML-DSA-65 (3,309 B)
+  over the unchanged signing body.
+- **Signer-encoding decision (§7.9.1)**: both public keys are embedded
+  in the `signer` field — base64(ed25519 32 B ‖ ML-DSA-65 1,952 B) —
+  preserving self-contained offline verification. Measured cost:
+  **+5,925 bytes per hybrid artifact** vs ed25519 (reproduced by
+  `benchmarks/pq_hybrid_bench.py`). The key-lookup alternative was
+  rejected because it costs the offline property; named signer ids
+  remain legal via verifier-provisioned `known_keys`.
+- **Reader gate modes (§7.9.2)**: classical (default — a hybrid entry
+  verifies on its ed25519 component; a PQ-only entry is *invisible,
+  not invalid*: UNVERIFIABLE, never VALID, never INVALID) and
+  `require_pq` (both components must verify; upgradable per call in
+  `spif verify --require-pq`). A wrong-length hybrid signature is
+  INVALID in both modes. `require_pq` without an ML-DSA backend
+  reports UNVERIFIABLE — it never silently degrades to classical.
+- **Key management (§7.9.3)**: one signer identity over both key
+  components; whole-identity revocation; rotation records MUST carry
+  dual-component proofs from old and new keypairs (verified by
+  `verify_hybrid_rotation`). ML-DSA secret keys are stored as the
+  4,032-byte FIPS 204 encoding; v1.4 defines no mnemonic derivation
+  for them. Keystore stores hybrid public entries (`.hyb` files) with
+  strict both-component verification.
+- **Hybrid revocation (§7.9.4)**: revocation statements are signed
+  with the signer's own algorithm — a hybrid signer MUST sign
+  hybridly; an ed25519-only statement from a hybrid signer is a
+  forgery (counted, applies nothing). `create_revocation_hybrid` in
+  the Python trust layer.
+- **Optional backend**: `pqcrypto` is an optional dependency
+  (`pip install "spif[pq]"`). Importing `spif` without it works
+  classically and reports the PQ backend unavailable — never crashes.
+  `dilithium-py` is a dev-only independent cross-check; interop is
+  tested in both directions through the integrated path.
+- **Conformance kit grows to 15 cases**: hybrid cases 12–15 promoted
+  from the spike (`vectors/build_pq_vectors.py`, `pq_hybrid` runner
+  adapter executing through the trust layer in require_pq mode;
+  BLOCKED, never FAIL, without the backend). Runner: 15 passed,
+  0 failed, 0 blocked.
+- **Rust verify parity**: `spif-rust` verifies hybrid artifacts and
+  hybrid revocation statements with the same gate semantics, using
+  RustCrypto `ml-dsa` 0.1.1 behind the default-on `pq` cargo feature
+  (a `--no-default-features` build degrades exactly like Python
+  without the backend). Proof: `spif-rust/tests/pq_hybrid.rs` runs
+  conformance artifacts 12–15 and Python-produced revocation fixtures
+  through the Rust implementation. Cargo suite: 102 passed,
+  0 failed, 2 ignored (was 95/2).
+- **Performance** (medians of 50, `benchmarks/pq_hybrid_results.md`):
+  hybrid sign 15.20 ms, strict verify 0.55 ms (reader gate) /
+  0.64 ms (trust layer), classical-gate verify of a hybrid artifact
+  0.23 ms — no regression vs the spike prototype (14.73 / 0.53 ms).
+
+### Not implemented (recorded gaps)
+- **PQ-only signing** (`ml-dsa-65` alone) stays spec-only in v1.4:
+  the algorithm is registered and verifiers handle it under the gate;
+  no writer ships (§7.9.5).
+- **Rust hybrid signing**: `ml-dsa` 0.1.1 derives signing keys from a
+  32-byte seed and exposes no import for the FIPS 204 expanded
+  secret-key encoding (4,032 B) that SPIF hybrid keystores hold
+  (`ExpandedSigningKey::from_seed` is the only constructor path), so
+  the crate cannot consume existing SPIF hybrid keys. Rust verifies;
+  Python signs. Revisit when the crate gains expanded-key import.
+
 ## [1.3.0] - 2026-10-29
 
 The "world-ready" trust-layer release. Spec v1.3 (docs/SPEC.md §6.12–§6.13, §7.7–§7.8,

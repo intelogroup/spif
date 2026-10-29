@@ -5,6 +5,9 @@ A keystore is a directory with the following layout::
 
     keystore/
         <key_id>.pub    — raw 32-byte ed25519 public key per signer
+        <key_id>.hyb    — hybrid public keys (SPEC §7.9): the raw
+                          concatenated ed25519 (32 B) + ML-DSA-65
+                          (1952 B) public keys of one hybrid signer
         revoked.json    — {"revoked": {"<key_id>": <revoked_at_ms>}}
         roles.json      — {"roles": {"<role>": ["<authorized_key_id>", ...]}}
         rotation.jsonl  — newline-delimited rotation records (from crypto.rotate_key)
@@ -34,10 +37,14 @@ import json
 import os
 import tempfile
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Union
 
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+from cryptography.hazmat.primitives.asymmetric.ed25519 import (
+    Ed25519PrivateKey,
+    Ed25519PublicKey,
+)
 from cryptography.exceptions import InvalidSignature
 
 from .reader import (
@@ -51,6 +58,34 @@ from .types import SPIFDocument
 
 class SPIFRevokedSignerError(SPIFSignatureError):
     """A cryptographically valid signature belongs to a revoked signer."""
+
+
+@dataclass
+class HybridKeyMaterial:
+    """The private half of a hybrid signer identity (SPEC §7.9.3),
+    returned by :meth:`SPIFKeyStore.generate_hybrid_key`. The keystore
+    retains only the public components; the caller persists this
+    material (the ML-DSA secret key is 4032 raw bytes with no PEM or
+    mnemonic story in v1.4)."""
+
+    ed_private_key: Ed25519PrivateKey
+    ml_public_key: bytes
+    ml_secret_key: bytes
+
+    @property
+    def signer_id(self) -> str:
+        """The §7.9.1 self-describing signer id for this identity."""
+        from cryptography.hazmat.primitives.serialization import (
+            Encoding,
+            PublicFormat,
+        )
+
+        from .pq_hybrid import hybrid_signer_id
+
+        ed_public = self.ed_private_key.public_key().public_bytes(
+            Encoding.Raw, PublicFormat.Raw
+        )
+        return hybrid_signer_id(ed_public, self.ml_public_key)
 
 
 class SPIFKeyStore:
@@ -102,11 +137,21 @@ class SPIFKeyStore:
         slug = _key_slug(key_id)
         (self._root / f"{slug}.pub").write_bytes(raw)
 
+    def _entry_path(self, key_id: str, suffix: str) -> Path | None:
+        """Filesystem path for a key entry, or None when the slugged id
+        cannot name a file (a self-describing hybrid signer id is
+        ~2.6 KB of base64 — far beyond any filename limit — and can
+        never be a registered entry, so lookups must not touch the
+        filesystem with it)."""
+        slug = _key_slug(key_id)
+        if len(slug) + len(suffix) > 240:
+            return None
+        return self._root / f"{slug}{suffix}"
+
     def get_key(self, key_id: str) -> bytes | None:
         """Return the raw 32-byte public key for key_id, or None if not found."""
-        slug = _key_slug(key_id)
-        path = self._root / f"{slug}.pub"
-        if not path.exists():
+        path = self._entry_path(key_id, ".pub")
+        if path is None or not path.exists():
             return None
         return path.read_bytes()
 
@@ -115,17 +160,109 @@ class SPIFKeyStore:
         return self.get_key(key_id) is not None
 
     def remove_key(self, key_id: str) -> bool:
-        """Remove the public key for key_id.  Returns True if it existed."""
-        slug = _key_slug(key_id)
-        path = self._root / f"{slug}.pub"
-        if path.exists():
-            path.unlink()
-            return True
-        return False
+        """Remove the public key(s) for key_id (classical and hybrid
+        entries).  Returns True if any existed."""
+        removed = False
+        for suffix in (".pub", ".hyb"):
+            path = self._entry_path(key_id, suffix)
+            if path is not None and path.exists():
+                path.unlink()
+                removed = True
+        return removed
 
     def list_keys(self) -> list[str]:
         """Return a list of registered key IDs (unslugged names not preserved)."""
-        return [p.stem for p in sorted(self._root.glob("*.pub"))]
+        stems = {p.stem for p in self._root.glob("*.pub")}
+        stems |= {p.stem for p in self._root.glob("*.hyb")}
+        return sorted(stems)
+
+    # ------------------------------------------------------------------
+    # Hybrid keys (SPEC §7.9) — one signer identity, two components.
+    # The public halves are stored together in a single ``<id>.hyb``
+    # file (raw ed25519 ‖ ML-DSA-65 public keys); revocation and role
+    # authorization key off the same signer id as classical keys, so a
+    # hybrid identity is revoked whole (§7.9.3).
+    # ------------------------------------------------------------------
+
+    def add_hybrid_key(
+        self,
+        key_id: str,
+        ed_public_key: bytes | Ed25519PublicKey,
+        ml_public_key: bytes,
+    ) -> None:
+        """
+        Register a hybrid signer's public keys under the given key_id.
+
+        Parameters
+        ----------
+        key_id :
+            A stable identifier for the signer (URL, email, short name).
+            Stored as ``<key_id_slug>.hyb`` — special chars are URL-encoded.
+        ed_public_key :
+            Raw 32-byte ed25519 public key bytes, or an
+            ``Ed25519PublicKey`` object.
+        ml_public_key :
+            Raw 1952-byte ML-DSA-65 public key bytes.
+        """
+        from .pq_hybrid import ML_DSA_65_PUBLIC_KEY_LEN
+
+        if isinstance(ed_public_key, Ed25519PublicKey):
+            from cryptography.hazmat.primitives.serialization import (
+                Encoding,
+                PublicFormat,
+            )
+            ed_raw = ed_public_key.public_bytes(Encoding.Raw, PublicFormat.Raw)
+        else:
+            ed_raw = bytes(ed_public_key)
+        if len(ed_raw) != 32:
+            raise ValueError(f"ed25519 public key must be 32 bytes, got {len(ed_raw)}")
+        ml_raw = bytes(ml_public_key)
+        if len(ml_raw) != ML_DSA_65_PUBLIC_KEY_LEN:
+            raise ValueError(
+                f"ML-DSA-65 public key must be {ML_DSA_65_PUBLIC_KEY_LEN} "
+                f"bytes, got {len(ml_raw)}"
+            )
+        slug = _key_slug(key_id)
+        (self._root / f"{slug}.hyb").write_bytes(ed_raw + ml_raw)
+
+    def get_hybrid_key(self, key_id: str) -> tuple[bytes, bytes] | None:
+        """Return (ed25519_pk, ml_dsa_pk) raw bytes for key_id, or None."""
+        from .pq_hybrid import HYBRID_PUBLIC_KEY_LEN
+
+        path = self._entry_path(key_id, ".hyb")
+        if path is None or not path.exists():
+            return None
+        raw = path.read_bytes()
+        if len(raw) != HYBRID_PUBLIC_KEY_LEN:
+            return None
+        return raw[:32], raw[32:]
+
+    def has_hybrid_key(self, key_id: str) -> bool:
+        """Return True if a hybrid public-key entry for key_id exists."""
+        return self.get_hybrid_key(key_id) is not None
+
+    def generate_hybrid_key(self, key_id: str) -> HybridKeyMaterial:
+        """
+        Generate a fresh hybrid signer identity, store its public keys
+        under key_id, and return the private material.
+
+        The ed25519 component is generated classically; the ML-DSA-65
+        component is generated randomly by the PQ backend (§7.9.3 — no
+        mnemonic derivation exists for it in v1.4). Raises
+        PQBackendUnavailable if the `pqcrypto` backend is not installed.
+        The caller owns the returned secret material — the store keeps
+        only public keys, exactly as for classical keys.
+        """
+        from .pq_hybrid import generate_hybrid_keypair
+
+        pair = generate_hybrid_keypair()
+        ed_public, ml_public = pair.public_keys()
+        self.add_hybrid_key(key_id, ed_public, ml_public)
+        return HybridKeyMaterial(
+            ed_private_key=pair.ed_private_key,
+            ml_public_key=pair.ml_public_key,
+            ml_secret_key=pair.ml_secret_key,
+        )
 
     # ------------------------------------------------------------------
     # Revocation
@@ -242,7 +379,13 @@ class SPIFKeyStore:
 
     def verify(self, doc_or_data: SPIFDocument | bytes) -> bool:
         """
-        Verify the ed25519 signature(s) on a SPIF document using keys in this store.
+        Verify the signature(s) on a SPIF document using keys in this store.
+
+        ed25519 entries verify classically; hybrid
+        (``ed25519+ml-dsa-65``, SPEC §7.9) entries verify strictly —
+        both components — against the signer's stored hybrid keys (or
+        the entry's self-describing signer keys). PQ-only entries are
+        unsupported here and raise as unverifiable.
 
         Parameters
         ----------
@@ -299,6 +442,9 @@ class SPIFKeyStore:
 
         for sig in sigs:
             signer = sig.signer
+            if sig.algorithm == "ed25519+ml-dsa-65":
+                self._verify_hybrid(sig, signer, body_to_sign)
+                continue
             # Key lookup
             raw_key = self.get_key(signer)
             if raw_key is None:
@@ -324,6 +470,45 @@ class SPIFKeyStore:
                 )
 
         return True
+
+    def _verify_hybrid(self, sig, signer: str, body_to_sign: bytes) -> None:
+        """Strictly verify one hybrid signature entry (SPEC §7.9): BOTH
+        components must verify under the signer's stored hybrid keys —
+        the keystore is a strict verifier and has no gate modes. Falls
+        back to the entry's self-describing signer keys (§7.9.1) when
+        the signer id is not a registered keystore id. Revocation is by
+        signer id and revokes the whole hybrid identity (§7.9.3)."""
+        from .pq_hybrid import (
+            hybrid_verify_message,
+            parse_hybrid_signer,
+            pq_available,
+        )
+
+        keys = self.get_hybrid_key(signer)
+        if keys is None:
+            keys = parse_hybrid_signer(signer)
+        if keys is None:
+            raise SPIFSignatureError(
+                f"No hybrid public key for signer '{signer}' in "
+                f"keystore at {self._root}"
+            )
+        if not pq_available():
+            raise SPIFSignatureError(
+                f"Cannot verify hybrid signature by '{signer}': the "
+                "ML-DSA backend (pqcrypto) is not installed — install "
+                "the 'pq' extra to verify hybrid signatures"
+            )
+        ed_raw, ml_raw = keys
+        ok = hybrid_verify_message(ed_raw, ml_raw, body_to_sign, sig.signature)
+        if not ok:
+            raise SPIFSignatureError(
+                f"Signature by '{signer}' is cryptographically invalid"
+            )
+        if self.is_revoked(signer):
+            raise SPIFRevokedSignerError(
+                f"Signer '{signer}' is revoked as of "
+                f"{self._load_revoked()[signer]} ms"
+            )
 
     # ------------------------------------------------------------------
     # Internal helpers

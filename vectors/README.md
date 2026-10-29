@@ -1,13 +1,15 @@
-# SPIF v1.3 Conformance Vectors
+# SPIF Conformance Vectors
 
-Normative test vectors for the SPIF v1.3 trust layer (SPEC §6.12, §6.13,
-§7.7, §7.8, §8.1): signed revocation statements and the REVOKED trust
-status, TSA timestamp anchors, and offline cross-document resolution.
+Normative test vectors for the SPIF trust layer (v1.3: SPEC §6.12, §6.13,
+§7.7, §7.8, §8.1 — signed revocation statements and the REVOKED trust
+status, TSA timestamp anchors, offline cross-document resolution) and
+for v1.4 hybrid post-quantum signing (SPEC §7.9, cases 12–15).
 
 ## Running
 
 ```bash
-python build_vectors.py     # regenerate artifacts + manifest (deterministic)
+python build_vectors.py     # regenerate artifacts + manifest for cases 01-11 (deterministic)
+python build_pq_vectors.py  # regenerate artifacts + manifest for cases 12-15 (needs the 'pq' extra)
 python run_conformance.py   # execute all cases against spif-py
 ```
 
@@ -31,6 +33,19 @@ replacing the adapter function in `run_conformance.py`.
 | 09 | timestamp_unverified_authority| VALID, timestamp `unverified` (no TSA key configured)        |
 | 10 | crossdoc_resolved             | VALID, reference `resolved` from the local bundle            |
 | 11 | crossdoc_unresolved           | VALID, reference `unresolved` (no bundle)                    |
+| 12 | hybrid_valid                  | VALID under strict hybrid verification (both components) — v1.4, adapter `pq_hybrid` |
+| 13 | hybrid_tampered_ml_dsa        | INVALID (ML-DSA-65 component flipped, checksum repaired)     |
+| 14 | hybrid_tampered_ed25519       | INVALID (ed25519 component flipped, checksum repaired)       |
+| 15 | hybrid_ed25519_only_relabelled| INVALID (ed25519-only signature relabelled as hybrid)        |
+
+Cases 12–15 are the **v1.4 hybrid PQ** cases (SPEC §7.9, hybrid
+`ed25519+ml-dsa-65`), built by `build_pq_vectors.py` and executed by the
+`pq_hybrid` adapter in the runner (spif.trust in the require_pq gate
+mode). Without the `pqcrypto` backend they report BLOCKED, never FAIL.
+Unlike cases 01–11, the hybrid artifacts are **not byte-identical
+across builds**: FIPS 204 hedged signing is randomized and the ML-DSA
+test keypair is generated fresh per build. The expected *outcomes* are
+deterministic, and outcomes are all the runner asserts.
 
 ## Determinism & test keys
 
