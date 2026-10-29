@@ -169,7 +169,7 @@ def statement_is_authoritative(
 ) -> bool:
     """True iff the statement was issued by one of the artifact's signers
     and its signature verifies under that signer's key."""
-    if stmt.signer not in artifact_signer_ids:
+    if not isinstance(stmt.signer, str) or stmt.signer not in artifact_signer_ids:
         return False
     key = _resolve_signer_key(stmt.signer, known_keys)
     if key is None:
@@ -482,6 +482,8 @@ def _timestamp_status(doc: SPIFDocument, digest: str, tsa_keys) -> str:
     anchor = getattr(doc, "timestamp_anchor", None)
     if anchor is None:
         return TS_ABSENT
+    if not isinstance(anchor.authority, str):
+        return TS_UNVERIFIED
     if not tsa_keys or anchor.authority not in tsa_keys:
         return TS_UNVERIFIED
     key = _pubkey_from_b64(tsa_keys[anchor.authority])

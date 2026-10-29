@@ -174,6 +174,26 @@ class Signature:
     key_id: str = ""     # optional: rotation hint / key identifier for multi-sig
 
 
+def _require_str(value: object, field_name: str) -> str:
+    if not isinstance(value, str):
+        raise TypeError(f"{field_name} must be str, got {type(value).__name__}")
+    return value
+
+
+def _require_int(value: object, field_name: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise TypeError(f"{field_name} must be int, got {type(value).__name__}")
+    return value
+
+
+def _require_bytes(value: object, field_name: str) -> bytes:
+    if isinstance(value, memoryview):
+        return bytes(value)
+    if not isinstance(value, (bytes, bytearray)):
+        raise TypeError(f"{field_name} must be bytes, got {type(value).__name__}")
+    return bytes(value)
+
+
 @dataclass
 class RevocationStatement:
     """A signer-issued, signed revocation of one specific artifact (v1.3+).
@@ -205,15 +225,12 @@ class RevocationStatement:
 
     @classmethod
     def from_cbor_dict(cls, d: dict) -> "RevocationStatement":
-        sig = d.get("signature", b"")
-        if isinstance(sig, memoryview):
-            sig = bytes(sig)
         return cls(
-            artifact_digest=d["artifact_digest"],
-            signer=d["signer"],
-            issued_ms=d["issued_ms"],
-            reason=d["reason"],
-            signature=sig,
+            artifact_digest=_require_str(d["artifact_digest"], "artifact_digest"),
+            signer=_require_str(d["signer"], "signer"),
+            issued_ms=_require_int(d["issued_ms"], "issued_ms"),
+            reason=_require_str(d["reason"], "reason"),
+            signature=_require_bytes(d.get("signature", b""), "signature"),
         )
 
     def to_json_dict(self) -> dict:
@@ -225,12 +242,15 @@ class RevocationStatement:
     @classmethod
     def from_json_dict(cls, d: dict) -> "RevocationStatement":
         import base64
+        sig = d["signature"]
+        if not isinstance(sig, str):
+            raise TypeError(f"signature must be base64 str, got {type(sig).__name__}")
         return cls(
-            artifact_digest=d["artifact_digest"],
-            signer=d["signer"],
-            issued_ms=d["issued_ms"],
-            reason=d["reason"],
-            signature=base64.b64decode(d["signature"]),
+            artifact_digest=_require_str(d["artifact_digest"], "artifact_digest"),
+            signer=_require_str(d["signer"], "signer"),
+            issued_ms=_require_int(d["issued_ms"], "issued_ms"),
+            reason=_require_str(d["reason"], "reason"),
+            signature=base64.b64decode(sig, validate=True),
         )
 
 
@@ -254,13 +274,10 @@ class TimestampAnchor:
 
     @classmethod
     def from_cbor_dict(cls, d: dict) -> "TimestampAnchor":
-        token = d.get("token", b"")
-        if isinstance(token, memoryview):
-            token = bytes(token)
         return cls(
-            authority=d["authority"],
-            time_ms=d["time_ms"],
-            token=token,
+            authority=_require_str(d["authority"], "authority"),
+            time_ms=_require_int(d["time_ms"], "time_ms"),
+            token=_require_bytes(d.get("token", b""), "token"),
         )
 
 
