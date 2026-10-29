@@ -137,11 +137,21 @@ class SPIFKeyStore:
         slug = _key_slug(key_id)
         (self._root / f"{slug}.pub").write_bytes(raw)
 
+    def _entry_path(self, key_id: str, suffix: str) -> Path | None:
+        """Filesystem path for a key entry, or None when the slugged id
+        cannot name a file (a self-describing hybrid signer id is
+        ~2.6 KB of base64 — far beyond any filename limit — and can
+        never be a registered entry, so lookups must not touch the
+        filesystem with it)."""
+        slug = _key_slug(key_id)
+        if len(slug) + len(suffix) > 240:
+            return None
+        return self._root / f"{slug}{suffix}"
+
     def get_key(self, key_id: str) -> bytes | None:
         """Return the raw 32-byte public key for key_id, or None if not found."""
-        slug = _key_slug(key_id)
-        path = self._root / f"{slug}.pub"
-        if not path.exists():
+        path = self._entry_path(key_id, ".pub")
+        if path is None or not path.exists():
             return None
         return path.read_bytes()
 
@@ -152,11 +162,10 @@ class SPIFKeyStore:
     def remove_key(self, key_id: str) -> bool:
         """Remove the public key(s) for key_id (classical and hybrid
         entries).  Returns True if any existed."""
-        slug = _key_slug(key_id)
         removed = False
         for suffix in (".pub", ".hyb"):
-            path = self._root / f"{slug}{suffix}"
-            if path.exists():
+            path = self._entry_path(key_id, suffix)
+            if path is not None and path.exists():
                 path.unlink()
                 removed = True
         return removed
@@ -220,9 +229,8 @@ class SPIFKeyStore:
         """Return (ed25519_pk, ml_dsa_pk) raw bytes for key_id, or None."""
         from .pq_hybrid import HYBRID_PUBLIC_KEY_LEN
 
-        slug = _key_slug(key_id)
-        path = self._root / f"{slug}.hyb"
-        if not path.exists():
+        path = self._entry_path(key_id, ".hyb")
+        if path is None or not path.exists():
             return None
         raw = path.read_bytes()
         if len(raw) != HYBRID_PUBLIC_KEY_LEN:
