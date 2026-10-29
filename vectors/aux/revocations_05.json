@@ -1,0 +1,11 @@
+{
+  "revocations": [
+    {
+      "artifact_digest": "592d4952a03f84a71ead97f1f9100182466f094bbddd7adf773c1521db4a1fb2",
+      "signer": "sgfHXmea3lRUHNAmzKvqiGuMaMAx4hLy72x05llkhiQ=",
+      "issued_ms": 1700000060000,
+      "reason": "retracted",
+      "signature": "OyBkaVFFQArHIDnW1SypifTkqLNcTNrnOxj/iG9/SvLGm5EgmyDfcUJATcP6kws/juOs0Lb6+71dlblbhAEWDA=="
+    }
+  ]
+}

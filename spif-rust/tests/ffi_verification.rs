@@ -31,6 +31,8 @@ fn make_doc(signature: Option<spif_rust::Signature>) -> SPIFDocument {
         signature,
         signatures: vec![],
         task_info: None,
+        revocations: Vec::new(),
+        timestamp_anchor: None,
     }
 }
 

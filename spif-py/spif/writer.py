@@ -14,7 +14,7 @@ from .format import (
     MAGIC, FORMAT_VERSION,
     CHUNK_HEADER, CHUNK_PROVENANCE, CHUNK_SEMANTIC, CHUNK_TRACE,
     CHUNK_PAYLOAD, CHUNK_ALTS, CHUNK_DELTA, CHUNK_SIGNATURE, CHUNK_MULTISIG,
-    CHUNK_TASK, CHUNK_ROLES, CHUNK_CHECKSUM,
+    CHUNK_TASK, CHUNK_ROLES, CHUNK_REVOCATION, CHUNK_TIMESTAMP, CHUNK_CHECKSUM,
     FLAG_PROVENANCE, FLAG_SEMANTIC, FLAG_TRACE, FLAG_ALTS, FLAG_DELTA, FLAG_SIGNATURE,
     FLAG_MULTISIG, FLAG_COMPRESSED, FLAG_ZSTD, FLAG_HAS_TASK,
     TAG_DISTRIBUTION, TAG_NODEREF, TAG_EMBEDDING,
@@ -329,6 +329,18 @@ class SPIFWriter:
                 }
                 for s in doc.signatures
             ]))
+
+        # REVOCATION chunk (v1.3) — post-signature, never compressed.
+        # Emitted after the auth chunks; not part of the signing body.
+        if doc.revocations:
+            parts.append(_chunk(CHUNK_REVOCATION, [
+                s.to_cbor_dict() for s in doc.revocations
+            ]))
+
+        # TIMESTAMP chunk (v1.3) — post-signature, never compressed.
+        if doc.timestamp_anchor is not None:
+            parts.append(_chunk(CHUNK_TIMESTAMP,
+                                doc.timestamp_anchor.to_cbor_dict()))
 
         body = b"".join(parts)
         checksum = hashlib.sha256(body).digest()

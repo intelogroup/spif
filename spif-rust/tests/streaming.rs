@@ -26,6 +26,8 @@ fn minimal_doc_with_trace(steps: Vec<TraceStep>) -> SPIFDocument {
         signature: None,
         signatures: vec![],
         task_info: None,
+        revocations: Vec::new(),
+        timestamp_anchor: None,
     }
 }
 
@@ -66,6 +68,8 @@ fn minimal_doc() -> SPIFDocument {
         signature: None,
         signatures: vec![],
         task_info: None,
+        revocations: Vec::new(),
+        timestamp_anchor: None,
     }
 }
 
@@ -433,6 +437,8 @@ fn test_many_tokens_fidelity() {
         signature: None,
         signatures: vec![],
         task_info: None,
+        revocations: Vec::new(),
+        timestamp_anchor: None,
     };
     let token_refs: Vec<&str> = words.iter().map(|s| s.as_str()).collect();
     let data = stream_doc(&doc, &token_refs);

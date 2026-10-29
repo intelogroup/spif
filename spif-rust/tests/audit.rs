@@ -33,6 +33,8 @@ fn minimal_doc() -> SPIFDocument {
         signature: None,
         signatures: vec![],
         task_info: None,
+        revocations: Vec::new(),
+        timestamp_anchor: None,
     }
 }
 
@@ -135,6 +137,8 @@ fn test_cyclic_trace_rejected() {
         signature: None,
         signatures: vec![],
         task_info: None,
+        revocations: Vec::new(),
+        timestamp_anchor: None,
     };
 
     // Writer has no validation; encoding a cyclic doc succeeds.
@@ -168,6 +172,8 @@ fn test_dangling_dep_rejected() {
         signature: None,
         signatures: vec![],
         task_info: None,
+        revocations: Vec::new(),
+        timestamp_anchor: None,
     };
 
     let bytes = SPIFWriter::new().encode(&doc).unwrap();
@@ -210,6 +216,8 @@ fn test_duplicate_trace_step_id_rejected() {
         signature: None,
         signatures: vec![],
         task_info: None,
+        revocations: Vec::new(),
+        timestamp_anchor: None,
     };
 
     let bytes = SPIFWriter::new().encode(&doc).unwrap();
@@ -568,6 +576,8 @@ fn test_full_roundtrip_all_fields() {
         signature: None,
         signatures: vec![],
         task_info: None,
+        revocations: Vec::new(),
+        timestamp_anchor: None,
     };
 
     let bytes = SPIFWriter::new().encode(&doc).unwrap();
@@ -704,6 +714,8 @@ fn test_duplicate_node_id_rejected() {
         signature: None,
         signatures: vec![],
         task_info: None,
+        revocations: Vec::new(),
+        timestamp_anchor: None,
     };
     let bytes = SPIFWriter::new().encode(&doc).unwrap();
     let err = SPIFReader::new().read(&bytes).unwrap_err();
@@ -742,6 +754,8 @@ fn test_cyclic_payload_rejected() {
         signature: None,
         signatures: vec![],
         task_info: None,
+        revocations: Vec::new(),
+        timestamp_anchor: None,
     };
     let bytes = SPIFWriter::new().encode(&doc).unwrap();
     let err = SPIFReader::new().read(&bytes).unwrap_err();
