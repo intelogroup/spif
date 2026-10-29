@@ -515,6 +515,23 @@ def verify_artifact(
         report.forged_revocations += malformed
         report.errors.append(
             f"ignored {malformed} malformed revocation statement(s)")
+    # Identical statements (same signed fields + same signature) are one
+    # statement however many times they are supplied: process each unique
+    # statement once so duplicates cannot amplify verification cost or
+    # inflate the forgery count.
+    seen: set[bytes] = set()
+    unique: list[RevocationStatement] = []
+    for stmt in candidates:
+        try:
+            identity = _statement_signing_bytes(stmt) + b"|" + bytes(stmt.signature)
+        except Exception:
+            identity = None  # unencodable hand-built statement: never deduped
+        if identity is not None:
+            if identity in seen:
+                continue
+            seen.add(identity)
+        unique.append(stmt)
+    candidates = unique
     for stmt in candidates:
         if stmt.artifact_digest != digest:
             continue  # about a different artifact — not a forgery signal

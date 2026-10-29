@@ -291,3 +291,124 @@ def test_revocation_file_wrong_shape_is_error_not_crash(tmp_path):
     report = verify_artifact(data, revocation_file=path)
     assert report.trust_status == TRUST_VALID
     assert any("revocation file" in e for e in report.errors)
+
+
+# ---------------------------------------------------------------------------
+# (b) Duplicates: defined and safe at every level.
+# - Duplicate chunk types: the reader rejects them (SPIFFormatError) —
+#   verify_artifact reports a clean parse failure.
+# - Duplicate statements: one statement, however many times supplied —
+#   applied once, forged once (dedupe in verify_artifact).
+# ---------------------------------------------------------------------------
+
+def test_duplicate_revocation_chunks_rejected_cleanly():
+    key, data = _signed()
+    stmt = create_revocation(data, key)
+    embedded = attach_revocations(data, [stmt])
+    payload = _chunk_payload(embedded, CHUNK_REVOCATION)
+    doubled = _splice_chunk(embedded, CHUNK_REVOCATION, payload)
+    with pytest.raises(SPIFFormatError):
+        SPIFReader().decode(doubled)
+    report = verify_artifact(doubled)  # must not raise
+    assert report.trust_status == TRUST_INVALID
+    assert any("Duplicate" in e or "parse" in e for e in report.errors)
+
+
+def test_duplicate_timestamp_chunks_rejected_cleanly():
+    key, data = _signed()
+    tsa = generate_key()
+    stamped = attach_timestamp(data, create_timestamp_anchor(data, tsa))
+    payload = _chunk_payload(stamped, CHUNK_TIMESTAMP)
+    doubled = _splice_chunk(stamped, CHUNK_TIMESTAMP, payload)
+    with pytest.raises(SPIFFormatError):
+        SPIFReader().decode(doubled)
+    report = verify_artifact(doubled)
+    assert report.trust_status == TRUST_INVALID
+
+
+def test_duplicate_valid_statement_applied_once():
+    key, data = _signed()
+    stmt = create_revocation(data, key)
+    payload = cbor2.dumps([stmt.to_cbor_dict()] * 3, canonical=True)
+    embedded = attach_chunk(data, CHUNK_REVOCATION, payload)
+    report = verify_artifact(embedded, revocations=[stmt, stmt])
+    assert report.trust_status == TRUST_REVOKED
+    assert report.revocations_applied == [stmt]
+    assert report.forged_revocations == 0
+
+
+def test_duplicate_forged_statement_counted_once():
+    _key, data = _signed()
+    attacker = generate_key()
+    forged = create_revocation(data, attacker, reason="compromised")
+    report = verify_artifact(data, revocations=[forged, forged, forged])
+    assert report.trust_status == TRUST_VALID
+    assert report.forged_revocations == 1
+
+
+# ---------------------------------------------------------------------------
+# (g) Resource bounds.
+# - Embedded statements are capped by the reader
+#   (MAX_REVOCATION_STATEMENTS): beyond the cap the document is a clean
+#   parse failure, never a slow accept.
+# - Within the cap, verification cost is linear: duplicates collapse
+#   before any signature work, and each unique forged statement costs
+#   one signature check.
+# ---------------------------------------------------------------------------
+
+def test_revocation_chunk_over_cap_rejected():
+    from spif.reader import MAX_REVOCATION_STATEMENTS
+    _key, data = _signed()
+    entry = _rev_entry(artifact_digest(data), "whoever")
+    payload = cbor2.dumps(
+        [entry] * (MAX_REVOCATION_STATEMENTS + 1), canonical=True)
+    mutated = attach_chunk(data, CHUNK_REVOCATION, payload)
+    with pytest.raises(SPIFFormatError):
+        SPIFReader().decode(mutated)
+    report = verify_artifact(mutated)
+    assert report.trust_status == TRUST_INVALID
+
+
+def test_many_statements_bounded_time_and_exact_counts():
+    key, data = _signed()
+    digest = artifact_digest(data)
+    valid = create_revocation(data, key, reason="retracted")
+    attacker = generate_key()
+    forged = []
+    for i in range(1500):
+        stmt = RevocationStatement(
+            artifact_digest=digest, signer=_b64(key),
+            issued_ms=1_700_000_000_000 + i, reason="retracted", signature=b"")
+        stmt.signature = attacker.sign(
+            cbor2.dumps(stmt.unsigned_dict(), canonical=True))
+        forged.append(stmt)
+    entries = [valid.to_cbor_dict()] * 500 + [s.to_cbor_dict() for s in forged]
+    embedded = attach_chunk(
+        data, CHUNK_REVOCATION, cbor2.dumps(entries, canonical=True))
+    start = time.monotonic()
+    report = verify_artifact(embedded)
+    elapsed = time.monotonic() - start
+    assert elapsed < 5.0
+    assert report.trust_status == TRUST_REVOKED
+    assert report.revocations_applied == [valid]  # 500 duplicates -> one
+    assert report.forged_revocations == 1500
+
+
+def test_large_revocation_file_filtered_by_digest(tmp_path):
+    from spif.trust import save_revocation_list
+    key, data = _signed()
+    valid = create_revocation(data, key, reason="retracted")
+    filler = [
+        RevocationStatement(
+            artifact_digest=f"{i:064x}", signer=_b64(key),
+            issued_ms=i, reason="other", signature=b"\x00" * 64)
+        for i in range(5000)
+    ]
+    path = tmp_path / "big-list.json"
+    save_revocation_list(filler + [valid], path)
+    start = time.monotonic()
+    report = verify_artifact(data, revocation_file=path)
+    assert time.monotonic() - start < 5.0
+    assert report.trust_status == TRUST_REVOKED
+    assert report.revocations_applied == [valid]
+    assert report.forged_revocations == 0  # other digests are not forgeries

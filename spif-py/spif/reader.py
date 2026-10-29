@@ -31,6 +31,7 @@ from .types import (
 SUPPORTED_VERSIONS = {0x01, 0x02}
 MAX_DECOMPRESSED_SIZE = 10 * 1024 * 1024  # 10MB safety limit
 MAX_PAYLOAD_NODES = 20_000  # ponytail: flat cap, raise if legit docs hit it
+MAX_REVOCATION_STATEMENTS = 4_096  # ponytail: flat cap on embedded REVOCATION entries
 
 _CHUNK_STRUCT = struct.Struct(">BI")
 
@@ -703,6 +704,11 @@ class SPIFReader:
             raw = _cbor_load(chunks[CHUNK_REVOCATION][0], "REVOCATION")
             if not isinstance(raw, list):
                 raise SPIFFormatError("REVOCATION chunk must decode to a list")
+            if len(raw) > MAX_REVOCATION_STATEMENTS:
+                raise SPIFFormatError(
+                    f"REVOCATION chunk has {len(raw)} statements, exceeding "
+                    f"the limit of {MAX_REVOCATION_STATEMENTS}"
+                )
             for entry in raw:
                 if not isinstance(entry, dict):
                     raise SPIFFormatError(
