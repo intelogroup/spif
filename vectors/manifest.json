@@ -1,0 +1,183 @@
+{
+  "kit": "SPIF v1.3 conformance vectors",
+  "spec": "docs/SPEC.md (v1.3 addendum: \u00a76.12, \u00a76.13, \u00a77.7, \u00a77.8, \u00a78.1)",
+  "note": "All signing keys are published TEST-ONLY keys derived from fixed seeds in build_vectors.py. Never sign real artifacts with them.",
+  "cases": [
+    {
+      "id": "01",
+      "name": "valid_py",
+      "description": "Signed artifact, no trust-layer extras. Must verify VALID.",
+      "artifact": "artifacts/01_valid_py.spif",
+      "inputs": {},
+      "expected": {
+        "trust_status": "VALID",
+        "signature_status": "valid",
+        "timestamp_status": "absent",
+        "forged_revocations": 0,
+        "references": []
+      }
+    },
+    {
+      "id": "02",
+      "name": "cross_implementation_rust",
+      "description": "Case 01's artifact verified by the Rust reader, and a Rust-produced signed artifact verified by the Python reader. Requires a Rust toolchain (cargo).",
+      "artifact": "artifacts/01_valid_py.spif",
+      "inputs": {},
+      "expected": {
+        "trust_status": "VALID",
+        "signature_status": "valid",
+        "timestamp_status": "absent",
+        "forged_revocations": 0,
+        "references": []
+      },
+      "executable": false,
+      "blocked_reason": "requires the Rust toolchain (cargo/rustc) to build the spif-rust reader; not available in every environment. Run in a Rust-equipped checkout."
+    },
+    {
+      "id": "03",
+      "name": "tampered",
+      "description": "Payload byte flipped, checksum repaired. The signature cannot be recomputed by the attacker: INVALID.",
+      "artifact": "artifacts/03_tampered.spif",
+      "inputs": {},
+      "expected": {
+        "trust_status": "INVALID",
+        "signature_status": "invalid",
+        "timestamp_status": "absent",
+        "forged_revocations": 0,
+        "references": []
+      }
+    },
+    {
+      "id": "04",
+      "name": "unsigned",
+      "description": "No signature chunk. Must report UNSIGNED, never VALID.",
+      "artifact": "artifacts/04_unsigned.spif",
+      "inputs": {},
+      "expected": {
+        "trust_status": "UNSIGNED",
+        "signature_status": "unsigned",
+        "timestamp_status": "absent",
+        "forged_revocations": 0,
+        "references": []
+      }
+    },
+    {
+      "id": "05",
+      "name": "revoked_list",
+      "description": "Signer's signed revocation supplied as a revocation-list file. Signature stays valid; trust status is REVOKED.",
+      "artifact": "artifacts/01_valid_py.spif",
+      "inputs": {
+        "revocation_file": "aux/revocations_05.json"
+      },
+      "expected": {
+        "trust_status": "REVOKED",
+        "signature_status": "valid",
+        "timestamp_status": "absent",
+        "forged_revocations": 0,
+        "references": []
+      }
+    },
+    {
+      "id": "06",
+      "name": "revoked_embedded",
+      "description": "The same revocation embedded in the REVOCATION chunk. REVOKED; the artifact's \u00a77.2 signature still verifies.",
+      "artifact": "artifacts/06_revoked_embedded.spif",
+      "inputs": {},
+      "expected": {
+        "trust_status": "REVOKED",
+        "signature_status": "valid",
+        "timestamp_status": "absent",
+        "forged_revocations": 0,
+        "references": []
+      }
+    },
+    {
+      "id": "07",
+      "name": "forged_revocation",
+      "description": "Revocation statement for this artifact signed by a non-signer key. Must be ignored for trust (artifact stays VALID) and flagged: forged_revocations == 1.",
+      "artifact": "artifacts/01_valid_py.spif",
+      "inputs": {
+        "revocation_file": "aux/revocations_07_forged.json"
+      },
+      "expected": {
+        "trust_status": "VALID",
+        "signature_status": "valid",
+        "timestamp_status": "absent",
+        "forged_revocations": 1,
+        "references": []
+      }
+    },
+    {
+      "id": "08",
+      "name": "timestamp_verified",
+      "description": "TSA countersignature present; verifier has the TSA's pinned key (aux/tsa_pub.json). Timestamp verified.",
+      "artifact": "artifacts/08_timestamped.spif",
+      "inputs": {
+        "tsa_keys": "aux/tsa_pub.json"
+      },
+      "expected": {
+        "trust_status": "VALID",
+        "signature_status": "valid",
+        "timestamp_status": "verified",
+        "forged_revocations": 0,
+        "references": []
+      }
+    },
+    {
+      "id": "09",
+      "name": "timestamp_unverified_authority",
+      "description": "Same artifact as 08, but the verifier has no pinned key for the TSA. Timestamp unverified \u2014 not a failure.",
+      "artifact": "artifacts/08_timestamped.spif",
+      "inputs": {},
+      "expected": {
+        "trust_status": "VALID",
+        "signature_status": "valid",
+        "timestamp_status": "unverified",
+        "forged_revocations": 0,
+        "references": []
+      }
+    },
+    {
+      "id": "10",
+      "name": "crossdoc_resolved",
+      "description": "Downstream artifact references a node in the upstream artifact; the upstream artifact is supplied in the local bundle. Reference resolves.",
+      "artifact": "artifacts/10_downstream.spif",
+      "inputs": {
+        "bundle": [
+          "artifacts/10_upstream.spif"
+        ]
+      },
+      "expected": {
+        "trust_status": "VALID",
+        "signature_status": "valid",
+        "timestamp_status": "absent",
+        "forged_revocations": 0,
+        "references": [
+          {
+            "kind": "cross-document",
+            "status": "resolved"
+          }
+        ]
+      }
+    },
+    {
+      "id": "11",
+      "name": "crossdoc_unresolved",
+      "description": "Same downstream artifact, no bundle supplied. The reference reports UNRESOLVED; the artifact's own trust status is unaffected (VALID).",
+      "artifact": "artifacts/10_downstream.spif",
+      "inputs": {},
+      "expected": {
+        "trust_status": "VALID",
+        "signature_status": "valid",
+        "timestamp_status": "absent",
+        "forged_revocations": 0,
+        "references": [
+          {
+            "kind": "cross-document",
+            "status": "unresolved"
+          }
+        ]
+      }
+    }
+  ]
+}
