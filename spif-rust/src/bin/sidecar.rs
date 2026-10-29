@@ -537,6 +537,8 @@ fn generate_fpr_bytes(
         signature: None,
         signatures: Vec::new(),
         task_info: None,
+        revocations: Vec::new(),
+        timestamp_anchor: None,
     };
 
     SPIFWriter::new().encode(&fpr_doc).unwrap_or_default()

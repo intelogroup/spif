@@ -82,6 +82,8 @@ impl SPIFReader {
             signature: None,
             signatures: Vec::new(),
             task_info: None,
+            revocations: Vec::new(),
+            timestamp_anchor: None,
         };
 
         let mut checksum_seen = false;
@@ -197,6 +199,16 @@ impl SPIFReader {
                 }
                 CHUNK_TASK => {
                     document_data.task_info = Some(from_reader(payload)?);
+                }
+                CHUNK_REVOCATION => {
+                    // Post-signature chunk (v1.3, SPEC §6.12): CBOR array of
+                    // signed revocation statements. Never compressed.
+                    document_data.revocations = from_reader(payload)?;
+                }
+                CHUNK_TIMESTAMP => {
+                    // Post-signature chunk (v1.3, SPEC §6.13): TSA timestamp
+                    // anchor map. Never compressed.
+                    document_data.timestamp_anchor = Some(from_reader(payload)?);
                 }
                 CHUNK_CHECKSUM => {
                     let expected_checksum = payload;
@@ -458,6 +470,12 @@ fn validate_trace_dag(steps: &[TraceStep]) -> Result<()> {
     Ok(())
 }
 
+/// True for cross-document NodeRefs (SPEC §8.1), which are external to the
+/// containing document's DAG.
+fn is_cross_doc_ref(ref_id: &str) -> bool {
+    ref_id.starts_with("spif:")
+}
+
 /// Validates the payload DAG references using Kahn's topological sort algorithm.
 /// Rejects duplicate node IDs, dangling references, and cycles.
 fn validate_payload_dag(nodes: &[Node]) -> Result<()> {
@@ -474,10 +492,17 @@ fn validate_payload_dag(nodes: &[Node]) -> Result<()> {
         return Ok(());
     }
 
-    // Check for dangling refs
+    // Check for dangling refs. Cross-document references (SPEC §8.1:
+    // "spif:sha256:<content_id>#<node_id>") point outside this document by
+    // design: exempt from the local dangling check and the local cycle
+    // graph, exactly as in spif-py's reader. Whether they resolve is a
+    // verification-time question (crate::trust), never a parse error.
     let ids: HashSet<&str> = nodes.iter().map(|n| n.id.as_str()).collect();
     for n in nodes {
         for ref_id in &n.refs {
+            if is_cross_doc_ref(ref_id) {
+                continue;
+            }
             if !ids.contains(ref_id.as_str()) {
                 return Err(anyhow!(
                     "Node '{}' references unknown node_id '{}'",
@@ -496,6 +521,9 @@ fn validate_payload_dag(nodes: &[Node]) -> Result<()> {
 
     for n in nodes {
         for ref_id in &n.refs {
+            if is_cross_doc_ref(ref_id) {
+                continue;
+            }
             *in_degree.get_mut(n.id.as_str()).unwrap() += 1;
             dependents
                 .get_mut(ref_id.as_str())

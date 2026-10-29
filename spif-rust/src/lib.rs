@@ -48,6 +48,8 @@ mod tests {
             signature: None,
             signatures: vec![],
             task_info: None,
+            revocations: Vec::new(),
+            timestamp_anchor: None,
         };
 
         let writer = SPIFWriter::new();
