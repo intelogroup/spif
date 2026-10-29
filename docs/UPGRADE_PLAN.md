@@ -243,3 +243,9 @@ least review.
 | 4 Cross-doc (py) | done — bundle resolution, UNRESOLVED, reader DAG fix; **Rust: gap** |
 | 5 Conformance kit | done — 10 PASS / 0 FAIL / 1 BLOCKED (case 02, Rust cross-implementation) |
 | 6 PQ check | done — spec-only, recorded above; not implemented |
+
+**Post-plan update (2026-10-29):** the per-rung "Rust: gap (no toolchain)" entries above
+are the historical record of the upgrade run. Rust parity was completed afterwards:
+the Rust engine implements the full v1.3 trust layer (revocation, timestamp, bundle
+resolution), aligned with the Python hardening (statement cap, candidate dedupe), and
+the conformance kit now passes 11 PASS / 0 FAIL / 0 BLOCKED.

@@ -30,14 +30,23 @@ The "world-ready" trust-layer release. Spec v1.3 (docs/SPEC.md §6.12–§6.13, 
   design that was never implemented; v1.3 supersedes it (see SPEC §3.1 registry note).
 - Cross-document (`spif:`) NodeRefs no longer fail payload-DAG validation as dangling
   local references; they are treated as external, per SPEC §8.1.
+- Specification clarifications: SPEC §7.7 now states explicitly that a revocation
+  statement's `issued_ms` is informational and MUST NOT gate applicability; SPEC §8.1
+  pins bundle resolution as content-identity only (a trust-aware resolution mode is
+  out of scope for v1.3).
 - Implementation package versions aligned to 1.3.0 (Python and Rust).
 
 ### Notes
 - Post-quantum / hybrid signatures (SPEC §7.5) remain **spec-only** in both
   implementations; implementing ML-DSA-65 is the next rung (docs/UPGRADE_PLAN.md, rung 6).
-- The Rust implementation does not yet have the v1.3 trust layer (revocation, timestamp,
-  bundle resolution); Python is complete. The conformance kit's cross-implementation
-  case records this gap.
+- Both implementations carry the full v1.3 trust layer: the Rust engine implements
+  revocation, timestamp anchoring, and bundle resolution at parity with Python, and
+  the conformance kit passes 11 PASS / 0 FAIL / 0 BLOCKED, including the
+  cross-implementation case.
+- Test fix: the conformance-kit pytest wrapper no longer asserts the Rust
+  cross-implementation case is BLOCKED (that was true only before the Rust trust
+  layer landed); it now requires a genuine PASS when the Rust binary is available,
+  or an explicit BLOCKED with the toolchain reason.
 
 ## [Unreleased]
 

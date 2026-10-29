@@ -642,6 +642,12 @@ document's REVOCATION chunk and/or a caller-supplied revocation-list file — a 
    REVOKED MUST NOT be reported as VALID, and MUST NOT be collapsed into INVALID: the
    cryptography is sound; the signer has retracted the artifact.
 
+The `issued_ms` field of a statement is informational only. The verification procedure
+performs **no time comparison**: a statement that passes the signer and signature checks
+applies regardless of whether its `issued_ms` predates the document's signing or lies in
+the future. Verifiers MUST NOT gate a revocation's applicability on `issued_ms` or on
+any other clock reading; doing so would let clock skew suppress a legitimate revocation.
+
 Verification is fully offline. Revocations are distributed out-of-band (list files,
 archives, the chunk itself); a verifier MUST NOT fetch anything to apply them.
 
@@ -721,6 +727,12 @@ An `unresolved` reference is reported explicitly; it is never a silent pass and 
 failure of the referring document's own signature or trust status. Local (non-`spif:`)
 references are reported as `local` and are validated by the usual payload-DAG rules;
 cross-document references are exempt from the local dangling-reference check.
+
+Resolution is by **content identity only**: it binds the exact referenced `<content_id>`
+and node id, and does not consult the referenced document's own trust status — a bundle
+copy of the exact upstream document resolves the reference even if that copy is itself
+revoked or unsigned. A trust-aware resolution mode (for example, requiring the
+referenced document to report `VALID`) is out of scope for v1.3.
 
 ---
 

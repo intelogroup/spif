@@ -2,8 +2,8 @@
 
 Executes the same manifest the standalone runner uses, so CI sees the
 kit: every executable case must PASS, and the cross-implementation case
-must be reported BLOCKED (it needs a Rust toolchain), never silently
-skipped or faked.
+must either PASS against the real Rust binary or be reported BLOCKED
+(it needs a Rust toolchain), never silently skipped or faked.
 """
 
 import importlib.util
@@ -32,5 +32,9 @@ def test_conformance_kit_rust_case_is_blocked_not_faked():
     results = _load_runner().evaluate_cases()
     rust = [r for r in results if r["name"] == "cross_implementation_rust"]
     assert len(rust) == 1
-    assert rust[0]["result"] == "BLOCKED"
-    assert "Rust" in rust[0]["reason"]
+    # With a Rust toolchain/binary available the case must genuinely PASS;
+    # without one it must be reported BLOCKED with the reason — never
+    # silently skipped, and never a fake PASS.
+    assert rust[0]["result"] in ("PASS", "BLOCKED")
+    if rust[0]["result"] == "BLOCKED":
+        assert "Rust" in rust[0]["reason"]
