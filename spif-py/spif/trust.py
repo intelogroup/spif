@@ -354,22 +354,67 @@ class VerificationReport:
         return [r for r in self.references if r.status == "unresolved"]
 
 
-def _coerce_statements(items) -> list[RevocationStatement]:
+def _coerce_statements(items) -> tuple[list[RevocationStatement], int]:
+    """Coerce out-of-band revocation entries to statements.
+
+    Returns (statements, malformed_count). A dict entry that fails
+    conversion (missing fields, wrong types, bad base64) is malformed
+    untrusted input, not a programming error: it is counted, never
+    raised. A non-dict, non-statement item is a caller bug and still
+    raises TypeError.
+    """
     out: list[RevocationStatement] = []
+    malformed = 0
     for item in items or []:
         if isinstance(item, RevocationStatement):
             out.append(item)
         elif isinstance(item, dict):
-            # JSON form carries a base64 signature; CBOR form raw bytes.
-            if isinstance(item.get("signature"), str):
-                out.append(RevocationStatement.from_json_dict(item))
-            else:
-                out.append(RevocationStatement.from_cbor_dict(item))
+            try:
+                # JSON form carries a base64 signature; CBOR form raw bytes.
+                if isinstance(item.get("signature"), str):
+                    out.append(RevocationStatement.from_json_dict(item))
+                else:
+                    out.append(RevocationStatement.from_cbor_dict(item))
+            except (KeyError, TypeError, ValueError):
+                malformed += 1
         else:
             raise TypeError(
                 f"revocation entries must be RevocationStatement or dict, got {type(item).__name__}"
             )
-    return out
+    return out, malformed
+
+
+def _load_revocation_file_tolerant(
+    path: str | Path,
+) -> tuple[list[RevocationStatement], int, str | None]:
+    """Load a revocation-list file for verify_artifact(): never raises.
+
+    Returns (statements, malformed_count, error). An absent file is not
+    an error (matches load_revocation_statements' contract). A file
+    that cannot be parsed at all yields an error string and no
+    statements; individually malformed entries are counted so the
+    report can surface them.
+    """
+    p = Path(path)
+    if not p.exists():
+        return [], 0, None
+    try:
+        data = json.loads(p.read_text())
+    except (OSError, ValueError) as e:
+        return [], 0, f"revocation file unreadable: {e}"
+    entries = data.get("revocations") if isinstance(data, dict) else None
+    if not isinstance(entries, list):
+        return [], 0, "revocation file malformed: expected {\"revocations\": [...]}"
+    statements, malformed = [], 0
+    for entry in entries:
+        if not isinstance(entry, dict):
+            malformed += 1
+            continue
+        try:
+            statements.append(RevocationStatement.from_json_dict(entry))
+        except (KeyError, TypeError, ValueError):
+            malformed += 1
+    return statements, malformed, None
 
 
 def verify_artifact(
@@ -455,9 +500,21 @@ def verify_artifact(
             report.trust_status = TRUST_UNVERIFIABLE
 
     # --- Revocations ---------------------------------------------------------
-    candidates = list(doc.revocations) + _coerce_statements(revocations)
+    supplied, malformed = _coerce_statements(revocations)
+    candidates = list(doc.revocations) + supplied
     if revocation_file is not None:
-        candidates += load_revocation_statements(revocation_file)
+        file_stmts, file_malformed, file_error = _load_revocation_file_tolerant(
+            revocation_file)
+        candidates += file_stmts
+        malformed += file_malformed
+        if file_error is not None:
+            report.errors.append(file_error)
+    if malformed:
+        # Unparseable purported revocations: they can never apply, but
+        # they are surfaced as forgeries seen (SPEC §7.7) plus a note.
+        report.forged_revocations += malformed
+        report.errors.append(
+            f"ignored {malformed} malformed revocation statement(s)")
     for stmt in candidates:
         if stmt.artifact_digest != digest:
             continue  # about a different artifact — not a forgery signal

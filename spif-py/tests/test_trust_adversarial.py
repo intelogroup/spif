@@ -228,3 +228,66 @@ def test_truncated_artifact_is_clean_report(cut):
     report = verify_artifact(embedded[:cut])  # must not raise
     assert report.trust_status == TRUST_INVALID
     assert report.errors
+
+
+# ---------------------------------------------------------------------------
+# (c) Malformed OUT-OF-BAND revocation inputs (revocations= dicts and
+#     revocation-list files). Regression tests: bad base64, missing keys,
+#     and invalid JSON used to escape verify_artifact() as binascii.Error
+#     / KeyError / JSONDecodeError. They are untrusted input: count them
+#     as forgeries seen, note them, and keep verifying.
+# ---------------------------------------------------------------------------
+
+def test_revocations_arg_bad_base64_counted_not_raised():
+    key, data = _signed()
+    bad = _rev_entry(artifact_digest(data), _b64(key))
+    bad["signature"] = "!!!not-base64!!!"
+    report = verify_artifact(data, revocations=[bad])
+    assert report.trust_status == TRUST_VALID
+    assert report.forged_revocations == 1
+    assert any("malformed" in e for e in report.errors)
+
+
+def test_revocations_arg_missing_keys_counted_not_raised():
+    _key, data = _signed()
+    report = verify_artifact(data, revocations=[{"artifact_digest": "x"}, {}])
+    assert report.trust_status == TRUST_VALID
+    assert report.forged_revocations == 2
+
+
+def test_revocations_arg_bad_item_type_still_typeerror():
+    _key, data = _signed()
+    with pytest.raises(TypeError):
+        verify_artifact(data, revocations=["not-a-statement"])
+
+
+def test_revocation_file_invalid_json_is_error_not_crash(tmp_path):
+    _key, data = _signed()
+    path = tmp_path / "bad.json"
+    path.write_text("{not json")
+    report = verify_artifact(data, revocation_file=path)
+    assert report.trust_status == TRUST_VALID
+    assert any("revocation file" in e for e in report.errors)
+
+
+def test_revocation_file_malformed_entries_counted(tmp_path):
+    import json as _json
+    key, data = _signed()
+    good = create_revocation(data, key, reason="retracted")
+    path = tmp_path / "mixed.json"
+    path.write_text(_json.dumps(
+        {"revocations": [good.to_json_dict(), {"bogus": 1}, 42]}))
+    report = verify_artifact(data, revocation_file=path)
+    assert report.trust_status == TRUST_REVOKED  # the good one still applies
+    assert report.forged_revocations == 2        # the two malformed ones
+    assert any("malformed" in e for e in report.errors)
+
+
+def test_revocation_file_wrong_shape_is_error_not_crash(tmp_path):
+    import json as _json
+    _key, data = _signed()
+    path = tmp_path / "shape.json"
+    path.write_text(_json.dumps(["not", "a", "dict"]))
+    report = verify_artifact(data, revocation_file=path)
+    assert report.trust_status == TRUST_VALID
+    assert any("revocation file" in e for e in report.errors)
