@@ -10,7 +10,17 @@ db-urls = ["https://github.com/rustsec/advisory-db"]
 # now — those need a human triage pass (upgrade or accept-with-reason) before we
 # turn them into hard failures, same reasoning as leaving license bans loose below.
 yanked = "deny"
-ignore = []
+ignore = [
+    # RUSTSEC-2024-0449: unsafe-libyaml is unmaintained (accepted with reason,
+    # 2026-10-30). It enters the tree only via serde_yaml, which is used solely
+    # by the bench_speed benchmark binary to serialize and then re-parse SPIF's
+    # own in-memory benchmark document — no file, network, or otherwise
+    # untrusted input is ever parsed with it, and the library itself has no YAML
+    # dependency. cargo-deny 0.20 made `unmaintained` an error by default; this
+    # ignore is the accept-with-reason triage the policy above calls for.
+    # Removal path: replace serde_yaml in bench_speed.
+    "RUSTSEC-2024-0449",
+]
 
 [licenses]
 version = 2
