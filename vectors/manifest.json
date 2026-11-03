@@ -236,6 +236,118 @@
         "forged_revocations": 0,
         "references": []
       }
+    },
+    {
+      "id": "16",
+      "name": "neg_duplicate_signer_key",
+      "description": "SIGNATURE map carries the `signer` key twice (attacker first, victim last). A last-wins decoder attributes the document to the victim; a first-wins decoder to the attacker. Ambiguous in any document: must not verify VALID.",
+      "artifact": "artifacts/16_neg_duplicate_signer_key.spif",
+      "inputs": {},
+      "expected": {
+        "trust_status": "INVALID",
+        "signature_status": "invalid",
+        "timestamp_status": "absent",
+        "forged_revocations": 0,
+        "references": []
+      }
+    },
+    {
+      "id": "17",
+      "name": "neg_duplicate_signature_key",
+      "description": "SIGNATURE map carries the `signature` key twice (garbage first, genuine second). Whether the entry verifies depends on the decoder's duplicate-key rule: ambiguous, must not verify VALID.",
+      "artifact": "artifacts/17_neg_duplicate_signature_key.spif",
+      "inputs": {},
+      "expected": {
+        "trust_status": "INVALID",
+        "signature_status": "invalid",
+        "timestamp_status": "absent",
+        "forged_revocations": 0,
+        "references": []
+      }
+    },
+    {
+      "id": "18",
+      "name": "neg_indefinite_signature_map",
+      "description": "SIGNATURE chunk re-encoded as an indefinite-length CBOR map. A signed document's chunks must be canonical (SPEC \u00a74.1 / \u00a712.4): must not verify VALID.",
+      "artifact": "artifacts/18_neg_indefinite_signature_map.spif",
+      "inputs": {},
+      "expected": {
+        "trust_status": "INVALID",
+        "signature_status": "invalid",
+        "timestamp_status": "absent",
+        "forged_revocations": 0,
+        "references": []
+      }
+    },
+    {
+      "id": "19",
+      "name": "neg_longform_signature_header",
+      "description": "SIGNATURE map header in the non-minimal long form (0xB8) although the pair count fits the short form. Non-canonical in a signed document: must not verify VALID.",
+      "artifact": "artifacts/19_neg_longform_signature_header.spif",
+      "inputs": {},
+      "expected": {
+        "trust_status": "INVALID",
+        "signature_status": "invalid",
+        "timestamp_status": "absent",
+        "forged_revocations": 0,
+        "references": []
+      }
+    },
+    {
+      "id": "20",
+      "name": "neg_trailing_bytes_after_checksum",
+      "description": "Bytes appended after the terminal CHECKSUM chunk (SPEC \u00a712.4: CHECKSUM is last). The extra bytes are outside the document's identity and must not be silently ignored into the same verdict: must not verify VALID.",
+      "artifact": "artifacts/20_neg_trailing_bytes_after_checksum.spif",
+      "inputs": {},
+      "expected": {
+        "trust_status": "INVALID",
+        "signature_status": "invalid",
+        "timestamp_status": "absent",
+        "forged_revocations": 0,
+        "references": []
+      }
+    },
+    {
+      "id": "21",
+      "name": "neg_duplicate_key_provenance",
+      "description": "PROVENANCE map carries `source_model` twice. The ambiguity rule is class-level, not SIGNATURE-only: a duplicate key in any chunk of a signed document must not verify VALID.",
+      "artifact": "artifacts/21_neg_duplicate_key_provenance.spif",
+      "inputs": {},
+      "expected": {
+        "trust_status": "INVALID",
+        "signature_status": "invalid",
+        "timestamp_status": "absent",
+        "forged_revocations": 0,
+        "references": []
+      }
+    },
+    {
+      "id": "22",
+      "name": "neg_hybrid_malformed_length_classical",
+      "description": "Case 15's artifact (ed25519-only signature relabelled ed25519+ml-dsa-65, 64 bytes) assessed under the CLASSICAL gate (default adapter; case 15 pins the require_pq gate). \u00a77.9.2: a hybrid entry not exactly 3373 bytes is malformed and INVALID in BOTH modes \u2014 the classical reader must not fall back to verifying its ed25519 component.",
+      "artifact": "artifacts/15_hybrid_ed25519_only_relabelled.spif",
+      "inputs": {},
+      "expected": {
+        "trust_status": "INVALID",
+        "signature_status": "invalid",
+        "timestamp_status": "absent",
+        "forged_revocations": 0,
+        "references": []
+      }
+    },
+    {
+      "id": "23",
+      "name": "neg_pq_only_classical_unverifiable",
+      "description": "Genuinely ML-DSA-65-signed artifact read by a classical reader. \u00a77.9.2: a PQ-only entry is invisible, not invalid, to a classical reader \u2014 the verdict is UNVERIFIABLE, never VALID and never INVALID.",
+      "artifact": "artifacts/23_neg_pq_only_classical.spif",
+      "inputs": {},
+      "expected": {
+        "trust_status": "UNVERIFIABLE",
+        "signature_status": "unverifiable",
+        "timestamp_status": "absent",
+        "forged_revocations": 0,
+        "references": []
+      }
     }
   ]
 }
