@@ -263,6 +263,127 @@ def _validate_payload_dag(nodes: list[Node]) -> None:
 # Safe CBOR loader
 # ---------------------------------------------------------------------------
 
+def _assert_canonical_cbor(data: bytes, chunk_name: str) -> None:
+    """
+    Reject non-canonical CBOR before decoding.
+
+    Canonical form is the subset the SPIF writers emit (RFC 8949 §4.2
+    core deterministic encoding, minus key sorting, which the writers do
+    not promise): definite lengths only, shortest-form arguments, and no
+    duplicate map keys. cbor2's decoder silently normalizes all three
+    violations — a duplicate key resolves last-wins, an indefinite-length
+    map decodes as an ordinary map, a long-form length header as a short
+    one — so without this gate the verdict on a chunk depends on the
+    decoder instead of the bytes, and two byte-different encodings of a
+    chunk (e.g. a re-encoded SIGNATURE chunk, which lies outside the
+    signing body) can share one verdict. The scan is iterative so deeply
+    nested inputs cannot hit the recursion limit here; cbor2 still
+    performs the actual decode afterwards.
+    """
+    def fail(reason: str):
+        raise SPIFFormatError(f"Non-canonical CBOR in {chunk_name} chunk: {reason}")
+
+    n = len(data)
+    pos = 0
+    # Container stack. Frame: [items_remaining, is_map, next_is_key,
+    # seen_key_spans, frame_start]. A map frame's items_remaining counts
+    # keys and values, so it starts at 2 * pair_count.
+    stack: list = []
+    item_start: int | None = None  # start offset of the item being scanned
+    root_done = False
+
+    def complete_item(start: int, end: int) -> None:
+        """Account one finished item (span data[start:end]) to its parent,
+        cascading upward while containers complete."""
+        nonlocal root_done
+        while True:
+            if not stack:
+                root_done = True
+                return
+            frame = stack[-1]
+            if frame[1] and frame[2]:  # map frame expecting a key
+                key_span = data[start:end]
+                if key_span in frame[3]:
+                    fail("duplicate map key")
+                frame[3].add(key_span)
+                frame[2] = False
+            elif frame[1]:  # map frame expecting a value
+                frame[2] = True
+            frame[0] -= 1
+            if frame[0] > 0:
+                return
+            # The container itself is now a completed item in its parent.
+            stack.pop()
+            start = frame[4]
+
+    while not root_done:
+        if pos >= n:
+            fail("unexpected end of data")
+        if item_start is None:
+            item_start = pos
+        initial = data[pos]
+        pos += 1
+        major = initial >> 5
+        ai = initial & 0x1F
+
+        if ai == 31:
+            fail("indefinite-length items are not canonical")
+        if ai < 24:
+            arg = ai
+        elif ai == 24:
+            if pos + 1 > n:
+                fail("unexpected end of data")
+            arg = data[pos]
+            pos += 1
+            if major == 7:
+                if arg < 32:
+                    fail("non-minimal simple-value encoding")
+            elif arg < 24:
+                fail("non-minimal argument encoding")
+        elif ai in (25, 26, 27):
+            width = {25: 2, 26: 4, 27: 8}[ai]
+            if pos + width > n:
+                fail("unexpected end of data")
+            if major == 7:
+                # Float payload — its width is the encoding, no argument.
+                pos += width
+                complete_item(item_start, pos)
+                item_start = None
+                continue
+            arg = int.from_bytes(data[pos:pos + width], "big")
+            pos += width
+            if arg < (1 << (8 * (width // 2))):
+                fail("non-minimal argument encoding")
+        else:  # 28..30 are reserved in every major type
+            fail("reserved additional information")
+
+        if major == 6:
+            # A tag prefixes the following item: the span keeps the tag
+            # bytes and the parent slot is consumed by the tagged item.
+            continue
+        if major in (0, 1, 7):
+            complete_item(item_start, pos)
+            item_start = None
+        elif major in (2, 3):
+            if pos + arg > n:
+                fail("unexpected end of data")
+            pos += arg
+            complete_item(item_start, pos)
+            item_start = None
+        elif arg == 0:  # empty array or map completes immediately
+            complete_item(item_start, pos)
+            item_start = None
+        elif major == 4:
+            stack.append([arg, False, False, None, item_start])
+            item_start = None
+        else:  # major == 5
+            stack.append([2 * arg, True, True, set(), item_start])
+            item_start = None
+
+    if pos != n:
+        fail("trailing bytes after the CBOR item")
+
+
 def _cbor_load(data: bytes, chunk_name: str, *,
                compressed: bool = False, zstd_compressed: bool = False):
     """
@@ -301,6 +422,7 @@ def _cbor_load(data: bytes, chunk_name: str, *,
                 )
         except zlib.error as e:
             raise SPIFFormatError(f"zlib decompression failed in {chunk_name} chunk: {e}") from e
+    _assert_canonical_cbor(data, chunk_name)
     try:
         result = cbor2.loads(data, tag_hook=_tag_hook)
     except SPIFFormatError:
@@ -465,6 +587,15 @@ class SPIFReader:
             raise SPIFChecksumError(
                 f"Checksum mismatch: stored={stored_checksum.hex()}, "
                 f"computed={computed.hex()}"
+            )
+
+        # 3a. CHECKSUM is the terminal chunk — anything after it is not
+        # part of the document and must not be silently ignored into the
+        # verdict for the bytes that precede it.
+        if checksum_offset + 5 + csum_len != len(data):
+            raise SPIFFormatError(
+                f"{len(data) - (checksum_offset + 5 + csum_len)} trailing "
+                f"byte(s) after CHECKSUM chunk"
             )
 
         # 4. Parse all chunks up to CHECKSUM

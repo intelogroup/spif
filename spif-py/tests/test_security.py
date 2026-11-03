@@ -26,7 +26,7 @@ from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 from spif import (
     SPIFDocument, Node, Provenance, Distribution, Signature,
     SPIFWriter, SPIFReader,
-    SPIFError, SPIFChecksumError, SPIFSignatureError,
+    SPIFError, SPIFChecksumError, SPIFFormatError, SPIFSignatureError,
 )
 from spif.format import CHUNK_SIGNATURE, CHUNK_MULTISIG, CHUNK_CHECKSUM, MAGIC
 
@@ -249,19 +249,20 @@ class TestSignatureStripping:
 # ---------------------------------------------------------------------------
 
 class TestLengthExtension:
-    def test_garbage_after_checksum_is_ignored_safely(self):
+    def test_garbage_after_checksum_is_rejected(self):
         """
-        The SIF reader stops reading at the CHECKSUM chunk. Appending garbage
-        after it must not cause an unhandled exception — the document decodes
-        normally (trailing bytes are not processed).
+        CHECKSUM is the terminal chunk. Bytes appended after it are not
+        part of the document and are rejected with SPIFFormatError —
+        silently ignoring them let byte-different envelopes share one
+        VALID verdict and digest (SPIF-NONCANONICAL-ACCEPT-001). The
+        rejection is a handled SPIFError, never an unhandled exception.
         """
         doc = _minimal_doc()
         data = SPIFWriter().encode(doc)
         tampered = data + b"\x00" * 100
 
-        # The reader should succeed — it stops at CHECKSUM
-        decoded = SPIFReader().decode(tampered)
-        assert len(decoded.payload) == 1
+        with pytest.raises(SPIFFormatError):
+            SPIFReader().decode(tampered)
 
     def test_checksum_chunk_body_replacement_detected(self):
         """
