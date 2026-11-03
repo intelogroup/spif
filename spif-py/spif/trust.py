@@ -416,6 +416,20 @@ class VerificationReport:
     artifact_digest: str
     content_id: str = ""
     signers: list[str] = field(default_factory=list)
+    # Structured verdict contract (the §7.9.2 gate table as data, so a
+    # consumer gates on fields instead of prose):
+    gate_mode: str = "classical"  # the gate mode actually applied:
+    #                               "classical" | "require_pq"
+    legs_verified: list[dict] = field(default_factory=list)
+    # One entry per signature, in document order:
+    # {"signer": str, "algorithm": str,
+    #  "legs": {"ed25519" | "ml-dsa-65": "verified" | "failed" |
+    #           "not-checked" | "unsupported"}}
+    signer_trust: dict[str, str] = field(default_factory=dict)
+    # signer id -> "pinned" (the key used was consumer-supplied via
+    # known_keys) | "resolved" (the identity came from the document's
+    # own self-describing resolution). VALID means the signature is
+    # genuine; this field is what says whether the identity was pinned.
     revocations_applied: list[RevocationStatement] = field(default_factory=list)
     forged_revocations: int = 0
     references: list[ReferenceResolution] = field(default_factory=list)
@@ -522,6 +536,11 @@ def verify_artifact(
         and a PQ-only entry is UNVERIFIABLE ("invisible, not invalid").
         True: both hybrid components must verify, and PQ-only entries
         are ML-DSA-verified when key and backend are available.
+
+    The report echoes the applied mode in ``gate_mode`` and carries the
+    per-signature component outcomes in ``legs_verified`` plus each
+    signer's trust basis (``signer_trust``: "pinned" vs "resolved"),
+    so consumers gate on structured fields, not prose.
     """
     digest = artifact_digest(data)
     report = VerificationReport(
@@ -529,6 +548,7 @@ def verify_artifact(
         trust_status=TRUST_INVALID,
         timestamp_status=TS_ABSENT,
         artifact_digest=digest,
+        gate_mode="require_pq" if require_pq else "classical",
     )
 
     # --- Parse -------------------------------------------------------------
@@ -557,6 +577,14 @@ def verify_artifact(
         any_unverifiable = False
         verified = 0
         for sig in sigs:
+            # The identity was pinned iff the consumer supplied key
+            # material for this signer id (known_keys takes precedence
+            # in both resolution paths); otherwise it was resolved from
+            # the document's own self-describing form.
+            report.signer_trust[sig.signer] = (
+                "pinned" if (known_keys and sig.signer in known_keys)
+                else "resolved"
+            )
             if sig.algorithm in (HYBRID_ALGORITHM, PQ_ONLY_ALGORITHM):
                 # SPEC §7.9.2 gate-mode assessment (v1.4).
                 assessment = assess_pq_entry(
@@ -567,6 +595,11 @@ def verify_artifact(
                     require_pq=require_pq,
                     known_keys=known_keys,
                 )
+                report.legs_verified.append({
+                    "signer": sig.signer,
+                    "algorithm": sig.algorithm,
+                    "legs": dict(assessment.legs),
+                })
                 if assessment.status == "valid":
                     verified += 1
                 elif assessment.status == "invalid":
@@ -579,19 +612,37 @@ def verify_artifact(
                         )
                 continue
             if sig.algorithm != "ed25519":
+                report.legs_verified.append({
+                    "signer": sig.signer,
+                    "algorithm": sig.algorithm,
+                    "legs": {},
+                })
                 any_unverifiable = True
                 continue
             key = _resolve_signer_key(sig.signer, known_keys)
             if key is None:
+                report.legs_verified.append({
+                    "signer": sig.signer,
+                    "algorithm": sig.algorithm,
+                    "legs": {"ed25519": "not-checked"},
+                })
                 any_unverifiable = True
                 continue
             try:
                 key.verify(sig.signature, body)
                 verified += 1
+                ed_outcome = "verified"
             except InvalidSignature:
                 any_invalid = True
+                ed_outcome = "failed"
             except Exception:
                 any_invalid = True
+                ed_outcome = "failed"
+            report.legs_verified.append({
+                "signer": sig.signer,
+                "algorithm": sig.algorithm,
+                "legs": {"ed25519": ed_outcome},
+            })
         if any_invalid:
             report.signature_status = "invalid"
             report.trust_status = TRUST_INVALID

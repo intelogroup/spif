@@ -410,6 +410,13 @@ class PQAssessment:
 
     status: str       # "valid" | "invalid" | "unverifiable"
     detail: str = ""  # human-readable reason (for reports / errors)
+    # Structured per-component outcomes (the §7.9.2 gate table as data,
+    # so consumers gate on fields instead of parsing `detail` prose):
+    # component -> "verified" | "failed" | "not-checked" (the gate mode
+    # or missing key material left it unchecked, or the entry was too
+    # malformed to check) | "unsupported" (this verifier/mode cannot
+    # check that component at all).
+    legs: dict[str, str] = field(default_factory=dict)
 
 
 def assess_pq_entry(
@@ -441,6 +448,7 @@ def assess_pq_entry(
                 "invalid",
                 f"hybrid signature must be {HYBRID_SIG_LEN} bytes, "
                 f"got {len(signature)} (malformed for the claimed algorithm)",
+                legs={"ed25519": "not-checked", "ml-dsa-65": "not-checked"},
             )
         keys = resolve_signer_keys(algorithm, signer, known_keys)
         if keys is None:
@@ -449,6 +457,7 @@ def assess_pq_entry(
                 "cannot resolve hybrid signer key material "
                 "(signer is not the self-describing §7.9.1 form and no "
                 "key was provisioned)",
+                legs={"ed25519": "not-checked", "ml-dsa-65": "not-checked"},
             )
         ed_pk, ml_pk = keys
         try:
@@ -456,30 +465,45 @@ def assess_pq_entry(
                 signature[:ED25519_SIG_LEN], body
             )
         except InvalidSignature:
-            return PQAssessment("invalid", "ed25519 component failed verification")
+            return PQAssessment(
+                "invalid", "ed25519 component failed verification",
+                legs={"ed25519": "failed", "ml-dsa-65": "not-checked"},
+            )
         except Exception as e:
-            return PQAssessment("invalid", f"ed25519 component error: {e}")
+            return PQAssessment(
+                "invalid", f"ed25519 component error: {e}",
+                legs={"ed25519": "failed", "ml-dsa-65": "not-checked"},
+            )
         if not require_pq:
             return PQAssessment(
                 "valid",
                 "ed25519 component verified (classical gate mode; "
                 "ML-DSA component not checked)",
+                legs={"ed25519": "verified", "ml-dsa-65": "not-checked"},
             )
         if ml_pk is None:
             return PQAssessment(
                 "unverifiable",
                 "ML-DSA public key not available for this signer; "
                 "PQ component cannot be checked under require_pq",
+                legs={"ed25519": "verified", "ml-dsa-65": "not-checked"},
             )
         if not pq_available():
             return PQAssessment(
                 "unverifiable",
                 "ML-DSA backend (pqcrypto) not installed; PQ component "
                 "cannot be checked under require_pq",
+                legs={"ed25519": "verified", "ml-dsa-65": "unsupported"},
             )
         if not ml_dsa_65_verify(ml_pk, body, signature[ED25519_SIG_LEN:]):
-            return PQAssessment("invalid", "ML-DSA-65 component failed verification")
-        return PQAssessment("valid", "both hybrid components verified")
+            return PQAssessment(
+                "invalid", "ML-DSA-65 component failed verification",
+                legs={"ed25519": "verified", "ml-dsa-65": "failed"},
+            )
+        return PQAssessment(
+            "valid", "both hybrid components verified",
+            legs={"ed25519": "verified", "ml-dsa-65": "verified"},
+        )
 
     if algorithm == PQ_ONLY_ALGORITHM:
         if not require_pq:
@@ -487,30 +511,35 @@ def assess_pq_entry(
                 "unverifiable",
                 "ml-dsa-65 entries are not checked in classical gate "
                 "mode (invisible, not invalid — SPEC §7.9.2)",
+                legs={"ml-dsa-65": "unsupported"},
             )
         if len(signature) != ML_DSA_65_SIG_LEN:
             return PQAssessment(
                 "invalid",
                 f"ml-dsa-65 signature must be {ML_DSA_65_SIG_LEN} bytes, "
                 f"got {len(signature)}",
+                legs={"ml-dsa-65": "not-checked"},
             )
         keys = resolve_signer_keys(algorithm, signer, known_keys)
         if keys is None or keys[1] is None:
             return PQAssessment(
                 "unverifiable",
                 "cannot resolve ML-DSA public key for this signer",
+                legs={"ml-dsa-65": "not-checked"},
             )
         if not pq_available():
             return PQAssessment(
                 "unverifiable",
                 "ML-DSA backend (pqcrypto) not installed; cannot check "
                 "ml-dsa-65 entry under require_pq",
+                legs={"ml-dsa-65": "unsupported"},
             )
         ok = ml_dsa_65_verify(keys[1], body, signature)
         return PQAssessment(
             "valid" if ok else "invalid",
             "ML-DSA-65 signature verified" if ok
             else "ML-DSA-65 signature failed verification",
+            legs={"ml-dsa-65": "verified" if ok else "failed"},
         )
 
     return PQAssessment(
