@@ -10,8 +10,9 @@ refactor that silently drifts them must fail here:
    cannot be checked the verdict is *unverifiable*, never a silent
    classical pass. Classical gate mode's one-leg acceptance is the
    documented transitional behaviour, and it is explicit — the
-   assessment's ``detail`` states that the ML-DSA component was not
-   checked, so a consumer can see which legs actually verified.
+   assessment's structured ``legs`` field states which components were
+   verified, failed, left not-checked, or are unsupported, so a
+   consumer gates on data instead of parsing prose.
 
 2. The pinned keystore. ``known_keys`` is a resolution aid, not an
    allowlist: a signature validates only under the key identity it
@@ -78,8 +79,8 @@ class TestHybridDowngradeGateModes:
     def test_control_both_legs_valid_require_pq(self, hybrid):
         a = _assess(HYBRID_ALGORITHM, hybrid["signer"], hybrid["sig"], True)
         assert a.status == "valid"
-        # The report states that both legs were actually checked.
-        assert "both hybrid components verified" in a.detail
+        # Both legs were actually checked — as data, not prose.
+        assert a.legs == {"ed25519": "verified", "ml-dsa-65": "verified"}
 
     def test_ml_leg_zeroed_require_pq(self, hybrid):
         sig = hybrid["sig"]
@@ -109,17 +110,27 @@ class TestHybridDowngradeGateModes:
         known = {"victim-id": base64.b64encode(hybrid["ed_pk"]).decode()}
         a = _assess(HYBRID_ALGORITHM, "victim-id", hybrid["sig"], True, known)
         assert a.status == "unverifiable", f"partial-hybrid acceptance: got {a.status}"
-        assert "cannot be checked under require_pq" in a.detail
+        # The legs show why: the ed25519 leg verified, the ML-DSA leg
+        # could not be checked under require_pq.
+        assert a.legs == {"ed25519": "verified", "ml-dsa-65": "not-checked"}
 
     def test_ed_only_provisioning_classical_mode_is_documented_valid(self, hybrid):
         # §7.9 classical gate mode accepts on the ed25519 leg alone —
-        # and says so: the detail discloses that the ML-DSA component
-        # was not checked, so no consumer has to guess which legs ran.
+        # and says so in the legs: the ML-DSA component is recorded
+        # not-checked, so no consumer has to guess which legs ran.
         known = {"victim-id": base64.b64encode(hybrid["ed_pk"]).decode()}
         a = _assess(HYBRID_ALGORITHM, "victim-id", hybrid["sig"], False, known)
         assert a.status == "valid"
-        assert "classical gate mode" in a.detail
-        assert "ML-DSA component not checked" in a.detail
+        assert a.legs == {"ed25519": "verified", "ml-dsa-65": "not-checked"}
+
+    def test_pq_only_entry_classical_mode_legs_unsupported(self, hybrid):
+        # A PQ-only entry in classical mode is unverifiable ("invisible,
+        # not invalid"), and its only component reads unsupported —
+        # this verifier in this mode cannot check it at all.
+        a = _assess(PQ_ONLY_ALGORITHM, hybrid["pq_signer"],
+                    hybrid["ml_only_sig"], False)
+        assert a.status == "unverifiable"
+        assert a.legs == {"ml-dsa-65": "unsupported"}
 
     def test_full_provisioning_garbage_ml_leg_require_pq(self, hybrid):
         full = base64.b64encode(hybrid["ed_pk"] + hybrid["ml_pk"]).decode()
@@ -215,3 +226,84 @@ class TestPinnedKeystoreTrust:
         )
         r = verify_artifact(bad, known_keys=known, require_pq=True)
         assert r.trust_status == "INVALID", r
+
+
+# ---------------------------------------------------------------------------
+# Structured verdict fields on the trust report: gate_mode,
+# legs_verified, signer_trust — the §7.9.2 table and the pinned /
+# resolved distinction as data a consumer can gate on.
+# ---------------------------------------------------------------------------
+
+class TestStructuredVerdictFields:
+    def test_pinned_signer_trust_and_legs(self):
+        victim = generate_key()
+        data = sign_document(_doc(), victim, signer_id=PINNED_ID)
+        r = verify_artifact(data, known_keys={PINNED_ID: _pub_b64(victim)})
+        assert r.trust_status == "VALID", r
+        assert r.gate_mode == "classical"
+        assert r.signer_trust == {PINNED_ID: "pinned"}
+        assert r.legs_verified == [{
+            "signer": PINNED_ID,
+            "algorithm": "ed25519",
+            "legs": {"ed25519": "verified"},
+        }]
+
+    def test_self_describing_attacker_trust_is_resolved(self):
+        victim = generate_key()
+        attacker = generate_key()
+        data = sign_document(_doc("attacker fact"), attacker)
+        r = verify_artifact(data, known_keys={PINNED_ID: _pub_b64(victim)})
+        assert r.trust_status == "VALID", r
+        # The identity came from the document itself, not from a pin —
+        # and the report discloses whose identity it actually is.
+        assert r.signer_trust == {_pub_b64(attacker): "resolved"}
+        assert r.signers == [_pub_b64(attacker)]
+
+    @requires_pq_backend
+    def test_hybrid_gate_modes_and_legs_on_report(self):
+        from spif.pq_hybrid import sign_document_hybrid
+
+        pair = generate_hybrid_keypair()
+        data = sign_document_hybrid(
+            _doc(), pair.ed_private_key, pair.ml_secret_key, pair.ml_public_key)
+        signer = pair.signer_id
+
+        r = verify_artifact(data)  # classical gate mode
+        assert r.trust_status == "VALID", r
+        assert r.gate_mode == "classical"
+        assert r.legs_verified == [{
+            "signer": signer,
+            "algorithm": HYBRID_ALGORITHM,
+            "legs": {"ed25519": "verified", "ml-dsa-65": "not-checked"},
+        }]
+        assert r.signer_trust == {signer: "resolved"}
+
+        r = verify_artifact(data, require_pq=True)
+        assert r.trust_status == "VALID", r
+        assert r.gate_mode == "require_pq"
+        assert r.legs_verified == [{
+            "signer": signer,
+            "algorithm": HYBRID_ALGORITHM,
+            "legs": {"ed25519": "verified", "ml-dsa-65": "verified"},
+        }]
+
+    @requires_pq_backend
+    def test_ed_only_provisioning_require_pq_report(self):
+        from spif.pq_hybrid import sign_document_hybrid
+
+        pair = generate_hybrid_keypair()
+        data = sign_document_hybrid(
+            _doc(), pair.ed_private_key, pair.ml_secret_key,
+            pair.ml_public_key, signer_id="victim-id")
+        known = {"victim-id": base64.b64encode(pair.ed_public_bytes).decode()}
+        r = verify_artifact(data, known_keys=known, require_pq=True)
+        # Unverifiable, and the legs say why: ed25519 verified, the
+        # ML-DSA leg could not be checked with the provisioned key.
+        assert r.trust_status == "UNVERIFIABLE", r
+        assert r.gate_mode == "require_pq"
+        assert r.signer_trust == {"victim-id": "pinned"}
+        assert r.legs_verified == [{
+            "signer": "victim-id",
+            "algorithm": HYBRID_ALGORITHM,
+            "legs": {"ed25519": "verified", "ml-dsa-65": "not-checked"},
+        }]
