@@ -263,31 +263,62 @@ def _validate_payload_dag(nodes: list[Node]) -> None:
 # Safe CBOR loader
 # ---------------------------------------------------------------------------
 
-def _assert_canonical_cbor(data: bytes, chunk_name: str) -> None:
-    """
-    Reject non-canonical CBOR before decoding.
+def _key_identity(span: bytes) -> bytes:
+    """Identity of a map key for duplicate detection: the canonical
+    re-encoding of the decoded key, so two byte-different encodings of
+    the same key (short vs long-form length, f32 vs f64) still collide
+    — cbor2 would collapse them into one dict entry. Falls back to the
+    raw span when the key cannot be round-tripped."""
+    try:
+        return cbor2.dumps(cbor2.loads(span), canonical=True)
+    except Exception:
+        return span
 
-    Canonical form is the subset the SPIF writers emit (RFC 8949 §4.2
-    core deterministic encoding, minus key sorting, which the writers do
-    not promise): definite lengths only, shortest-form arguments, and no
-    duplicate map keys. cbor2's decoder silently normalizes all three
-    violations — a duplicate key resolves last-wins, an indefinite-length
-    map decodes as an ordinary map, a long-form length header as a short
-    one — so without this gate the verdict on a chunk depends on the
-    decoder instead of the bytes, and two byte-different encodings of a
-    chunk (e.g. a re-encoded SIGNATURE chunk, which lies outside the
-    signing body) can share one verdict. The scan is iterative so deeply
-    nested inputs cannot hit the recursion limit here; cbor2 still
-    performs the actual decode afterwards.
+
+def _scan_cbor(data: bytes, chunk_name: str, *, canonical: bool) -> None:
+    """
+    Walk one chunk's CBOR item, enforcing the SPEC §4.1 form rules.
+
+    Always enforced (every document, signed or unsigned): no duplicate
+    map keys. A duplicate key is *ambiguity*, not encoding variability —
+    cbor2 resolves it last-wins while other conforming decoders resolve
+    first-wins, so the chunk's meaning would depend on the decoder
+    instead of the bytes.
+
+    Additionally enforced when ``canonical`` is true (the caller passes
+    this for every chunk of a document that carries a signature, which
+    is what makes §12.4's writer rule — canonical CBOR for all chunks
+    when a signature is present — reader-verifiable): definite lengths
+    only and shortest-form arguments, the subset the SPIF writers emit
+    (RFC 8949 §4.2 core deterministic encoding, minus key sorting, which
+    the writers do not promise). Unsigned documents keep §4.1/§12.1's
+    accept-both leniency for encoding *variability*: indefinite-length
+    items and non-minimal forms decode normally.
+
+    The scan is iterative so deeply nested inputs cannot hit the
+    recursion limit here; cbor2 still performs the actual decode
+    afterwards.
     """
     def fail(reason: str):
-        raise SPIFFormatError(f"Non-canonical CBOR in {chunk_name} chunk: {reason}")
+        if canonical:
+            raise SPIFFormatError(
+                f"Non-canonical CBOR in {chunk_name} chunk: {reason}")
+        raise SPIFFormatError(f"Malformed CBOR in {chunk_name} chunk: {reason}")
+
+    def fail_duplicate_key():
+        if canonical:
+            raise SPIFFormatError(
+                f"Non-canonical CBOR in {chunk_name} chunk: duplicate map key")
+        raise SPIFFormatError(
+            f"Ambiguous CBOR in {chunk_name} chunk: duplicate map key")
 
     n = len(data)
     pos = 0
     # Container stack. Frame: [items_remaining, is_map, next_is_key,
-    # seen_key_spans, frame_start]. A map frame's items_remaining counts
-    # keys and values, so it starts at 2 * pair_count.
+    # seen_key_identities, frame_start]. items_remaining is None for an
+    # indefinite-length container (closed by a break marker instead of
+    # counting down); a map frame's count covers keys and values, so it
+    # starts at 2 * pair_count.
     stack: list = []
     item_start: int | None = None  # start offset of the item being scanned
     root_done = False
@@ -302,13 +333,15 @@ def _assert_canonical_cbor(data: bytes, chunk_name: str) -> None:
                 return
             frame = stack[-1]
             if frame[1] and frame[2]:  # map frame expecting a key
-                key_span = data[start:end]
-                if key_span in frame[3]:
-                    fail("duplicate map key")
-                frame[3].add(key_span)
+                identity = _key_identity(data[start:end])
+                if identity in frame[3]:
+                    fail_duplicate_key()
+                frame[3].add(identity)
                 frame[2] = False
             elif frame[1]:  # map frame expecting a value
                 frame[2] = True
+            if frame[0] is None:  # indefinite-length container: no countdown
+                return
             frame[0] -= 1
             if frame[0] > 0:
                 return
@@ -316,44 +349,108 @@ def _assert_canonical_cbor(data: bytes, chunk_name: str) -> None:
             stack.pop()
             start = frame[4]
 
+    def read_argument(ai: int, major: int) -> int:
+        """Consume the argument of an item whose additional-information
+        value is 24..27, applying the shortest-form checks in canonical
+        mode. Float payloads (major 7) are handled by the caller."""
+        nonlocal pos
+        if ai == 24:
+            if pos + 1 > n:
+                fail("unexpected end of data")
+            arg = data[pos]
+            pos += 1
+            if canonical:
+                if major == 7:
+                    if arg < 32:
+                        fail("non-minimal simple-value encoding")
+                elif arg < 24:
+                    fail("non-minimal argument encoding")
+            return arg
+        width = {25: 2, 26: 4, 27: 8}[ai]
+        if pos + width > n:
+            fail("unexpected end of data")
+        arg = int.from_bytes(data[pos:pos + width], "big")
+        pos += width
+        if canonical and arg < (1 << (8 * (width // 2))):
+            fail("non-minimal argument encoding")
+        return arg
+
     while not root_done:
         if pos >= n:
             fail("unexpected end of data")
         if item_start is None:
             item_start = pos
         initial = data[pos]
+
+        if initial == 0xFF:  # break marker: closes an indefinite item
+            if canonical:
+                fail("indefinite-length items are not canonical")
+            pos += 1
+            if not stack or stack[-1][0] is not None:
+                fail("break marker outside an indefinite-length item")
+            frame = stack[-1]
+            if frame[1] and not frame[2]:
+                fail("break marker after a map key with no value")
+            stack.pop()
+            complete_item(frame[4], pos)
+            item_start = None
+            continue
+
         pos += 1
         major = initial >> 5
         ai = initial & 0x1F
 
-        if ai == 31:
-            fail("indefinite-length items are not canonical")
+        if ai == 31:  # indefinite-length form
+            if canonical:
+                fail("indefinite-length items are not canonical")
+            if major in (2, 3):
+                # Indefinite-length string: definite-length chunks of
+                # the same major type, closed by a break marker. The
+                # whole sequence is one item with one span.
+                while True:
+                    if pos >= n:
+                        fail("unexpected end of data")
+                    if data[pos] == 0xFF:
+                        pos += 1
+                        break
+                    chunk_head = data[pos]
+                    if chunk_head >> 5 != major:
+                        fail("indefinite-length string chunk of the wrong type")
+                    chunk_ai = chunk_head & 0x1F
+                    if chunk_ai == 31 or chunk_ai >= 28:
+                        fail("malformed chunk inside an indefinite-length string")
+                    pos += 1
+                    chunk_len = (chunk_ai if chunk_ai < 24 else
+                                 read_argument(chunk_ai, major))
+                    if pos + chunk_len > n:
+                        fail("unexpected end of data")
+                    pos += chunk_len
+                complete_item(item_start, pos)
+                item_start = None
+                continue
+            if major == 4:
+                stack.append([None, False, False, None, item_start])
+                item_start = None
+                continue
+            if major == 5:
+                stack.append([None, True, True, set(), item_start])
+                item_start = None
+                continue
+            fail("indefinite-length form is only valid for strings, "
+                 "arrays, and maps")
         if ai < 24:
             arg = ai
-        elif ai == 24:
-            if pos + 1 > n:
-                fail("unexpected end of data")
-            arg = data[pos]
-            pos += 1
-            if major == 7:
-                if arg < 32:
-                    fail("non-minimal simple-value encoding")
-            elif arg < 24:
-                fail("non-minimal argument encoding")
-        elif ai in (25, 26, 27):
-            width = {25: 2, 26: 4, 27: 8}[ai]
-            if pos + width > n:
-                fail("unexpected end of data")
-            if major == 7:
+        elif ai == 24 or ai in (25, 26, 27):
+            if major == 7 and ai in (25, 26, 27):
                 # Float payload — its width is the encoding, no argument.
+                width = {25: 2, 26: 4, 27: 8}[ai]
+                if pos + width > n:
+                    fail("unexpected end of data")
                 pos += width
                 complete_item(item_start, pos)
                 item_start = None
                 continue
-            arg = int.from_bytes(data[pos:pos + width], "big")
-            pos += width
-            if arg < (1 << (8 * (width // 2))):
-                fail("non-minimal argument encoding")
+            arg = read_argument(ai, major)
         else:  # 28..30 are reserved in every major type
             fail("reserved additional information")
 
@@ -384,8 +481,20 @@ def _assert_canonical_cbor(data: bytes, chunk_name: str) -> None:
         fail("trailing bytes after the CBOR item")
 
 
+def _assert_canonical_cbor(data: bytes, chunk_name: str) -> None:
+    """Reject non-canonical CBOR (full §4.1 canonical rule set)."""
+    _scan_cbor(data, chunk_name, canonical=True)
+
+
+def _assert_unambiguous_cbor(data: bytes, chunk_name: str) -> None:
+    """Reject ambiguous CBOR (duplicate map keys) while accepting the
+    encoding variability §4.1/§12.1 allow in unsigned documents."""
+    _scan_cbor(data, chunk_name, canonical=False)
+
+
 def _cbor_load(data: bytes, chunk_name: str, *,
-               compressed: bool = False, zstd_compressed: bool = False):
+               compressed: bool = False, zstd_compressed: bool = False,
+               canonical_required: bool = False):
     """
     Deserialize CBOR bytes, raising SPIFFormatError on any failure.
 
@@ -398,6 +507,12 @@ def _cbor_load(data: bytes, chunk_name: str, *,
 
     If ``compressed=True``, the bytes are first decompressed with zlib.
     If ``zstd_compressed=True``, the bytes are decompressed with zstd (v1.1+).
+
+    Form enforcement (SPEC §4.1): duplicate map keys are always rejected
+    (ambiguity is malformed in any document). If ``canonical_required``,
+    the full canonical rule set is enforced as well — the reader passes
+    it for every chunk when the document carries a signature. Unsigned
+    documents may use non-canonical encodings (§4.1 / §12.1).
     """
     if zstd_compressed:
         try:
@@ -422,7 +537,10 @@ def _cbor_load(data: bytes, chunk_name: str, *,
                 )
         except zlib.error as e:
             raise SPIFFormatError(f"zlib decompression failed in {chunk_name} chunk: {e}") from e
-    _assert_canonical_cbor(data, chunk_name)
+    if canonical_required:
+        _assert_canonical_cbor(data, chunk_name)
+    else:
+        _assert_unambiguous_cbor(data, chunk_name)
     try:
         result = cbor2.loads(data, tag_hook=_tag_hook)
     except SPIFFormatError:
@@ -623,11 +741,20 @@ class SPIFReader:
                 "are covered by the signature"
             )
 
+        # SPEC §4.1 / §12.4: canonical CBOR is required for all chunks
+        # when the document carries a signature. The chunk set is fully
+        # collected at this point, so the presence of a SIGNATURE or
+        # MULTISIG chunk decides the form enforcement for every load
+        # below (duplicate keys are rejected either way).
+        canonical_required = (CHUNK_SIGNATURE in chunks
+                              or CHUNK_MULTISIG in chunks)
+
         # 4a. Detect compression from HEADER chunk (flags2 field)
         compressed = False
         zstd_compressed = False
         if CHUNK_HEADER in chunks:
-            hdr = _cbor_load(chunks[CHUNK_HEADER][0], "HEADER")
+            hdr = _cbor_load(chunks[CHUNK_HEADER][0], "HEADER",
+                             canonical_required=canonical_required)
             if isinstance(hdr, dict):
                 flags2 = hdr.get("flags2", 0)
                 compressed = bool(flags2 & FLAG_COMPRESSED)
@@ -638,7 +765,8 @@ class SPIFReader:
             raise SPIFFormatError("Missing required PAYLOAD chunk")
 
         raw_payload = _cbor_load(chunks[CHUNK_PAYLOAD][0], "PAYLOAD",
-                                 compressed=compressed, zstd_compressed=zstd_compressed)
+                                 compressed=compressed, zstd_compressed=zstd_compressed,
+                                 canonical_required=canonical_required)
         if not isinstance(raw_payload, list):
             raise SPIFFormatError("PAYLOAD chunk must decode to a list")
         if len(raw_payload) > MAX_PAYLOAD_NODES:
@@ -653,7 +781,8 @@ class SPIFReader:
         # 6. PROVENANCE — never compressed
         provenance = None
         if CHUNK_PROVENANCE in chunks:
-            p = _cbor_load(chunks[CHUNK_PROVENANCE][0], "PROVENANCE")
+            p = _cbor_load(chunks[CHUNK_PROVENANCE][0], "PROVENANCE",
+                           canonical_required=canonical_required)
             if not isinstance(p, dict):
                 raise SPIFFormatError("PROVENANCE chunk must decode to a dict")
             provenance = Provenance(
@@ -677,7 +806,8 @@ class SPIFReader:
         semantic = None
         if CHUNK_SEMANTIC in chunks:
             s = _cbor_load(chunks[CHUNK_SEMANTIC][0], "SEMANTIC",
-                           compressed=compressed, zstd_compressed=zstd_compressed)
+                           compressed=compressed, zstd_compressed=zstd_compressed,
+                           canonical_required=canonical_required)
             if not isinstance(s, dict):
                 raise SPIFFormatError("SEMANTIC chunk must decode to a dict")
             emb = s.get("embedding", [])
@@ -692,7 +822,8 @@ class SPIFReader:
         trace_method = TRACE_POSTHOC
         if CHUNK_TRACE in chunks:
             raw = _cbor_load(chunks[CHUNK_TRACE][0], "TRACE",
-                             compressed=compressed, zstd_compressed=zstd_compressed)
+                             compressed=compressed, zstd_compressed=zstd_compressed,
+                             canonical_required=canonical_required)
             if isinstance(raw, list):
                 # v0.1 format: bare list of steps
                 trace = [_decode_step(st) for st in raw]
@@ -722,7 +853,8 @@ class SPIFReader:
         alternatives: list[Alternative] = []
         if CHUNK_ALTS in chunks:
             raw = _cbor_load(chunks[CHUNK_ALTS][0], "ALTS",
-                             compressed=compressed, zstd_compressed=zstd_compressed)
+                             compressed=compressed, zstd_compressed=zstd_compressed,
+                             canonical_required=canonical_required)
             if isinstance(raw, list):
                 # v0.1 format
                 for a in raw:
@@ -770,7 +902,8 @@ class SPIFReader:
         delta = None
         if CHUNK_DELTA in chunks:
             d = _cbor_load(chunks[CHUNK_DELTA][0], "DELTA",
-                           compressed=compressed, zstd_compressed=zstd_compressed)
+                           compressed=compressed, zstd_compressed=zstd_compressed,
+                           canonical_required=canonical_required)
             if not isinstance(d, dict):
                 raise SPIFFormatError("DELTA chunk must decode to a dict")
             delta = Delta(base_hash=d["base_hash"], changes=d.get("changes", []))
@@ -778,7 +911,8 @@ class SPIFReader:
         # 11. SIGNATURE (v0.2)
         signature = None
         if CHUNK_SIGNATURE in chunks:
-            s = _cbor_load(chunks[CHUNK_SIGNATURE][0], "SIGNATURE")
+            s = _cbor_load(chunks[CHUNK_SIGNATURE][0], "SIGNATURE",
+                           canonical_required=canonical_required)
             if not isinstance(s, dict):
                 raise SPIFFormatError("SIGNATURE chunk must decode to a dict")
             sig_bytes = s.get("signature", b"")
@@ -794,7 +928,8 @@ class SPIFReader:
         # 12. MULTISIG (v0.2+)
         signatures: list[Signature] = []
         if CHUNK_MULTISIG in chunks:
-            raw = _cbor_load(chunks[CHUNK_MULTISIG][0], "MULTISIG")
+            raw = _cbor_load(chunks[CHUNK_MULTISIG][0], "MULTISIG",
+                             canonical_required=canonical_required)
             if not isinstance(raw, list):
                 raise SPIFFormatError("MULTISIG chunk must decode to a list")
             for s in raw:
@@ -811,7 +946,8 @@ class SPIFReader:
         # 13. TASK chunk (v1.1+) — never compressed
         task_info = None
         if CHUNK_TASK in chunks:
-            t = _cbor_load(chunks[CHUNK_TASK][0], "TASK")
+            t = _cbor_load(chunks[CHUNK_TASK][0], "TASK",
+                           canonical_required=canonical_required)
             if not isinstance(t, dict):
                 raise SPIFFormatError("TASK chunk must decode to a dict")
             task_info = TaskInfo(
@@ -826,7 +962,8 @@ class SPIFReader:
         # 14. ROLES chunk (v1.1+) — signer_id -> claimed role, never compressed
         signer_roles: dict[str, str] = {}
         if CHUNK_ROLES in chunks:
-            r = _cbor_load(chunks[CHUNK_ROLES][0], "ROLES")
+            r = _cbor_load(chunks[CHUNK_ROLES][0], "ROLES",
+                           canonical_required=canonical_required)
             if not isinstance(r, dict):
                 raise SPIFFormatError("ROLES chunk must decode to a dict")
             if not all(isinstance(k, str) and isinstance(v, str) for k, v in r.items()):
@@ -838,7 +975,8 @@ class SPIFReader:
         # semantics (REVOKED status, forgery detection) live in spif.trust.
         revocations: list[RevocationStatement] = []
         if CHUNK_REVOCATION in chunks:
-            raw = _cbor_load(chunks[CHUNK_REVOCATION][0], "REVOCATION")
+            raw = _cbor_load(chunks[CHUNK_REVOCATION][0], "REVOCATION",
+                             canonical_required=canonical_required)
             if not isinstance(raw, list):
                 raise SPIFFormatError("REVOCATION chunk must decode to a list")
             if len(raw) > MAX_REVOCATION_STATEMENTS:
@@ -861,7 +999,8 @@ class SPIFReader:
         # lives in spif.trust (SPEC §7.8).
         timestamp_anchor = None
         if CHUNK_TIMESTAMP in chunks:
-            raw = _cbor_load(chunks[CHUNK_TIMESTAMP][0], "TIMESTAMP")
+            raw = _cbor_load(chunks[CHUNK_TIMESTAMP][0], "TIMESTAMP",
+                             canonical_required=canonical_required)
             if not isinstance(raw, dict):
                 raise SPIFFormatError("TIMESTAMP chunk must decode to a dict")
             try:
