@@ -296,3 +296,86 @@ fn unsigned_document_unaffected() {
     assert!(rep.signers.is_empty());
     assert_eq!(SPIFReader::new().verify_signature(&data).unwrap(), false);
 }
+
+// --- Same-type duplicates are rejected (signer substitution) -------------
+//
+// The co-presence rule above closes the *other-type* append. A second
+// chunk of the SAME auth type was the remaining cousin: the reader
+// assigned per chunk (last-wins), so an appended second SIGNATURE chunk
+// silently REPLACED the victim as the reported signer of a VALID
+// document, and an appended second MULTISIG did the same to a genuine
+// multi-signer set. spif-py's decode() rejects a second chunk of any
+// core type (0x00..=0x0F, plus CHECKSUM) at parse time; the Rust reader
+// now mirrors that rule with the same scope and error.
+
+fn forged_single_plus_second_signature() -> Vec<u8> {
+    let (victim, attacker) = (key("victim"), key("attacker"));
+    let data = sign_single(&victim, "victim");
+    let body = body_of(&data).to_vec();
+    let payload = cbor(&entry(&attacker, &body));
+    insert_before_checksum(&data, CHUNK_SIGNATURE, &payload)
+}
+
+fn forged_multisig_plus_second_multisig() -> Vec<u8> {
+    let (victim, second, attacker) = (key("victim"), key("second"), key("attacker"));
+    let data = genuine_multisig(&victim, &second);
+    let body = body_of(&data).to_vec();
+    let payload = cbor(&vec![entry(&attacker, &body)]);
+    insert_before_checksum(&data, CHUNK_MULTISIG, &payload)
+}
+
+#[test]
+fn duplicate_signature_chunk_substitution_rejected() {
+    let forged = forged_single_plus_second_signature();
+    let err = SPIFReader::new().read(&forged).unwrap_err();
+    assert!(
+        format!("{err}").contains("Duplicate chunk of type 0x07 is not allowed"),
+        "unexpected error: {err}"
+    );
+    assert!(SPIFReader::new().verify_signature(&forged).is_err());
+    let rep = verify_artifact(&forged, &opts());
+    assert_eq!(rep.trust_status, TRUST_INVALID);
+    // Neither the attacker (substituted) nor the victim is reported:
+    // the envelope is undecodable, so it attests nobody.
+    assert!(rep.signers.is_empty(), "signers: {:?}", rep.signers);
+    assert!(!rep.signers.contains(&b64(&key("attacker"))));
+    assert!(!rep.signers.contains(&b64(&key("victim"))));
+}
+
+#[test]
+fn duplicate_multisig_chunk_substitution_rejected() {
+    let forged = forged_multisig_plus_second_multisig();
+    let err = SPIFReader::new().read(&forged).unwrap_err();
+    assert!(
+        format!("{err}").contains("Duplicate chunk of type 0x08 is not allowed"),
+        "unexpected error: {err}"
+    );
+    assert!(SPIFReader::new().verify_signature(&forged).is_err());
+    let rep = verify_artifact(&forged, &opts());
+    assert_eq!(rep.trust_status, TRUST_INVALID);
+    assert!(rep.signers.is_empty(), "signers: {:?}", rep.signers);
+    assert!(!rep.signers.contains(&b64(&key("attacker"))));
+    assert!(!rep.signers.contains(&b64(&key("victim"))));
+    assert!(!rep.signers.contains(&b64(&key("second"))));
+}
+
+#[test]
+fn duplicate_non_auth_core_chunk_rejected() {
+    // The mirrored Python rule is class-level, not auth-only: a second
+    // chunk of any core type is a format error. Pin it on PAYLOAD in an
+    // unsigned document (the rule is not gated on signedness).
+    let data = SPIFWriter::new().encode(&base_doc("unsigned")).unwrap();
+    let payload_chunk = chunks(&data)
+        .into_iter()
+        .find(|(ct, _, _)| *ct == CHUNK_PAYLOAD)
+        .map(|(_, _, p)| p.to_vec())
+        .unwrap();
+    let forged = insert_before_checksum(&data, CHUNK_PAYLOAD, &payload_chunk);
+    let err = SPIFReader::new().read(&forged).unwrap_err();
+    assert!(
+        format!("{err}").contains("Duplicate chunk of type 0x04 is not allowed"),
+        "unexpected error: {err}"
+    );
+    let rep = verify_artifact(&forged, &opts());
+    assert_eq!(rep.trust_status, TRUST_INVALID);
+}
