@@ -290,38 +290,35 @@ def test_multisig_cosigning_recovers_from_device_key_compromise():
         provenance=Provenance(source_model="field-triage-v1", timestamp_ms=1712000000000)
     )
 
-    # 1. Sign the document with both signatures
-    # A. First sign with device key (primary)
-    # We must declare the proxy signature placeholder FIRST, so that the FLAG_MULTISIG 
-    # structural flag is set in the document header when the primary device key signs.
-    # This prevents the primary signature from being invalidated when we append the real proxy signature.
-    sig_device = Signature(algorithm="ed25519", signer=device_pub_b64, signature=b"\x00" * 64, key_id="device-tablet-01")
+    # 1. Co-sign the document: both entries live in the single MULTISIG
+    # chunk — a document carries exactly one attestation (SPEC §7.2),
+    # so the device (primary) and proxy entries are declared as
+    # placeholders first (locking the structure and FLAG_MULTISIG in
+    # place), the shared body — bytes before the first auth chunk — is
+    # signed by both keys, and the real entries are embedded together.
+    # (This scenario previously split the entries across a SIGNATURE
+    # chunk and a MULTISIG chunk; co-presence is now rejected —
+    # SPIF-CROSSAUTH-SIGNER-EXPANSION-001.)
+    sig_device_placeholder = Signature(algorithm="ed25519", signer=device_pub_b64, signature=b"\x00" * 64, key_id="device-tablet-01")
     sig_proxy_placeholder = Signature(algorithm="ed25519", signer=proxy_pub_b64, signature=b"\x00" * 64, key_id="attestation-server-proxy")
-    
-    doc.signatures = [sig_proxy_placeholder]
-    signed_bytes_device = _sign_document_with_sig_obj(doc, device_key, device_pub_b64, sig_device)
 
-    # B. Add the co-signer (proxy) signature
-    reader = SPIFReader()
-    decoded_doc = reader.decode(signed_bytes_device)
-    
-    # Sign the exact same body with proxy key
-    auth_offset = _find_first_auth_chunk_offset(signed_bytes_device)
+    doc.signatures = [sig_device_placeholder, sig_proxy_placeholder]
+    dummy_bytes = SPIFWriter().encode(doc)
+
+    auth_offset = _find_first_auth_chunk_offset(dummy_bytes)
     assert auth_offset is not None
-    body_to_sign = signed_bytes_device[:auth_offset]
-    
-    proxy_signature_bytes = proxy_key.sign(body_to_sign)
-    sig_proxy = Signature(
-        algorithm="ed25519",
-        signer=proxy_pub_b64,
-        signature=proxy_signature_bytes,
-        key_id="attestation-server-proxy"
-    )
+    body_to_sign = dummy_bytes[:auth_offset]
 
-    # Embed both into the document
-    decoded_doc.signatures = [sig_proxy]
-    
-    fully_cosigned_bytes = SPIFWriter().encode(decoded_doc)
+    sig_device = Signature(algorithm="ed25519", signer=device_pub_b64,
+                           signature=device_key.sign(body_to_sign),
+                           key_id="device-tablet-01")
+    sig_proxy = Signature(algorithm="ed25519", signer=proxy_pub_b64,
+                          signature=proxy_key.sign(body_to_sign),
+                          key_id="attestation-server-proxy")
+    doc.signatures = [sig_device, sig_proxy]
+
+    reader = SPIFReader()
+    fully_cosigned_bytes = SPIFWriter().encode(doc)
 
     # 2. Both signatures are valid initially
     assert reader.verify_signature(fully_cosigned_bytes) is True
@@ -352,7 +349,9 @@ def test_multisig_cosigning_recovers_from_device_key_compromise():
         # A custom multi-signature trust verifier allows the document to be trusted
         # if at least one of the multi-signatures is from an unrevoked trusted attestation party
         signatures_verified = []
-        for sig in [validated_doc.signature] + validated_doc.signatures:
+        present_sigs = ([validated_doc.signature] if validated_doc.signature
+                        else []) + validated_doc.signatures
+        for sig in present_sigs:
             if sig.signer in revocation_registry:
                 # Device signature is revoked
                 continue
