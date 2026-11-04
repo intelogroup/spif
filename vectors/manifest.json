@@ -348,6 +348,34 @@
         "forged_revocations": 0,
         "references": []
       }
+    },
+    {
+      "id": "24",
+      "name": "neg_crossauth_multisig_appended",
+      "description": "Single-signature artifact plus an appended MULTISIG chunk carrying a second signer's entry, genuinely signed over the public signing body with the CHECKSUM recomputed. SPEC \u00a77.2: one document, one attestation \u2014 SIGNATURE and MULTISIG must not co-exist, or their entries union into a signer set no signer attested (SPIF-CROSSAUTH-SIGNER-EXPANSION-001): must not verify VALID.",
+      "artifact": "artifacts/24_neg_crossauth_multisig_appended.spif",
+      "inputs": {},
+      "expected": {
+        "trust_status": "INVALID",
+        "signature_status": "invalid",
+        "timestamp_status": "absent",
+        "forged_revocations": 0,
+        "references": []
+      }
+    },
+    {
+      "id": "25",
+      "name": "neg_crossauth_signature_appended",
+      "description": "Genuine two-signer MULTISIG artifact plus an appended SIGNATURE chunk carrying a third signer's entry, genuinely signed over the public signing body with the CHECKSUM recomputed. The reverse direction of case 24: co-present auth chunk types must not verify VALID (SPEC \u00a77.2).",
+      "artifact": "artifacts/25_neg_crossauth_signature_appended.spif",
+      "inputs": {},
+      "expected": {
+        "trust_status": "INVALID",
+        "signature_status": "invalid",
+        "timestamp_status": "absent",
+        "forged_revocations": 0,
+        "references": []
+      }
     }
   ]
 }
