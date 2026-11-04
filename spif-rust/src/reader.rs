@@ -267,6 +267,24 @@ impl SPIFReader {
                         ));
                     }
                     checksum_seen = true;
+                    // CHECKSUM is the terminal chunk (mirrors spif-py's
+                    // decode() step 3a): parsing stops here, and any bytes
+                    // after it are a format error — never parsed. The
+                    // checksum above and the signing-body scan both stop
+                    // at the first CHECKSUM, so a WELL-FORMED chunk
+                    // appended after it is invisible to every integrity
+                    // check; if the loop went on, its last-wins assignment
+                    // would silently replace signed content or the signer
+                    // set (SPIF-POSTCHECKSUM-ACCEPT-001). The check is
+                    // deliberately type-blind: it fires for appended chunk
+                    // types the duplicate-chunk rule has never seen in
+                    // this document, and for raw trailing garbage alike.
+                    if payload_end != data.len() {
+                        return Err(anyhow!(
+                            "{} trailing byte(s) after CHECKSUM chunk",
+                            data.len() - payload_end
+                        ));
+                    }
                 }
                 _ => {
                     // Unknown chunk — skip for forward compatibility.

@@ -359,6 +359,133 @@ fn duplicate_multisig_chunk_substitution_rejected() {
     assert!(!rep.signers.contains(&b64(&key("second"))));
 }
 
+// --- CHECKSUM is terminal (SPIF-POSTCHECKSUM-ACCEPT-001) -----------------
+//
+// The checksum and the signing-body scan both stop at the FIRST CHECKSUM
+// chunk, but the parse loop previously iterated to end-of-data with
+// last-wins assignments. A WELL-FORMED chunk appended after the terminal
+// CHECKSUM was therefore invisible to every integrity check yet fully
+// parsed: an appended PAYLOAD replaced the signed content under the
+// victim's genuine signature (no key, no checksum recomputation), and
+// an appended SIGNATURE replaced the signer. Python's decode() rejects
+// any bytes after CHECKSUM; read() now does the same, at the CHECKSUM
+// chunk itself, before any appended chunk is ever looked at — so the
+// rule fires regardless of the appended chunk's type, including types
+// the duplicate-chunk rule has never seen in the document.
+
+/// Append a well-formed chunk AFTER the terminal CHECKSUM, leaving the
+/// original checksum untouched (it still matches the body before it).
+fn append_after_checksum(data: &[u8], ctype: u8, payload: &[u8]) -> Vec<u8> {
+    let mut out = data.to_vec();
+    out.push(ctype);
+    out.extend_from_slice(&(payload.len() as u32).to_be_bytes());
+    out.extend_from_slice(payload);
+    out
+}
+
+fn chunk_payload(data: &[u8], ctype: u8) -> Vec<u8> {
+    chunks(data)
+        .into_iter()
+        .find(|(ct, _, _)| *ct == ctype)
+        .map(|(_, _, p)| p.to_vec())
+        .unwrap()
+}
+
+#[test]
+fn post_checksum_payload_rejected() {
+    let (victim, attacker) = (key("victim"), key("attacker"));
+    let data = sign_single(&victim, "victim");
+    // Control: the honest envelope parses, with the signed content.
+    let parsed = SPIFReader::new().read(&data).unwrap();
+    match &parsed.payload[0].value {
+        Value::Text(t) => assert_eq!(t, "victim"),
+        other => panic!("unexpected payload: {other:?}"),
+    }
+    // The attacker's own PAYLOAD chunk, appended after CHECKSUM.
+    let attacker_doc = sign_single(&attacker, "attacker-content");
+    let payload = chunk_payload(&attacker_doc, CHUNK_PAYLOAD);
+    let forged = append_after_checksum(&data, CHUNK_PAYLOAD, &payload);
+    // It must not parse at all — no path to the attacker's content.
+    let err = SPIFReader::new().read(&forged).unwrap_err();
+    assert!(
+        format!("{err}").contains("trailing byte(s) after CHECKSUM chunk"),
+        "unexpected error: {err}"
+    );
+    assert!(SPIFReader::new().verify_signature(&forged).is_err());
+    let rep = verify_artifact(&forged, &opts());
+    assert_eq!(rep.trust_status, TRUST_INVALID);
+    assert!(rep.signers.is_empty(), "signers: {:?}", rep.signers);
+}
+
+#[test]
+fn post_checksum_signature_rejected() {
+    let (victim, attacker) = (key("victim"), key("attacker"));
+    let data = sign_single(&victim, "victim");
+    let body = body_of(&data).to_vec();
+    let payload = cbor(&entry(&attacker, &body));
+    let forged = append_after_checksum(&data, CHUNK_SIGNATURE, &payload);
+    let err = SPIFReader::new().read(&forged).unwrap_err();
+    assert!(
+        format!("{err}").contains("trailing byte(s) after CHECKSUM chunk"),
+        "unexpected error: {err}"
+    );
+    assert!(SPIFReader::new().verify_signature(&forged).is_err());
+    let rep = verify_artifact(&forged, &opts());
+    assert_eq!(rep.trust_status, TRUST_INVALID);
+    // The appended attacker entry confers nothing; the envelope is
+    // undecodable, so it attests nobody — not even the victim.
+    assert!(rep.signers.is_empty(), "signers: {:?}", rep.signers);
+    assert!(!rep.signers.contains(&b64(&attacker)));
+}
+
+#[test]
+fn post_checksum_unseen_chunk_type_rejected_by_terminal_rule() {
+    // A chunk type NOT present earlier in the document: the
+    // duplicate-chunk rule cannot fire on it, so only the terminal
+    // rule stands between this append and acceptance. The document is
+    // provenance-less; the appended chunk is a genuine PROVENANCE
+    // chunk lifted from a normal document.
+    let mut doc = base_doc("no-provenance");
+    doc.provenance = None;
+    let data = SPIFWriter::new().encode(&doc).unwrap();
+    // Control: the provenance-less envelope itself is fine.
+    let rep = verify_artifact(&data, &opts());
+    assert_eq!(rep.trust_status, TRUST_UNSIGNED);
+    let provenance_payload = chunk_payload(
+        &SPIFWriter::new().encode(&base_doc("with-provenance")).unwrap(),
+        CHUNK_PROVENANCE,
+    );
+    let forged = append_after_checksum(&data, CHUNK_PROVENANCE, &provenance_payload);
+    let err = SPIFReader::new().read(&forged).unwrap_err();
+    let msg = format!("{err}");
+    assert!(
+        msg.contains("trailing byte(s) after CHECKSUM chunk"),
+        "expected the terminal rule to fire, got: {msg}"
+    );
+    assert!(
+        !msg.contains("Duplicate chunk"),
+        "the duplicate rule must not be what catches this: {msg}"
+    );
+    let rep = verify_artifact(&forged, &opts());
+    assert_eq!(rep.trust_status, TRUST_INVALID);
+}
+
+#[test]
+fn trailing_garbage_after_checksum_rejected() {
+    let victim = key("victim");
+    let data = sign_single(&victim, "victim");
+    let mut forged = data.clone();
+    forged.extend_from_slice(b"\xde\xad\xbe\xef not a chunk at all");
+    let err = SPIFReader::new().read(&forged).unwrap_err();
+    assert!(
+        format!("{err}").contains("trailing byte(s) after CHECKSUM chunk"),
+        "unexpected error: {err}"
+    );
+    let rep = verify_artifact(&forged, &opts());
+    assert_eq!(rep.trust_status, TRUST_INVALID);
+    assert!(rep.signers.is_empty(), "signers: {:?}", rep.signers);
+}
+
 #[test]
 fn duplicate_non_auth_core_chunk_rejected() {
     // The mirrored Python rule is class-level, not auth-only: a second
