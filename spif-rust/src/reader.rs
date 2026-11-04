@@ -93,6 +93,8 @@ impl SPIFReader {
         };
 
         let mut checksum_seen = false;
+        let mut signature_chunk_seen = false;
+        let mut multisig_chunk_seen = false;
         let mut compressed = false; // set when FLAG_COMPRESSED is seen in HEADER chunk
         let mut current_pos = MAGIC.len() + 2;
 
@@ -198,9 +200,11 @@ impl SPIFReader {
                     document_data.delta = Some(from_reader(&*cbor_payload(payload, compressed)?)?);
                 }
                 CHUNK_SIGNATURE => {
+                    signature_chunk_seen = true;
                     document_data.signature = Some(from_reader(payload)?);
                 }
                 CHUNK_MULTISIG => {
+                    multisig_chunk_seen = true;
                     document_data.signatures = from_reader(payload)?;
                 }
                 CHUNK_TASK => {
@@ -250,6 +254,23 @@ impl SPIFReader {
         if !checksum_seen {
             return Err(anyhow!(
                 "No CHECKSUM chunk found — document may be truncated or corrupted"
+            ));
+        }
+
+        // 4a. One document, one attestation (SPEC §7.2): SIGNATURE and
+        // MULTISIG are two encodings of the same claim — the signer set,
+        // which is part of the document's meaning. If both were accepted,
+        // their entries would union into a signer set no signer attested:
+        // any holder of a signed envelope could append the *other* auth
+        // chunk type carrying their own entry, signed over the public
+        // signing body, and be reported as an attested signer — gaining
+        // the authority signer-set membership confers, e.g. revocation
+        // (SPIF-CROSSAUTH-SIGNER-EXPANSION-001). Mirrors spif-py's
+        // decode() rejection of the same envelope.
+        if signature_chunk_seen && multisig_chunk_seen {
+            return Err(anyhow!(
+                "SIGNATURE and MULTISIG chunks must not both be present: \
+                 a document carries exactly one attestation"
             ));
         }
 
