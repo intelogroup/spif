@@ -741,6 +741,24 @@ class SPIFReader:
                 "are covered by the signature"
             )
 
+        # One document, one attestation (SPEC §7.2): SIGNATURE and
+        # MULTISIG are two encodings of the same claim — the signer set,
+        # which is part of the document's meaning. If both were accepted,
+        # their entries would union into a signer set no signer attested:
+        # any holder of a signed envelope could append the *other* auth
+        # chunk type carrying their own entry, signed over the public
+        # signing body, and be reported as an attested signer — gaining
+        # the authority signer-set membership confers, e.g. revocation
+        # (SPIF-CROSSAUTH-SIGNER-EXPANSION-001). The writer never emits
+        # both. A duplicate chunk of a single type is already rejected
+        # in the scan above, so with this co-presence rejection a
+        # decodable document carries at most one auth chunk in total.
+        if CHUNK_SIGNATURE in chunks and CHUNK_MULTISIG in chunks:
+            raise SPIFFormatError(
+                "SIGNATURE and MULTISIG chunks must not both be present: "
+                "a document carries exactly one attestation"
+            )
+
         # SPEC §4.1 / §12.4: canonical CBOR is required for all chunks
         # when the document carries a signature. The chunk set is fully
         # collected at this point, so the presence of a SIGNATURE or
@@ -1187,9 +1205,12 @@ class SPIFReader:
         by its ed25519 component and a PQ-only entry raises
         SPIFSignatureError as unverifiable — invisible, not invalid.
 
-        If both SIGNATURE and MULTISIG are present, every signature in both
-        chunks is verified against the same signing body: the bytes before the
-        first auth chunk.
+        A document carries exactly one attestation: a SIGNATURE chunk or
+        a MULTISIG chunk, never both. decode() rejects an envelope where
+        both chunk types are present with SPIFFormatError, so every
+        signature verified here comes from that single auth chunk and is
+        checked against the same signing body: the bytes before the first
+        auth chunk.
 
         If revocation_list_path is given, revoked signer IDs are rejected before
         cryptographic verification via SPIFSignatureError.

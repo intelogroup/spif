@@ -511,15 +511,15 @@ signing_body = MAGIC || VERSION || FLAGS || <all chunks before first auth chunk>
 signature = ed25519_sign(private_key, signing_body)
 ```
 
-If both SIGNATURE and MULTISIG are present, every signature in both chunks MUST verify against the same `signing_body`, namely the bytes before the first authentication chunk.
+A document carries exactly one attestation: a SIGNATURE chunk or a MULTISIG chunk, never both. Writers MUST NOT emit both chunk types in one document, and readers MUST reject a document in which both are present. The two chunk types encode the same claim — the signer set, which is part of the document's meaning — so accepting both would let their entries union into a signer set no signer attested: any holder of a signed envelope could append the other chunk type carrying their own entry, signed over the public `signing_body`, and be reported as an attested signer, gaining the authority signer-set membership confers (e.g. revocation). Every signature in the document's single authentication chunk MUST verify against the same `signing_body`, namely the bytes before the first authentication chunk.
 
 Writers MUST use a two-pass approach:
 1. Assemble the unsigned body (all chunks before SIGNATURE / MULTISIG)
 2. Sign that unsigned body
-3. Append SIGNATURE and/or MULTISIG chunks
+3. Append the SIGNATURE chunk or the MULTISIG chunk
 4. Append CHECKSUM as the final chunk
 
-Readers verify by locating the first SIGNATURE or MULTISIG chunk, taking all preceding bytes as `signing_body`, and calling `ed25519_verify(public_key, signing_body, sig.signature)` for every present signature.
+Readers verify by locating the first SIGNATURE or MULTISIG chunk, taking all preceding bytes as `signing_body`, and calling `ed25519_verify(public_key, signing_body, sig.signature)` for every signature in the document's single authentication chunk.
 
 `signer` SHOULD be a stable, publicly fetchable URL, e.g. `https://keys.anthropic.com/claude-sonnet-4-6.pub`.
 

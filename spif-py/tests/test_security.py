@@ -463,10 +463,17 @@ class TestMultiSignature:
         decoded = SPIFReader().decode(data)
         assert decoded.signatures[0].key_id == "rotation-v2"
 
-    def test_signature_and_multisig_share_first_auth_boundary(self):
+    def test_signature_and_multisig_must_not_coexist(self):
         """
-        When both SIGNATURE and MULTISIG are present, all signatures must verify
-        against the same body: bytes before the first auth chunk.
+        One document, one attestation (SPEC §7.2): SIGNATURE and MULTISIG
+        must not both be present, even when every entry is genuinely
+        signed over the shared body (bytes before the first auth chunk).
+
+        This test previously pinned the union rule — both chunks present,
+        all entries verified against that body. That rule made the signer
+        set expandable by any later holder appending the other chunk
+        type (SPIF-CROSSAUTH-SIGNER-EXPANSION-001), so co-presence is
+        now rejected at decode.
         """
         key1, pub1 = _make_key()
         key2, pub2 = _make_key()
@@ -493,7 +500,10 @@ class TestMultiSignature:
         )]
 
         data = writer.encode(doc)
-        assert SPIFReader().verify_signature(data) is True
+        with pytest.raises(SPIFFormatError):
+            SPIFReader().decode(data)
+        with pytest.raises(SPIFFormatError):
+            SPIFReader().verify_signature(data)
 
 
 # ---------------------------------------------------------------------------
