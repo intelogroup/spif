@@ -93,6 +93,9 @@ impl SPIFReader {
         };
 
         let mut checksum_seen = false;
+        let mut signature_chunk_seen = false;
+        let mut multisig_chunk_seen = false;
+        let mut seen_core_chunks = [false; 0x10];
         let mut compressed = false; // set when FLAG_COMPRESSED is seen in HEADER chunk
         let mut current_pos = MAGIC.len() + 2;
 
@@ -113,6 +116,31 @@ impl SPIFReader {
             }
 
             let payload = &data[payload_start..payload_end];
+
+            // One chunk of each core type — mirrors spif-py's decode()
+            // rule (`chunk_type <= 0x0F or chunk_type == CHUNK_CHECKSUM`):
+            // a second chunk of any type in the core range 0x00..=0x0F,
+            // or a second CHECKSUM (0xFF — Python's scan terminates at
+            // CHECKSUM and rejects trailing bytes, so a repeated
+            // CHECKSUM is never accepted there either), is a format
+            // error, never last-wins. Without this check a repeated
+            // SIGNATURE or MULTISIG chunk silently REPLACED the attested
+            // signer set with the later chunk's entries
+            // (SPIF-CROSSAUTH-SIGNER-EXPANSION-001, same-type cousin).
+            // Extension chunk types (> 0x0F) are not covered, exactly as
+            // in Python: they may repeat and are skipped below.
+            if chunk_type <= 0x0F {
+                if seen_core_chunks[chunk_type as usize] {
+                    return Err(anyhow!(
+                        "Duplicate chunk of type 0x{chunk_type:02x} is not allowed"
+                    ));
+                }
+                seen_core_chunks[chunk_type as usize] = true;
+            } else if chunk_type == CHUNK_CHECKSUM && checksum_seen {
+                return Err(anyhow!(
+                    "Duplicate chunk of type 0x{chunk_type:02x} is not allowed"
+                ));
+            }
 
             match chunk_type {
                 CHUNK_HEADER => {
@@ -198,9 +226,11 @@ impl SPIFReader {
                     document_data.delta = Some(from_reader(&*cbor_payload(payload, compressed)?)?);
                 }
                 CHUNK_SIGNATURE => {
+                    signature_chunk_seen = true;
                     document_data.signature = Some(from_reader(payload)?);
                 }
                 CHUNK_MULTISIG => {
+                    multisig_chunk_seen = true;
                     document_data.signatures = from_reader(payload)?;
                 }
                 CHUNK_TASK => {
@@ -237,6 +267,24 @@ impl SPIFReader {
                         ));
                     }
                     checksum_seen = true;
+                    // CHECKSUM is the terminal chunk (mirrors spif-py's
+                    // decode() step 3a): parsing stops here, and any bytes
+                    // after it are a format error — never parsed. The
+                    // checksum above and the signing-body scan both stop
+                    // at the first CHECKSUM, so a WELL-FORMED chunk
+                    // appended after it is invisible to every integrity
+                    // check; if the loop went on, its last-wins assignment
+                    // would silently replace signed content or the signer
+                    // set (SPIF-POSTCHECKSUM-ACCEPT-001). The check is
+                    // deliberately type-blind: it fires for appended chunk
+                    // types the duplicate-chunk rule has never seen in
+                    // this document, and for raw trailing garbage alike.
+                    if payload_end != data.len() {
+                        return Err(anyhow!(
+                            "{} trailing byte(s) after CHECKSUM chunk",
+                            data.len() - payload_end
+                        ));
+                    }
                 }
                 _ => {
                     // Unknown chunk — skip for forward compatibility.
@@ -250,6 +298,23 @@ impl SPIFReader {
         if !checksum_seen {
             return Err(anyhow!(
                 "No CHECKSUM chunk found — document may be truncated or corrupted"
+            ));
+        }
+
+        // 4a. One document, one attestation (SPEC §7.2): SIGNATURE and
+        // MULTISIG are two encodings of the same claim — the signer set,
+        // which is part of the document's meaning. If both were accepted,
+        // their entries would union into a signer set no signer attested:
+        // any holder of a signed envelope could append the *other* auth
+        // chunk type carrying their own entry, signed over the public
+        // signing body, and be reported as an attested signer — gaining
+        // the authority signer-set membership confers, e.g. revocation
+        // (SPIF-CROSSAUTH-SIGNER-EXPANSION-001). Mirrors spif-py's
+        // decode() rejection of the same envelope.
+        if signature_chunk_seen && multisig_chunk_seen {
+            return Err(anyhow!(
+                "SIGNATURE and MULTISIG chunks must not both be present: \
+                 a document carries exactly one attestation"
             ));
         }
 
