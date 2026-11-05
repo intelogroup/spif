@@ -35,6 +35,16 @@ MAX_REVOCATION_STATEMENTS = 4_096  # ponytail: flat cap on embedded REVOCATION e
 
 _CHUNK_STRUCT = struct.Struct(">BI")
 
+# Chunk types decode() surfaces as the document's own content. These are
+# attested only inside the signing body (see the position-binding rule in
+# SPIFReader.decode). Auth chunks (0x07/0x08), the post-signature statement
+# chunks REVOCATION (0x0B) / TIMESTAMP (0x0C), CHECKSUM (0xFF), and
+# extension types (>= 0x10) are not content.
+_CONTENT_CHUNK_TYPES = frozenset({
+    CHUNK_HEADER, CHUNK_PROVENANCE, CHUNK_SEMANTIC, CHUNK_TRACE,
+    CHUNK_PAYLOAD, CHUNK_ALTS, CHUNK_DELTA, CHUNK_TASK, CHUNK_ROLES,
+})
+
 
 class SPIFError(Exception):
     pass
@@ -718,7 +728,6 @@ class SPIFReader:
 
         # 4. Parse all chunks up to CHECKSUM
         chunks: dict[int, list[bytes]] = {}
-        roles_offset = None
         auth_offset = None
         scan_offset = len(MAGIC) + 2
         for chunk_type, chunk_data in _iter_chunks(data, len(MAGIC) + 2):
@@ -728,18 +737,29 @@ class SPIFReader:
                 raise SPIFFormatError(
                     f"Duplicate chunk of type 0x{chunk_type:02x} is not allowed"
                 )
-            if chunk_type == CHUNK_ROLES and roles_offset is None:
-                roles_offset = scan_offset
             if chunk_type in (CHUNK_SIGNATURE, CHUNK_MULTISIG) and auth_offset is None:
                 auth_offset = scan_offset
+            # Position binding (one general rule, not per-type guards):
+            # a content chunk is attested only inside the signing body —
+            # the bytes before the first auth chunk, which is what the
+            # signature covers. A content chunk appearing after the
+            # SIGNATURE/MULTISIG chunk is outside the signed bytes; the
+            # checksum that seals it is a plain recomputable SHA-256, so
+            # any holder of a signed envelope could graft attacker
+            # content there and have it surfaced as the verified
+            # document's own (SPIF-TASK-GRAFT-001, SPIF-PROV-GRAFT-001;
+            # ROLES was previously guarded as a special case — this rule
+            # covers it uniformly). REVOCATION and TIMESTAMP are exempt
+            # by design: they are post-signature chunks carrying their
+            # own signed statements/anchors, never surfaced as content.
+            if auth_offset is not None and chunk_type in _CONTENT_CHUNK_TYPES:
+                raise SPIFFormatError(
+                    f"Content chunk of type 0x{chunk_type:02x} appears after "
+                    "the SIGNATURE/MULTISIG chunk: content is only attested "
+                    "inside the signing body"
+                )
             chunks.setdefault(chunk_type, []).append(chunk_data)
             scan_offset += 5 + len(chunk_data)
-
-        if roles_offset is not None and auth_offset is not None and roles_offset >= auth_offset:
-            raise SPIFFormatError(
-                "ROLES chunk must precede SIGNATURE/MULTISIG so role claims "
-                "are covered by the signature"
-            )
 
         # One document, one attestation (SPEC §7.2): SIGNATURE and
         # MULTISIG are two encodings of the same claim — the signer set,
@@ -880,6 +900,10 @@ class SPIFReader:
                         raise SPIFFormatError(
                             f"Alternative entry must be a dict, got {type(a).__name__}"
                         )
+                    if "weight" not in a or "nodes" not in a:
+                        raise SPIFFormatError(
+                            "Alternative entry must carry 'weight' and 'nodes'"
+                        )
                     alternatives.append(Alternative(
                         weight=a["weight"],
                         nodes=[_decode_node(n) for n in a["nodes"]],
@@ -898,6 +922,10 @@ class SPIFReader:
                     if not isinstance(a, dict):
                         raise SPIFFormatError(
                             f"Alternative entry must be a dict, got {type(a).__name__}"
+                        )
+                    if "weight" not in a or "nodes" not in a:
+                        raise SPIFFormatError(
+                            "Alternative entry must carry 'weight' and 'nodes'"
                         )
                     alternatives.append(Alternative(
                         weight=a["weight"],
@@ -924,6 +952,8 @@ class SPIFReader:
                            canonical_required=canonical_required)
             if not isinstance(d, dict):
                 raise SPIFFormatError("DELTA chunk must decode to a dict")
+            if "base_hash" not in d:
+                raise SPIFFormatError("DELTA chunk must carry 'base_hash'")
             delta = Delta(base_hash=d["base_hash"], changes=d.get("changes", []))
 
         # 11. SIGNATURE (v0.2)
@@ -950,13 +980,33 @@ class SPIFReader:
                              canonical_required=canonical_required)
             if not isinstance(raw, list):
                 raise SPIFFormatError("MULTISIG chunk must decode to a list")
+            seen_signers: set[str] = set()
             for s in raw:
+                # Entries are validated, never trusted by shape: a
+                # wrong-typed entry must fail as a format error, not
+                # escape as a bare AttributeError from .get on a
+                # non-mapping (SPIF-MULTISIG-ENTRYTYPE-001).
+                if not isinstance(s, dict):
+                    raise SPIFFormatError(
+                        f"MULTISIG entry must be a dict, got {type(s).__name__}"
+                    )
+                signer = s.get("signer", "")
+                # The signer set is a set: one signer attests once. A
+                # duplicated entry would report the same signer twice,
+                # inflating any downstream count of attestations
+                # (SPIF-DUPMULTISIG-ENTRY-001).
+                if signer in seen_signers:
+                    raise SPIFFormatError(
+                        f"Duplicate MULTISIG entry for signer {signer!r}: "
+                        "each signer may appear at most once per MULTISIG chunk"
+                    )
+                seen_signers.add(signer)
                 sig_bytes = s.get("signature", b"")
                 if isinstance(sig_bytes, memoryview):
                     sig_bytes = bytes(sig_bytes)
                 signatures.append(Signature(
                     algorithm=s.get("algorithm", "ed25519"),
-                    signer=s.get("signer", ""),
+                    signer=signer,
                     signature=sig_bytes,
                     key_id=s.get("key_id", ""),
                 ))
