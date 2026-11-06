@@ -77,6 +77,16 @@ impl SPIFReader {
             return Err(anyhow!("Unsupported SIF version: 0x{:02x}", version));
         }
 
+        // Canonical-form gate (SPEC §4.1 / §12.4), mirroring spif-py's
+        // decode(): when the document carries a signature, every chunk's
+        // CBOR must be canonical (definite lengths, shortest-form
+        // arguments); duplicate map keys are rejected in every document.
+        // The auth chunk sits after the content chunks in the stream, so
+        // signed-ness is determined by a framing pre-scan
+        // (find_first_auth_chunk_offset) before any chunk is decoded, and
+        // each chunk payload is form-scanned at its decode site below.
+        let canonical_required = find_first_auth_chunk_offset(data).is_some();
+
         let mut document_data = SPIFDocument {
             payload: Vec::new(),
             provenance: None,
@@ -151,6 +161,7 @@ impl SPIFReader {
                         #[serde(default)]
                         flags2: u8,
                     }
+                    assert_cbor_form(payload, "HEADER", canonical_required)?;
                     if let Ok(h) = from_reader::<HeaderPayload, _>(payload) {
                         // zstd support (v1.1, FLAG_ZSTD) is not yet implemented in
                         // spif-rust — spif-py can write it, so without this check a
@@ -171,11 +182,13 @@ impl SPIFReader {
                 }
                 CHUNK_PROVENANCE => {
                     // PROVENANCE is never compressed — read raw.
+                    assert_cbor_form(payload, "PROVENANCE", canonical_required)?;
                     document_data.provenance = Some(from_reader(payload)?);
                 }
                 CHUNK_SEMANTIC => {
-                    document_data.semantic =
-                        Some(from_reader(&*cbor_payload(payload, compressed)?)?);
+                    let raw = cbor_payload(payload, compressed)?;
+                    assert_cbor_form(&raw, "SEMANTIC", canonical_required)?;
+                    document_data.semantic = Some(from_reader(&*raw)?);
                 }
                 CHUNK_TRACE => {
                     #[derive(serde::Deserialize)]
@@ -183,12 +196,16 @@ impl SPIFReader {
                         method: String,
                         steps: Vec<TraceStep>,
                     }
-                    let tw: TraceWrapper = from_reader(&*cbor_payload(payload, compressed)?)?;
+                    let raw = cbor_payload(payload, compressed)?;
+                    assert_cbor_form(&raw, "TRACE", canonical_required)?;
+                    let tw: TraceWrapper = from_reader(&*raw)?;
                     document_data.trace_method = tw.method;
                     document_data.trace = tw.steps;
                 }
                 CHUNK_PAYLOAD => {
-                    document_data.payload = from_reader(&*cbor_payload(payload, compressed)?)?;
+                    let raw = cbor_payload(payload, compressed)?;
+                    assert_cbor_form(&raw, "PAYLOAD", canonical_required)?;
+                    document_data.payload = from_reader(&*raw)?;
                 }
                 CHUNK_ALTS => {
                     // The outer wrapper carries `normalized` (Python format).
@@ -210,7 +227,9 @@ impl SPIFReader {
                         normalized: bool,
                         alts: Vec<AltItem>,
                     }
-                    let aw: AltsWrapper = from_reader(&*cbor_payload(payload, compressed)?)?;
+                    let raw = cbor_payload(payload, compressed)?;
+                    assert_cbor_form(&raw, "ALTS", canonical_required)?;
+                    let aw: AltsWrapper = from_reader(&*raw)?;
                     let outer_normalized = aw.normalized;
                     document_data.alternatives = aw
                         .alts
@@ -223,22 +242,36 @@ impl SPIFReader {
                         .collect();
                 }
                 CHUNK_DELTA => {
-                    document_data.delta = Some(from_reader(&*cbor_payload(payload, compressed)?)?);
+                    let raw = cbor_payload(payload, compressed)?;
+                    assert_cbor_form(&raw, "DELTA", canonical_required)?;
+                    document_data.delta = Some(from_reader(&*raw)?);
                 }
                 CHUNK_SIGNATURE => {
                     signature_chunk_seen = true;
+                    assert_cbor_form(payload, "SIGNATURE", canonical_required)?;
                     document_data.signature = Some(from_reader(payload)?);
                 }
                 CHUNK_MULTISIG => {
                     multisig_chunk_seen = true;
+                    assert_cbor_form(payload, "MULTISIG", canonical_required)?;
                     document_data.signatures = from_reader(payload)?;
                 }
                 CHUNK_TASK => {
+                    assert_cbor_form(payload, "TASK", canonical_required)?;
                     document_data.task_info = Some(from_reader(payload)?);
+                }
+                CHUNK_ROLES => {
+                    // spif-rust does not decode ROLES content (a
+                    // pre-existing content gap, unchanged here), but the
+                    // chunk's CBOR form is gated exactly as in spif-py,
+                    // whose decode() loads — and therefore form-scans —
+                    // the chunk.
+                    assert_cbor_form(payload, "ROLES", canonical_required)?;
                 }
                 CHUNK_REVOCATION => {
                     // Post-signature chunk (v1.3, SPEC §6.12): CBOR array of
                     // signed revocation statements. Never compressed.
+                    assert_cbor_form(payload, "REVOCATION", canonical_required)?;
                     document_data.revocations = from_reader(payload)?;
                     if document_data.revocations.len() > MAX_REVOCATION_STATEMENTS {
                         return Err(anyhow!(
@@ -251,6 +284,7 @@ impl SPIFReader {
                 CHUNK_TIMESTAMP => {
                     // Post-signature chunk (v1.3, SPEC §6.13): TSA timestamp
                     // anchor map. Never compressed.
+                    assert_cbor_form(payload, "TIMESTAMP", canonical_required)?;
                     document_data.timestamp_anchor = Some(from_reader(payload)?);
                 }
                 CHUNK_CHECKSUM => {
@@ -451,6 +485,361 @@ fn cbor_payload<'a>(payload: &'a [u8], compressed: bool) -> Result<Cow<'a, [u8]>
         ));
     }
     Ok(Cow::Owned(decompressed))
+}
+
+/// Identity of a map key for duplicate detection, mirroring spif-py's
+/// `_key_identity`: the canonical re-encoding of the decoded key, so two
+/// byte-different encodings of the same key (short vs long-form length,
+/// f32 vs f64) still collide. Falls back to the raw span when the key
+/// cannot be round-tripped.
+fn key_identity(span: &[u8]) -> Vec<u8> {
+    match ciborium::de::from_reader::<ciborium::value::Value, _>(span) {
+        Ok(value) => crate::trust::canonical_cbor(&value),
+        Err(_) => span.to_vec(),
+    }
+}
+
+/// One container frame of the CBOR form scan (see `assert_cbor_form`).
+struct ScanFrame {
+    /// Items still expected; `None` for an indefinite-length container
+    /// (closed by a break marker instead of counting down). A map frame's
+    /// count covers keys and values, so it starts at 2 * pair_count.
+    remaining: Option<u64>,
+    is_map: bool,
+    next_is_key: bool,
+    seen_keys: HashSet<Vec<u8>>,
+    start: usize,
+}
+
+/// Iterative raw-encoding CBOR scan — a faithful port of spif-py's
+/// `_scan_cbor` (reader.py), run on one chunk's payload bytes before the
+/// ciborium decode, exactly as `_cbor_load` runs it before cbor2.
+///
+/// Always enforced (every document, signed or unsigned): no duplicate
+/// map keys — a duplicate is *ambiguity*, not encoding variability, and
+/// decoders disagree on whether the first or last value wins.
+///
+/// Additionally enforced when `canonical` is true (the caller passes it
+/// for every chunk of a document that carries a signature, which makes
+/// §12.4's writer rule — canonical CBOR for all chunks when a signature
+/// is present — reader-verifiable): definite lengths only and
+/// shortest-form arguments — RFC 8949 §4.2 core deterministic encoding,
+/// minus key sorting, which the writers do not promise. Unsigned
+/// documents keep §4.1/§12.1's accept-both leniency for indefinite-length
+/// items and non-minimal forms.
+///
+/// The scan also rejects structural malformations ciborium would
+/// otherwise tolerate in a chunk payload (reserved additional
+/// information, a break marker outside an indefinite item, trailing
+/// bytes after the chunk's single CBOR item), matching the failures
+/// cbor2 + the scan produce in spif-py.
+struct CborFormScan<'a> {
+    data: &'a [u8],
+    chunk_name: &'a str,
+    canonical: bool,
+    pos: usize,
+    stack: Vec<ScanFrame>,
+    root_done: bool,
+}
+
+impl CborFormScan<'_> {
+    fn fail(&self, reason: &str) -> anyhow::Error {
+        if self.canonical {
+            anyhow!(
+                "Non-canonical CBOR in {} chunk: {reason}",
+                self.chunk_name
+            )
+        } else {
+            anyhow!("Malformed CBOR in {} chunk: {reason}", self.chunk_name)
+        }
+    }
+
+    fn fail_duplicate_key(&self) -> anyhow::Error {
+        if self.canonical {
+            anyhow!(
+                "Non-canonical CBOR in {} chunk: duplicate map key",
+                self.chunk_name
+            )
+        } else {
+            anyhow!(
+                "Ambiguous CBOR in {} chunk: duplicate map key",
+                self.chunk_name
+            )
+        }
+    }
+
+    /// Account one finished item (span `data[start..end]`) to its parent,
+    /// cascading upward while containers complete.
+    fn complete_item(&mut self, mut start: usize, end: usize) -> Result<()> {
+        loop {
+            if self.stack.is_empty() {
+                self.root_done = true;
+                return Ok(());
+            }
+            let frame_start = self.stack.last().unwrap().start;
+            {
+                let frame = self.stack.last_mut().unwrap();
+                if frame.is_map && frame.next_is_key {
+                    let identity = key_identity(&self.data[start..end]);
+                    if !frame.seen_keys.insert(identity) {
+                        return Err(self.fail_duplicate_key());
+                    }
+                    frame.next_is_key = false;
+                } else if frame.is_map {
+                    frame.next_is_key = true;
+                }
+                match frame.remaining {
+                    None => return Ok(()), // indefinite: no countdown
+                    Some(r) => {
+                        frame.remaining = Some(r - 1);
+                        if r - 1 > 0 {
+                            return Ok(());
+                        }
+                    }
+                }
+            }
+            self.stack.pop();
+            start = frame_start;
+        }
+    }
+
+    /// Consume the argument of an item whose additional-information value
+    /// is 24..27, applying the shortest-form checks in canonical mode.
+    /// Float payloads (major 7) are handled by the caller.
+    fn read_argument(&mut self, ai: u8, major: u8) -> Result<u64> {
+        let n = self.data.len();
+        if ai == 24 {
+            if self.pos + 1 > n {
+                return Err(self.fail("unexpected end of data"));
+            }
+            let arg = self.data[self.pos] as u64;
+            self.pos += 1;
+            if self.canonical {
+                if major == 7 {
+                    if arg < 32 {
+                        return Err(self.fail("non-minimal simple-value encoding"));
+                    }
+                } else if arg < 24 {
+                    return Err(self.fail("non-minimal argument encoding"));
+                }
+            }
+            return Ok(arg);
+        }
+        let width: usize = match ai {
+            25 => 2,
+            26 => 4,
+            _ => 8, // 27
+        };
+        if self.pos + width > n {
+            return Err(self.fail("unexpected end of data"));
+        }
+        let mut arg: u64 = 0;
+        for i in 0..width {
+            arg = (arg << 8) | self.data[self.pos + i] as u64;
+        }
+        self.pos += width;
+        if self.canonical && arg < (1u64 << (8 * (width / 2))) {
+            return Err(self.fail("non-minimal argument encoding"));
+        }
+        Ok(arg)
+    }
+
+    fn run(mut self) -> Result<()> {
+        let n = self.data.len();
+        let mut item_start: Option<usize> = None;
+        while !self.root_done {
+            if self.pos >= n {
+                return Err(self.fail("unexpected end of data"));
+            }
+            if item_start.is_none() {
+                item_start = Some(self.pos);
+            }
+            let initial = self.data[self.pos];
+
+            if initial == 0xFF {
+                // Break marker: closes an indefinite item.
+                if self.canonical {
+                    return Err(self.fail("indefinite-length items are not canonical"));
+                }
+                self.pos += 1;
+                match self.stack.last() {
+                    Some(f) if f.remaining.is_none() => {
+                        if f.is_map && !f.next_is_key {
+                            return Err(
+                                self.fail("break marker after a map key with no value")
+                            );
+                        }
+                    }
+                    _ => {
+                        return Err(
+                            self.fail("break marker outside an indefinite-length item")
+                        )
+                    }
+                }
+                let frame = self.stack.pop().unwrap();
+                self.complete_item(frame.start, self.pos)?;
+                item_start = None;
+                continue;
+            }
+
+            self.pos += 1;
+            let major = initial >> 5;
+            let ai = initial & 0x1F;
+
+            if ai == 31 {
+                // Indefinite-length form.
+                if self.canonical {
+                    return Err(self.fail("indefinite-length items are not canonical"));
+                }
+                if major == 2 || major == 3 {
+                    // Indefinite-length string: definite-length chunks of
+                    // the same major type, closed by a break marker. The
+                    // whole sequence is one item with one span.
+                    loop {
+                        if self.pos >= n {
+                            return Err(self.fail("unexpected end of data"));
+                        }
+                        if self.data[self.pos] == 0xFF {
+                            self.pos += 1;
+                            break;
+                        }
+                        let chunk_head = self.data[self.pos];
+                        if chunk_head >> 5 != major {
+                            return Err(self
+                                .fail("indefinite-length string chunk of the wrong type"));
+                        }
+                        let chunk_ai = chunk_head & 0x1F;
+                        if chunk_ai == 31 || chunk_ai >= 28 {
+                            return Err(self
+                                .fail("malformed chunk inside an indefinite-length string"));
+                        }
+                        self.pos += 1;
+                        let chunk_len = if chunk_ai < 24 {
+                            chunk_ai as u64
+                        } else {
+                            self.read_argument(chunk_ai, major)?
+                        };
+                        if chunk_len > (n - self.pos) as u64 {
+                            return Err(self.fail("unexpected end of data"));
+                        }
+                        self.pos += chunk_len as usize;
+                    }
+                    self.complete_item(item_start.unwrap(), self.pos)?;
+                    item_start = None;
+                    continue;
+                }
+                if major == 4 {
+                    self.stack.push(ScanFrame {
+                        remaining: None,
+                        is_map: false,
+                        next_is_key: false,
+                        seen_keys: HashSet::new(),
+                        start: item_start.unwrap(),
+                    });
+                    item_start = None;
+                    continue;
+                }
+                if major == 5 {
+                    self.stack.push(ScanFrame {
+                        remaining: None,
+                        is_map: true,
+                        next_is_key: true,
+                        seen_keys: HashSet::new(),
+                        start: item_start.unwrap(),
+                    });
+                    item_start = None;
+                    continue;
+                }
+                return Err(self.fail(
+                    "indefinite-length form is only valid for strings, arrays, and maps",
+                ));
+            }
+
+            let arg: u64 = if ai < 24 {
+                ai as u64
+            } else if ai == 24 || (25..=27).contains(&ai) {
+                if major == 7 && (25..=27).contains(&ai) {
+                    // Float payload — its width is the encoding, no argument.
+                    let width: usize = match ai {
+                        25 => 2,
+                        26 => 4,
+                        _ => 8,
+                    };
+                    if self.pos + width > n {
+                        return Err(self.fail("unexpected end of data"));
+                    }
+                    self.pos += width;
+                    self.complete_item(item_start.unwrap(), self.pos)?;
+                    item_start = None;
+                    continue;
+                }
+                self.read_argument(ai, major)?
+            } else {
+                // 28..30 are reserved in every major type.
+                return Err(self.fail("reserved additional information"));
+            };
+
+            if major == 6 {
+                // A tag prefixes the following item: the span keeps the
+                // tag bytes and the parent slot is consumed by the
+                // tagged item (item_start is retained).
+                continue;
+            }
+            if major == 0 || major == 1 || major == 7 {
+                self.complete_item(item_start.unwrap(), self.pos)?;
+                item_start = None;
+            } else if major == 2 || major == 3 {
+                if arg > (n - self.pos) as u64 {
+                    return Err(self.fail("unexpected end of data"));
+                }
+                self.pos += arg as usize;
+                self.complete_item(item_start.unwrap(), self.pos)?;
+                item_start = None;
+            } else if arg == 0 {
+                // Empty array or map completes immediately.
+                self.complete_item(item_start.unwrap(), self.pos)?;
+                item_start = None;
+            } else if major == 4 {
+                self.stack.push(ScanFrame {
+                    remaining: Some(arg),
+                    is_map: false,
+                    next_is_key: false,
+                    seen_keys: HashSet::new(),
+                    start: item_start.unwrap(),
+                });
+                item_start = None;
+            } else {
+                // major == 5
+                self.stack.push(ScanFrame {
+                    remaining: Some(arg.saturating_mul(2)),
+                    is_map: true,
+                    next_is_key: true,
+                    seen_keys: HashSet::new(),
+                    start: item_start.unwrap(),
+                });
+                item_start = None;
+            }
+        }
+        if self.pos != n {
+            return Err(self.fail("trailing bytes after the CBOR item"));
+        }
+        Ok(())
+    }
+}
+
+/// Form-gate one chunk's CBOR payload, mirroring spif-py's
+/// `_assert_canonical_cbor` (when `canonical`) and
+/// `_assert_unambiguous_cbor` (when not). See `CborFormScan`.
+fn assert_cbor_form(data: &[u8], chunk_name: &str, canonical: bool) -> Result<()> {
+    CborFormScan {
+        data,
+        chunk_name,
+        canonical,
+        pos: 0,
+        stack: Vec::new(),
+        root_done: false,
+    }
+    .run()
 }
 
 fn find_first_auth_chunk_offset(data: &[u8]) -> Option<usize> {
