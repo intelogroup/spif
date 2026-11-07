@@ -376,6 +376,132 @@
         "forged_revocations": 0,
         "references": []
       }
+    },
+    {
+      "id": "26",
+      "name": "unordered_keys_accepted_v2",
+      "artifact": "artifacts/26_unordered_keys_v2.spif",
+      "inputs": {},
+      "description": "Signed document at wire 0x02 whose SIGNATURE chunk keys are in an order satisfying neither canonical rule. SPEC \u00a74.1: the 0x01/0x02 canonical subset does not check map key order \u2014 must verify VALID.",
+      "expected": {
+        "trust_status": "VALID",
+        "signature_status": "valid",
+        "timestamp_status": "absent",
+        "forged_revocations": 0,
+        "references": []
+      }
+    },
+    {
+      "id": "27",
+      "name": "unordered_keys_rejected_v3",
+      "artifact": "artifacts/27_unordered_keys_v3.spif",
+      "inputs": {},
+      "description": "The case-26 construction stamped wire 0x03. SPEC \u00a74.1: signed 0x03 documents are serialization-checked against IETF deterministic encoding, which fixes map key order: must not verify VALID.",
+      "expected": {
+        "trust_status": "INVALID",
+        "signature_status": "invalid",
+        "timestamp_status": "absent",
+        "forged_revocations": 0,
+        "references": []
+      }
+    },
+    {
+      "id": "28",
+      "name": "valid_v3",
+      "artifact": "artifacts/28_valid_v3.spif",
+      "inputs": {},
+      "description": "Ordinary document produced by the current writer (wire 0x03, deterministic encoding). Must verify VALID.",
+      "expected": {
+        "trust_status": "VALID",
+        "signature_status": "valid",
+        "timestamp_status": "absent",
+        "forged_revocations": 0,
+        "references": []
+      }
+    },
+    {
+      "id": "29",
+      "name": "neg_nonminimal_float_v3",
+      "artifact": "artifacts/29_neg_float_width_v3.spif",
+      "inputs": {},
+      "description": "Signed 0x03 document whose payload encodes 0.5 as float64 although float16 represents it exactly. SPEC \u00a74.1 / deterministic encoding: floats use the shortest exact form: must not verify VALID.",
+      "expected": {
+        "trust_status": "INVALID",
+        "signature_status": "invalid",
+        "timestamp_status": "absent",
+        "forged_revocations": 0,
+        "references": []
+      }
+    },
+    {
+      "id": "30",
+      "name": "float_width_accepted_v2",
+      "artifact": "artifacts/30_float_width_accepted_v2.spif",
+      "inputs": {},
+      "description": "The case-29 construction stamped wire 0x02. The legacy canonical subset does not check float width \u2014 must verify VALID.",
+      "expected": {
+        "trust_status": "VALID",
+        "signature_status": "valid",
+        "timestamp_status": "absent",
+        "forged_revocations": 0,
+        "references": []
+      }
+    },
+    {
+      "id": "31",
+      "name": "neg_nonminimal_bignum_v3",
+      "artifact": "artifacts/31_neg_bignum_v3.spif",
+      "inputs": {},
+      "description": "Signed 0x03 document whose payload encodes the small integer 5 as a tag-2 bignum. SPEC \u00a74.1 / deterministic encoding: values that fit the standard major types must not use bignums: must not verify VALID.",
+      "expected": {
+        "trust_status": "INVALID",
+        "signature_status": "invalid",
+        "timestamp_status": "absent",
+        "forged_revocations": 0,
+        "references": []
+      }
+    },
+    {
+      "id": "32",
+      "name": "neg_legacy_intkey_order_v3",
+      "artifact": "artifacts/32_neg_legacy_intkey_order_v3.spif",
+      "inputs": {},
+      "description": "Signed 0x03 document carrying an integer-keyed map {-1, 24} in the legacy RFC 8949 \u00a74.2.3 order (shorter encoding first). The 2026-11-07 decision adopted the IETF bytewise order for wire 0x03: must not verify VALID.",
+      "expected": {
+        "trust_status": "INVALID",
+        "signature_status": "invalid",
+        "timestamp_status": "absent",
+        "forged_revocations": 0,
+        "references": []
+      }
+    },
+    {
+      "id": "33",
+      "name": "legacy_intkey_order_accepted_v2",
+      "artifact": "artifacts/33_legacy_intkey_order_v2.spif",
+      "inputs": {},
+      "description": "The case-32 construction stamped wire 0x02. The legacy subset checks no key order \u2014 must verify VALID.",
+      "expected": {
+        "trust_status": "VALID",
+        "signature_status": "valid",
+        "timestamp_status": "absent",
+        "forged_revocations": 0,
+        "references": []
+      }
+    },
+    {
+      "id": "34",
+      "name": "bytewise_intkey_order_v3",
+      "artifact": "artifacts/34_bytewise_intkey_order_v3.spif",
+      "inputs": {},
+      "description": "The case-32 map in bytewise order ({24, -1}) at wire 0x03: the order the IETF deterministic rule prescribes \u2014 must verify VALID.",
+      "expected": {
+        "trust_status": "VALID",
+        "signature_status": "valid",
+        "timestamp_status": "absent",
+        "forged_revocations": 0,
+        "references": []
+      }
     }
   ]
 }

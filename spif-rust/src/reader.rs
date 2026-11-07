@@ -87,6 +87,11 @@ impl SPIFReader {
         // each chunk payload is form-scanned at its decode site below.
         let canonical_required = find_first_auth_chunk_offset(data).is_some();
 
+        // Wire 0x03 (SPEC §4.1): a signed document is additionally held
+        // to the full IETF deterministic form. Legacy versions keep the
+        // subset their writers promised.
+        let deterministic = canonical_required && version == 0x03;
+
         let mut document_data = SPIFDocument {
             payload: Vec::new(),
             provenance: None,
@@ -161,7 +166,7 @@ impl SPIFReader {
                         #[serde(default)]
                         flags2: u8,
                     }
-                    assert_cbor_form(payload, "HEADER", canonical_required)?;
+                    assert_cbor_form(payload, "HEADER", canonical_required, deterministic)?;
                     if let Ok(h) = from_reader::<HeaderPayload, _>(payload) {
                         // zstd support (v1.1, FLAG_ZSTD) is not yet implemented in
                         // spif-rust — spif-py can write it, so without this check a
@@ -182,12 +187,12 @@ impl SPIFReader {
                 }
                 CHUNK_PROVENANCE => {
                     // PROVENANCE is never compressed — read raw.
-                    assert_cbor_form(payload, "PROVENANCE", canonical_required)?;
+                    assert_cbor_form(payload, "PROVENANCE", canonical_required, deterministic)?;
                     document_data.provenance = Some(from_reader(payload)?);
                 }
                 CHUNK_SEMANTIC => {
                     let raw = cbor_payload(payload, compressed)?;
-                    assert_cbor_form(&raw, "SEMANTIC", canonical_required)?;
+                    assert_cbor_form(&raw, "SEMANTIC", canonical_required, deterministic)?;
                     document_data.semantic = Some(from_reader(&*raw)?);
                 }
                 CHUNK_TRACE => {
@@ -197,14 +202,14 @@ impl SPIFReader {
                         steps: Vec<TraceStep>,
                     }
                     let raw = cbor_payload(payload, compressed)?;
-                    assert_cbor_form(&raw, "TRACE", canonical_required)?;
+                    assert_cbor_form(&raw, "TRACE", canonical_required, deterministic)?;
                     let tw: TraceWrapper = from_reader(&*raw)?;
                     document_data.trace_method = tw.method;
                     document_data.trace = tw.steps;
                 }
                 CHUNK_PAYLOAD => {
                     let raw = cbor_payload(payload, compressed)?;
-                    assert_cbor_form(&raw, "PAYLOAD", canonical_required)?;
+                    assert_cbor_form(&raw, "PAYLOAD", canonical_required, deterministic)?;
                     document_data.payload = from_reader(&*raw)?;
                 }
                 CHUNK_ALTS => {
@@ -228,7 +233,7 @@ impl SPIFReader {
                         alts: Vec<AltItem>,
                     }
                     let raw = cbor_payload(payload, compressed)?;
-                    assert_cbor_form(&raw, "ALTS", canonical_required)?;
+                    assert_cbor_form(&raw, "ALTS", canonical_required, deterministic)?;
                     let aw: AltsWrapper = from_reader(&*raw)?;
                     let outer_normalized = aw.normalized;
                     document_data.alternatives = aw
@@ -243,21 +248,21 @@ impl SPIFReader {
                 }
                 CHUNK_DELTA => {
                     let raw = cbor_payload(payload, compressed)?;
-                    assert_cbor_form(&raw, "DELTA", canonical_required)?;
+                    assert_cbor_form(&raw, "DELTA", canonical_required, deterministic)?;
                     document_data.delta = Some(from_reader(&*raw)?);
                 }
                 CHUNK_SIGNATURE => {
                     signature_chunk_seen = true;
-                    assert_cbor_form(payload, "SIGNATURE", canonical_required)?;
+                    assert_cbor_form(payload, "SIGNATURE", canonical_required, deterministic)?;
                     document_data.signature = Some(from_reader(payload)?);
                 }
                 CHUNK_MULTISIG => {
                     multisig_chunk_seen = true;
-                    assert_cbor_form(payload, "MULTISIG", canonical_required)?;
+                    assert_cbor_form(payload, "MULTISIG", canonical_required, deterministic)?;
                     document_data.signatures = from_reader(payload)?;
                 }
                 CHUNK_TASK => {
-                    assert_cbor_form(payload, "TASK", canonical_required)?;
+                    assert_cbor_form(payload, "TASK", canonical_required, deterministic)?;
                     document_data.task_info = Some(from_reader(payload)?);
                 }
                 CHUNK_ROLES => {
@@ -266,12 +271,12 @@ impl SPIFReader {
                     // chunk's CBOR form is gated exactly as in spif-py,
                     // whose decode() loads — and therefore form-scans —
                     // the chunk.
-                    assert_cbor_form(payload, "ROLES", canonical_required)?;
+                    assert_cbor_form(payload, "ROLES", canonical_required, deterministic)?;
                 }
                 CHUNK_REVOCATION => {
                     // Post-signature chunk (v1.3, SPEC §6.12): CBOR array of
                     // signed revocation statements. Never compressed.
-                    assert_cbor_form(payload, "REVOCATION", canonical_required)?;
+                    assert_cbor_form(payload, "REVOCATION", canonical_required, deterministic)?;
                     document_data.revocations = from_reader(payload)?;
                     if document_data.revocations.len() > MAX_REVOCATION_STATEMENTS {
                         return Err(anyhow!(
@@ -284,7 +289,7 @@ impl SPIFReader {
                 CHUNK_TIMESTAMP => {
                     // Post-signature chunk (v1.3, SPEC §6.13): TSA timestamp
                     // anchor map. Never compressed.
-                    assert_cbor_form(payload, "TIMESTAMP", canonical_required)?;
+                    assert_cbor_form(payload, "TIMESTAMP", canonical_required, deterministic)?;
                     document_data.timestamp_anchor = Some(from_reader(payload)?);
                 }
                 CHUNK_CHECKSUM => {
@@ -424,6 +429,14 @@ impl SPIFReader {
             })?;
             let verifying_key = VerifyingKey::from_bytes(&pub_bytes)
                 .map_err(|e| anyhow!("Signature verification failed: invalid public key: {e}"))?;
+            if verifying_key.is_weak() {
+                // Small-order keys are never legitimate signers, and
+                // cofactored verification can accept forgeries under
+                // them (see verify_ed25519 in trust.rs).
+                return Err(anyhow!(
+                    "Signature verification failed: signer public key is a weak (small-order) key"
+                ));
+            }
             let signature_bytes = Ed25519Signature::try_from(signature.signature.as_ref())
                 .map_err(|e| {
                     anyhow!("Signature verification failed: invalid signature bytes: {e}")
@@ -509,6 +522,9 @@ struct ScanFrame {
     next_is_key: bool,
     seen_keys: HashSet<Vec<u8>>,
     start: usize,
+    /// The previous key's encoded span, for the deterministic
+    /// (wire 0x03) key-order check.
+    last_key: Option<Vec<u8>>,
 }
 
 /// Iterative raw-encoding CBOR scan — a faithful port of spif-py's
@@ -524,9 +540,15 @@ struct ScanFrame {
 /// §12.4's writer rule — canonical CBOR for all chunks when a signature
 /// is present — reader-verifiable): definite lengths only and
 /// shortest-form arguments — RFC 8949 §4.2 core deterministic encoding,
-/// minus key sorting, which the writers do not promise. Unsigned
+/// minus key sorting, which the legacy writers do not promise. Unsigned
 /// documents keep §4.1/§12.1's accept-both leniency for indefinite-length
 /// items and non-minimal forms.
+///
+/// Additionally enforced when `deterministic` is true (wire 0x03 signed
+/// documents): the full IETF deterministic form — map keys in bytewise
+/// order of their encodings, shortest-form floats with the single
+/// canonical NaN, and minimal bignums (serialization checking in
+/// draft-ietf-cbor-serialization's Appendix G sense).
 ///
 /// The scan also rejects structural malformations ciborium would
 /// otherwise tolerate in a chunk payload (reserved additional
@@ -537,9 +559,11 @@ struct CborFormScan<'a> {
     data: &'a [u8],
     chunk_name: &'a str,
     canonical: bool,
+    deterministic: bool,
     pos: usize,
     stack: Vec<ScanFrame>,
     root_done: bool,
+    pending_bignum: bool,
 }
 
 impl CborFormScan<'_> {
@@ -583,6 +607,16 @@ impl CborFormScan<'_> {
                     let identity = key_identity(&self.data[start..end]);
                     if !frame.seen_keys.insert(identity) {
                         return Err(self.fail_duplicate_key());
+                    }
+                    if self.deterministic {
+                        let span = &self.data[start..end];
+                        if let Some(last) = &frame.last_key {
+                            if span <= last.as_slice() {
+                                return Err(self
+                                    .fail("map keys out of deterministic (bytewise) order"));
+                            }
+                        }
+                        frame.last_key = Some(span.to_vec());
                     }
                     frame.next_is_key = false;
                 } else if frame.is_map {
@@ -642,6 +676,41 @@ impl CborFormScan<'_> {
             return Err(self.fail("non-minimal argument encoding"));
         }
         Ok(arg)
+    }
+
+    /// Deterministic float form (wire 0x03): shortest exact width, and
+    /// the only NaN is the half-precision 0x7e00 payload. Mirrors
+    /// spif-py's `check_float` in `_scan_cbor`.
+    fn check_float(&self, ai: u8, payload: &[u8]) -> Result<()> {
+        match ai {
+            25 => {
+                let bits = u16::from_be_bytes([payload[0], payload[1]]);
+                if crate::trust::f16_to_f64(bits).is_nan() && payload != [0x7e, 0x00] {
+                    return Err(self.fail("non-canonical NaN encoding"));
+                }
+            }
+            26 => {
+                let v = f32::from_be_bytes([payload[0], payload[1], payload[2], payload[3]]) as f64;
+                if v.is_nan() || v.is_infinite() {
+                    return Err(self.fail("non-minimal floating-point encoding"));
+                }
+                let half = crate::trust::f32_to_f16_bits(v as f32);
+                if crate::trust::f16_to_f64(half) == v {
+                    return Err(self.fail("non-minimal floating-point encoding"));
+                }
+            }
+            _ => {
+                let v = f64::from_be_bytes(payload.try_into().unwrap());
+                if v.is_nan() || v.is_infinite() {
+                    return Err(self.fail("non-minimal floating-point encoding"));
+                }
+                let half = crate::trust::f32_to_f16_bits(v as f32);
+                if crate::trust::f16_to_f64(half) == v || (v as f32) as f64 == v {
+                    return Err(self.fail("non-minimal floating-point encoding"));
+                }
+            }
+        }
+        Ok(())
     }
 
     fn run(mut self) -> Result<()> {
@@ -735,6 +804,7 @@ impl CborFormScan<'_> {
                         next_is_key: false,
                         seen_keys: HashSet::new(),
                         start: item_start.unwrap(),
+                        last_key: None,
                     });
                     item_start = None;
                     continue;
@@ -746,6 +816,7 @@ impl CborFormScan<'_> {
                         next_is_key: true,
                         seen_keys: HashSet::new(),
                         start: item_start.unwrap(),
+                        last_key: None,
                     });
                     item_start = None;
                     continue;
@@ -768,6 +839,9 @@ impl CborFormScan<'_> {
                     if self.pos + width > n {
                         return Err(self.fail("unexpected end of data"));
                     }
+                    if self.deterministic {
+                        self.check_float(ai, &self.data[self.pos..self.pos + width])?;
+                    }
                     self.pos += width;
                     self.complete_item(item_start.unwrap(), self.pos)?;
                     item_start = None;
@@ -779,10 +853,33 @@ impl CborFormScan<'_> {
                 return Err(self.fail("reserved additional information"));
             };
 
+            if self.pending_bignum {
+                // The item after a tag 2/3 head: deterministic bignums
+                // are minimal — non-empty, no leading zero, and too
+                // large for major type 0/1 (draft Appendix G.2).
+                self.pending_bignum = false;
+                if major == 2 && arg <= (n - self.pos) as u64 {
+                    if arg == 0 {
+                        return Err(self.fail("empty bignum encoding is not deterministic"));
+                    }
+                    if self.data[self.pos] == 0 {
+                        return Err(
+                            self.fail("bignum with a leading zero is not deterministic")
+                        );
+                    }
+                    if arg <= 8 {
+                        return Err(self.fail("bignum value fits in major type 0/1"));
+                    }
+                }
+            }
+
             if major == 6 {
                 // A tag prefixes the following item: the span keeps the
                 // tag bytes and the parent slot is consumed by the
                 // tagged item (item_start is retained).
+                if self.deterministic && (arg == 2 || arg == 3) {
+                    self.pending_bignum = true;
+                }
                 continue;
             }
             if major == 0 || major == 1 || major == 7 {
@@ -806,6 +903,7 @@ impl CborFormScan<'_> {
                     next_is_key: false,
                     seen_keys: HashSet::new(),
                     start: item_start.unwrap(),
+                        last_key: None,
                 });
                 item_start = None;
             } else {
@@ -816,6 +914,7 @@ impl CborFormScan<'_> {
                     next_is_key: true,
                     seen_keys: HashSet::new(),
                     start: item_start.unwrap(),
+                        last_key: None,
                 });
                 item_start = None;
             }
@@ -830,14 +929,21 @@ impl CborFormScan<'_> {
 /// Form-gate one chunk's CBOR payload, mirroring spif-py's
 /// `_assert_canonical_cbor` (when `canonical`) and
 /// `_assert_unambiguous_cbor` (when not). See `CborFormScan`.
-fn assert_cbor_form(data: &[u8], chunk_name: &str, canonical: bool) -> Result<()> {
+fn assert_cbor_form(
+    data: &[u8],
+    chunk_name: &str,
+    canonical: bool,
+    deterministic: bool,
+) -> Result<()> {
     CborFormScan {
         data,
         chunk_name,
         canonical,
+        deterministic,
         pos: 0,
         stack: Vec::new(),
         root_done: false,
+        pending_bignum: false,
     }
     .run()
 }

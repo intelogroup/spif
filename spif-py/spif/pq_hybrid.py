@@ -275,6 +275,9 @@ def hybrid_verify_message(
     if not pq_available():
         return False
     try:
+        from .crypto import is_weak_ed25519_public_key
+        if is_weak_ed25519_public_key(ed_public_bytes):
+            return False
         Ed25519PublicKey.from_public_bytes(ed_public_bytes).verify(
             signature[:ED25519_SIG_LEN], message
         )
@@ -461,6 +464,9 @@ def assess_pq_entry(
             )
         ed_pk, ml_pk = keys
         try:
+            from .crypto import is_weak_ed25519_public_key
+            if is_weak_ed25519_public_key(ed_pk):
+                raise InvalidSignature("weak (small-order) ed25519 key")
             Ed25519PublicKey.from_public_bytes(ed_pk).verify(
                 signature[:ED25519_SIG_LEN], body
             )

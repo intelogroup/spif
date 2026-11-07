@@ -6,7 +6,13 @@ status, TSA timestamp anchors, offline cross-document resolution) and
 for v1.4 hybrid post-quantum signing (SPEC §7.9, cases 12–15), and
 the negative corpus (cases 16–23): documents that must NOT verify as
 plain VALID, each pinning one rejection rule (SPEC §4.1 canonical /
-ambiguity rules and the §7.9.2 gate table).
+ambiguity rules and the §7.9.2 gate table). Cases 26–34 pin the
+wire-0x03 per-version canonical rule (SPEC §4.1 as amended for the
+v2.0 format release): the legacy 0x01/0x02 subset checks no key
+order, float width, or bignum minimality, while signed 0x03
+documents are serialization-checked against IETF deterministic
+encoding — including the integer-key pair where the legacy and
+bytewise orders actually differ.
 
 ## Running
 
@@ -14,6 +20,7 @@ ambiguity rules and the §7.9.2 gate table).
 python build_vectors.py          # regenerate artifacts + manifest for cases 01-11 (deterministic)
 python build_pq_vectors.py       # regenerate artifacts + manifest for cases 12-15 (needs the 'pq' extra)
 python build_negative_vectors.py # regenerate artifacts + manifest for cases 16-23 (case 23 needs the 'pq' extra at build time)
+python build_v2_vectors.py       # regenerate artifacts + manifest for cases 26-34 (deterministic)
 python run_conformance.py        # execute all cases against spif-py
 ```
 
@@ -49,6 +56,17 @@ replacing the adapter function in `run_conformance.py`.
 | 21 | neg_duplicate_key_provenance  | INVALID (duplicate key in a non-signature chunk)             |
 | 22 | neg_hybrid_malformed_length_classical | INVALID (case 15's artifact under the classical gate — §7.9.2: malformed in BOTH modes) |
 | 23 | neg_pq_only_classical_unverifiable | UNVERIFIABLE (genuine ML-DSA-65-only signature, classical reader — invisible, not invalid) |
+| 24 | neg_crossauth_multisig_appended | INVALID (MULTISIG appended to a single-signature document — §7.2 one attestation) |
+| 25 | neg_crossauth_signature_appended | INVALID (SIGNATURE appended to a multisig document — §7.2 one attestation) |
+| 26 | unordered_keys_accepted_v2    | VALID (wire 0x02: the legacy subset checks no map key order) |
+| 27 | unordered_keys_rejected_v3    | INVALID (wire 0x03: deterministic key order enforced on signed documents) |
+| 28 | valid_v3                      | VALID (ordinary current-writer wire 0x03 document)          |
+| 29 | neg_nonminimal_float_v3       | INVALID (0.5 encoded as float64 at 0x03 — shortest exact form required) |
+| 30 | float_width_accepted_v2       | VALID (wire 0x02: float width not checked)                   |
+| 31 | neg_nonminimal_bignum_v3      | INVALID (small integer encoded as a tag-2 bignum at 0x03)    |
+| 32 | neg_legacy_intkey_order_v3    | INVALID ({-1, 24} in legacy order at 0x03 — bytewise rule adopted 2026-11-07) |
+| 33 | legacy_intkey_order_accepted_v2 | VALID (the case-32 construction at wire 0x02)              |
+| 34 | bytewise_intkey_order_v3      | VALID ({24, -1} in bytewise order at 0x03)                   |
 
 Cases 16–23 are the **negative corpus**, built by
 `build_negative_vectors.py` and seeded from the adversarial loop's

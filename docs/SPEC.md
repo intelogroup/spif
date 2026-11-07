@@ -3,7 +3,7 @@
 
 **MIME type:** `application/x-spif`  
 **File extension:** `.spif`  
-**Status:** v1.0 wire contract is locked and stable. All implementations MUST support reading v0.2 documents for backward compatibility. Addenda through **v1.3** (see Appendix B) extend the format without changing the wire contract: v1.2 was informational; v1.3 makes the trust layer (revocation, timestamp anchoring, cross-document resolution) normative and adds a conformance kit (`vectors/`).
+**Status:** v1.0 wire contract is locked and stable. All implementations MUST support reading v0.2 documents for backward compatibility. Addenda through **v1.3** (see Appendix B) extend the format without changing the wire contract: v1.2 was informational; v1.3 makes the trust layer (revocation, timestamp anchoring, cross-document resolution) normative and adds a conformance kit (`vectors/`). **v2.0** (Appendix B) is the first breaking wire change: wire `0x03`, the canonical-CBOR convergence of §4.1; legacy documents remain fully readable under their own version's rules.
 
 ---
 
@@ -46,9 +46,9 @@ The pattern mirrors the PNG magic bytes. The leading `\x89` flags the file as bi
 
 ### 2.2 Version Byte
 
-The wire format version is `0x02`. This is locked for v1.0 and will not change unless a non-backward-compatible breaking change is required (which would trigger v2.0).
+The wire format version is `0x03`. Versions `0x01` and `0x02` are the legacy wire formats; `0x03` carries the canonical-CBOR convergence to IETF deterministic serialization (§4.1) and ships as the v2.0 format release — the breaking change the v1.0 text reserved the major bump for. (Release 2.0, wire `0x03`: the two numberings are deliberately independent.)
 
-Readers MUST support versions `0x01` and `0x02`. Readers encountering an unknown version MUST raise `SPIFVersionError` rather than attempting to parse.
+Writers MUST emit `0x03`. Readers MUST support versions `0x01`, `0x02`, and `0x03`, applying each version's own canonical rule (§4.1) — a legacy document is never re-judged under a newer version's rules. Readers encountering an unknown version MUST raise `SPIFVersionError` rather than attempting to parse.
 
 **v0.1 compatibility**: Readers MUST gracefully handle v0.1 documents, which do not have:
 - `flags2` field in the HEADER chunk
@@ -155,16 +155,14 @@ All chunk payloads are CBOR-encoded (RFC 8949), except CHECKSUM which is raw byt
 
 ### 4.1 Canonical Mode
 
-Chunks covered by an ed25519 signature MUST be encoded in **canonical CBOR** (RFC 8949 §4.2): map keys sorted by length then lexicographic, no indefinite-length items.
+Canonical CBOR is **per wire version**. The rule a document is written and judged under is the rule of its own version byte (§2.2):
 
-Unsigned documents MAY use non-canonical CBOR for ~10–15% faster encoding. Readers MUST accept both.
+- **Wire `0x03` — deterministic.** Writers MUST encode every chunk in IETF deterministic CBOR (draft-ietf-cbor-serialization §5; RFC 8949 §4.2.1): definite lengths only, shortest-form arguments, map keys sorted by the bytewise lexicographic order of their encodings, shortest-form floats with the single canonical NaN, and minimal bignums. This applies signed or unsigned — at `0x03` there is one encoding. Readers MUST enforce the full deterministic form on every chunk of a document that carries a signature, and MUST reject duplicate map keys in any document. Readers accept encoding variability in *unsigned* `0x03` documents from other encoders, as before.
+- **Wire `0x01`/`0x02` — legacy.** Writers sorted map keys by length, then lexicographic (the RFC 8949 §4.2.3 order), with no indefinite-length items in signed documents. Readers enforce the subset those writers emitted — definite lengths, shortest-form arguments, no duplicate keys — on signed documents, and do not check key order, float form, or bignum form. Legacy documents verify exactly as they did when written.
 
-**Relation to draft-ietf-cbor-serialization (work in progress).** draft-ietf-cbor-serialization-12 (October 2026; updates RFC 8949 if approved) normatively defines *deterministic serialization* and, in its Appendix G, *serialization checking*: a decoder that rejects well-formed input failing the serialization rules. SPIF's reader enforcement is serialization checking in that sense, applied to every chunk of a document that carries a signature. What SPIF checks is the subset its writers emit: definite lengths only, shortest-form arguments, and no duplicate map keys in any document, signed or unsigned. This matches the draft's §5.3.1 rationale: SPIF signatures verify over the transmitted bytes, so full deterministic reconstruction is not required.
+**Relation to draft-ietf-cbor-serialization (work in progress).** draft-ietf-cbor-serialization-12 (October 2026; updates RFC 8949 if approved) normatively defines *deterministic serialization* and, in its Appendix G, *serialization checking*: a decoder that rejects well-formed input failing the serialization rules. SPIF's reader enforcement is serialization checking in that sense, applied to every chunk of a document that carries a signature, with the rule set selected by the document's version. This remains consistent with the draft's §5.3.1 rationale: SPIF signatures verify over the transmitted bytes, so deterministic checking is a form rule, not a reconstruction requirement.
 
-Two divergences from the draft's deterministic serialization are recorded here, not silent:
-
-1. **Map key order.** SPIF writers sort keys by length, then lexicographic (the RFC 8949 §4.2.3 order). The draft's deterministic serialization sorts by the bytewise lexicographic order of the encoded keys (RFC 8949 §4.2.1), and explicitly distinguishes the two orders. SPIF readers do not check key order. Changing the writer order would change the canonical bytes of signed chunks and invalidate existing signatures, so alignment with the draft is an open decision, not a silent fix.
-2. **Float and bignum minimality.** The draft additionally requires shortest-form floating-point encodings (with a single NaN form) and minimal bignums (no leading zeros; a value representable as major type 0 or 1 must not use tag 2 or 3). SPIF's reader scan enforces neither. These are leniency items: tightening them rejects documents current readers accept, so they follow the same decision path as (1).
+**Decision record.** Earlier revisions of this section recorded two divergences from the draft — the §4.2.3 writer key order, and unenforced float/bignum minimality — as an open decision, because aligning would change canonical bytes. The decision was taken on 2026-11-07: align, at the wire `0x03` boundary, while the format is pre-adoption and the switch costs the least it ever will. The migration plan is `docs/CBOR-DETERMINISTIC-MIGRATION.md`.
 
 ### 4.2 Custom CBOR Tags
 
@@ -815,6 +813,8 @@ content_id = SHA-256(canonical_CBOR({
 
 This hash is **independent** of: framing bytes, signatures, embeddings, alternatives, delta, and compression. Two documents with identical semantic content but different signatures produce the same `content_id`.
 
+`canonical_CBOR` here means the canonical rule of the document's wire version (§4.1): at `0x03` the deterministic encoding, at `0x01`/`0x02` the legacy encoding. A document's `content_id` is therefore stable for that document, but the same logical content carried at two different wire versions has two different `content_id` values — the version is part of the identity, exactly as it is part of the bytes.
+
 Use `content_id()` to populate `Provenance.context_ref` for multi-turn conversation chaining:
 
 ```python
@@ -1106,6 +1106,21 @@ The PAYLOAD CBOR array contains one map:
 ---
 
 ## Appendix B: Changelog
+
+**v2.0** (breaking wire change, see §2.2 and §4.1):
+- Wire format version `0x03`: canonical CBOR converges to IETF deterministic
+  serialization (draft-ietf-cbor-serialization) — writers emit deterministic
+  form for every chunk, signed or unsigned; readers enforce the full
+  deterministic form (bytewise key order, shortest-form floats, minimal
+  bignums) on signed `0x03` documents
+- The canonical rule is per wire version: `0x01`/`0x02` documents keep the
+  legacy rule and verify exactly as written; `content_id` is computed under
+  the document version's rule (§8)
+- Signed statement payloads (revocation, timestamp, key rotation) use the
+  same deterministic encoding
+- No chunk types, fields, or semantics change; old readers reject `0x03`
+  documents with a version error rather than misreading them
+- Migration plan: `docs/CBOR-DETERMINISTIC-MIGRATION.md`
 
 **v1.4** (normative addendum, see §7.9):
 - Hybrid post-quantum signing (`"ed25519+ml-dsa-65"`, §7.5) is now normative and

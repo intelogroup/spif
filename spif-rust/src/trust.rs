@@ -81,7 +81,7 @@ fn encode_major(out: &mut Vec<u8>, major: u8, arg: u64) {
     }
 }
 
-fn f16_to_f64(bits: u16) -> f64 {
+pub(crate) fn f16_to_f64(bits: u16) -> f64 {
     let sign = if bits & 0x8000 != 0 { -1.0 } else { 1.0 };
     let exp = ((bits >> 10) & 0x1f) as i32;
     let frac = (bits & 0x3ff) as f64;
@@ -100,7 +100,7 @@ fn f16_to_f64(bits: u16) -> f64 {
 
 /// Convert f32 to f16 bits with round-to-nearest-even. Only used after an
 /// exact round-trip check, so rounding never affects emitted bytes.
-fn f32_to_f16_bits(f: f32) -> u16 {
+pub(crate) fn f32_to_f16_bits(f: f32) -> u16 {
     let bits = f.to_bits();
     let sign = ((bits >> 16) & 0x8000) as u16;
     let exp = ((bits >> 23) & 0xff) as i32;
@@ -171,9 +171,11 @@ fn encode_float(out: &mut Vec<u8>, f: f64) {
     out.extend_from_slice(&f.to_be_bytes());
 }
 
-/// Canonically encode a ciborium `Value` (RFC 8949 §4.2 deterministic
-/// encoding): shortest-form integers, shortest round-tripping floats,
-/// map keys sorted by their encoded bytes.
+/// Deterministically encode a ciborium `Value` (IETF deterministic
+/// CBOR, draft-ietf-cbor-serialization §5): shortest-form integers,
+/// shortest round-tripping floats, map keys sorted by the bytewise
+/// order of their encodings. This is the one canonical encoding for
+/// everything the format defines at wire 0x03.
 pub fn canonical_cbor(value: &Value) -> Vec<u8> {
     let mut out = Vec::new();
     encode_value(value, &mut out);
@@ -524,6 +526,15 @@ fn resolve_signer_key(
 }
 
 fn verify_ed25519(key: &VerifyingKey, signature_bytes: &[u8], body: &[u8]) -> bool {
+    // Weak (small-order) public keys are never legitimate signers, and
+    // dalek's cofactored verify can accept a forged signature under
+    // one for a fraction of messages (an all-zero key/signature pair
+    // verifies against roughly one body in four). Reject them before
+    // the cryptographic check, here and in the reader, so no verify
+    // site can be reached with one.
+    if key.is_weak() {
+        return false;
+    }
     match Ed25519Signature::try_from(signature_bytes) {
         Ok(sig) => key.verify(body, &sig).is_ok(),
         Err(_) => false,

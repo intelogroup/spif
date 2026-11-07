@@ -3,8 +3,8 @@ use serde::{Deserialize, Serialize};
 use serde_bytes::ByteBuf;
 
 pub const MAGIC: &[u8] = b"\x89SPIF\r\n\x1a\n";
-pub const FORMAT_VERSION: u8 = 0x02;
-pub const SUPPORTED_VERSIONS: &[u8] = &[0x01, 0x02];
+pub const FORMAT_VERSION: u8 = 0x03;
+pub const SUPPORTED_VERSIONS: &[u8] = &[0x01, 0x02, 0x03];
 
 // Chunk type IDs
 pub const CHUNK_HEADER: u8 = 0x00;
