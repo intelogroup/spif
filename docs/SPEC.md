@@ -159,6 +159,13 @@ Chunks covered by an ed25519 signature MUST be encoded in **canonical CBOR** (RF
 
 Unsigned documents MAY use non-canonical CBOR for ~10–15% faster encoding. Readers MUST accept both.
 
+**Relation to draft-ietf-cbor-serialization (work in progress).** draft-ietf-cbor-serialization-12 (October 2026; updates RFC 8949 if approved) normatively defines *deterministic serialization* and, in its Appendix G, *serialization checking*: a decoder that rejects well-formed input failing the serialization rules. SPIF's reader enforcement is serialization checking in that sense, applied to every chunk of a document that carries a signature. What SPIF checks is the subset its writers emit: definite lengths only, shortest-form arguments, and no duplicate map keys in any document, signed or unsigned. This matches the draft's §5.3.1 rationale: SPIF signatures verify over the transmitted bytes, so full deterministic reconstruction is not required.
+
+Two divergences from the draft's deterministic serialization are recorded here, not silent:
+
+1. **Map key order.** SPIF writers sort keys by length, then lexicographic (the RFC 8949 §4.2.3 order). The draft's deterministic serialization sorts by the bytewise lexicographic order of the encoded keys (RFC 8949 §4.2.1), and explicitly distinguishes the two orders. SPIF readers do not check key order. Changing the writer order would change the canonical bytes of signed chunks and invalidate existing signatures, so alignment with the draft is an open decision, not a silent fix.
+2. **Float and bignum minimality.** The draft additionally requires shortest-form floating-point encodings (with a single NaN form) and minimal bignums (no leading zeros; a value representable as major type 0 or 1 must not use tag 2 or 3). SPIF's reader scan enforces neither. These are leniency items: tightening them rejects documents current readers accept, so they follow the same decision path as (1).
+
 ### 4.2 Custom CBOR Tags
 
 SPIF reserves tag numbers 1000–1099 for its own types:
