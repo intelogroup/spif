@@ -10,7 +10,13 @@ The default implementation adapter is spif-py
 special: it runs the Rust implementation's `trust_conformance` binary
 (spif-rust) in both directions — Rust verifying the Python-produced
 artifact, and spif-py verifying a Rust-produced signed artifact. It is
-BLOCKED only when no Rust toolchain/binary is available. Cases 12-15
+BLOCKED only when no Rust toolchain/binary is available. Additionally,
+the cases in RUST_AGREEMENT_IDS — the canonical-CBOR guard set: cases
+18/19 (non-canonical SIGNATURE encodings, SPIF-RUST-NONCANONICAL-
+ACCEPT-001), the MULTISIG-bearing case 24, and their agreement
+controls — must also match the Rust binary's verdict field-for-field;
+a case whose Python verdict passes but whose Rust verdict differs
+FAILs, and the case is BLOCKED when no Rust binary is available. Cases 12-15
 (hybrid PQ, v1.4) carry ``adapter: pq_hybrid`` and run through
 `verify_artifact` in the require_pq gate mode (SPEC §7.9.2); they are
 BLOCKED when the ML-DSA backend (pqcrypto) is unavailable. To run
@@ -117,6 +123,50 @@ def rust_conformance_binary() -> Path | None:
     return RUST_BIN
 
 
+# Cases that must agree between spif-py and the Rust trust_conformance
+# binary, field for field. All are input-free (the binary is invoked
+# with no extra flags). 18/19 are the non-canonical SIGNATURE cases of
+# SPIF-RUST-NONCANONICAL-ACCEPT-001; 24 carries the kit's MULTISIG
+# chunk; 01/06/17/20/21 are the agreement controls (valid, revoked,
+# duplicate-key x2, trailing bytes).
+RUST_AGREEMENT_IDS = {"01", "06", "17", "18", "19", "20", "21", "24"}
+
+
+def run_rust_agreement_check(case: dict) -> tuple[str, str | None]:
+    """Run one case through the Rust binary and compare its report
+    fields with the manifest expectation. Returns (status, reason)
+    with status PASS / FAIL / BLOCKED."""
+    binary = rust_conformance_binary()
+    if binary is None:
+        return "BLOCKED", (
+            "rust-agreement check requires the Rust toolchain (cargo/"
+            "rustc) to build the spif-rust trust_conformance binary; "
+            "Rust is not available in this environment"
+        )
+    try:
+        proc = subprocess.run(
+            [str(binary), "verify", str(HERE / case["artifact"])],
+            capture_output=True, text=True, timeout=300,
+        )
+        if proc.returncode != 0:
+            return "FAIL", (
+                f"rust verify exited {proc.returncode}: "
+                f"{proc.stderr.strip()}"
+            )
+        got = json.loads(proc.stdout)
+    except Exception as e:
+        return "FAIL", f"rust verify raised: {e!r}"
+    expected = case["expected"]
+    mismatches = [
+        f"rust-agreement {k}: expected {expected[k]!r}, got {got.get(k)!r}"
+        for k in expected
+        if got.get(k) != expected[k]
+    ]
+    if mismatches:
+        return "FAIL", "; ".join(mismatches)
+    return "PASS", None
+
+
 def run_cross_implementation_case(case: dict) -> tuple[str, str | None]:
     """Case 02: cross-implementation parity, in both directions.
 
@@ -216,6 +266,11 @@ def evaluate_cases() -> list[dict]:
         entry["result"] = "PASS" if not mismatches else "FAIL"
         if mismatches:
             entry["reason"] = "; ".join(mismatches)
+        if entry["result"] == "PASS" and case["id"] in RUST_AGREEMENT_IDS:
+            status, reason = run_rust_agreement_check(case)
+            if status != "PASS":
+                entry["result"] = status
+                entry["reason"] = reason
         results.append(entry)
     return results
 
