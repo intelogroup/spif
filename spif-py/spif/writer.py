@@ -18,6 +18,7 @@ from .format import (
     FLAG_PROVENANCE, FLAG_SEMANTIC, FLAG_TRACE, FLAG_ALTS, FLAG_DELTA, FLAG_SIGNATURE,
     FLAG_MULTISIG, FLAG_COMPRESSED, FLAG_ZSTD, FLAG_HAS_TASK,
     TAG_DISTRIBUTION, TAG_NODEREF, TAG_EMBEDDING,
+    cbor_deterministic,
 )
 from .types import (
     SPIFDocument, Distribution, NodeRef, Node, TraceStep,
@@ -29,13 +30,19 @@ _CHUNK_STRUCT = struct.Struct(">BI")
 
 
 def _cbor(data: object) -> bytes:
-    """Canonical CBOR encoding (RFC 8949 §4.2) — required for valid signatures."""
-    return cbor2.dumps(data, canonical=True)
+    """Deterministic CBOR encoding — the wire-0x03 canonical form."""
+    return cbor_deterministic(data)
 
 
 def _cbor_fast(data: object) -> bytes:
-    """Non-canonical CBOR — faster encode for unsigned documents."""
-    return cbor2.dumps(data, canonical=False)
+    """Kept for the call sites that historically used a faster,
+    non-canonical encode for unsigned documents. At wire 0x03 there is
+    one encoding — deterministic — signed or not: the legacy fast path
+    promised no key order, and that promise is what the 0x03 migration
+    retired. (Readers still accept encoding variability in unsigned
+    documents from other encoders; SPIF's own writers no longer
+    produce it.)"""
+    return cbor_deterministic(data)
 
 
 def _encode_distribution(d: Distribution) -> cbor2.CBORTag:
@@ -204,7 +211,10 @@ class SPIFWriter:
         if doc.task_info is not None:
             flags2 |= FLAG_HAS_TASK
 
-        # Skip canonical CBOR when no signature is needed — ~10-15% faster encode
+        # `fast` selected a non-canonical encode for unsigned documents
+        # before wire 0x03; both paths now emit the deterministic form
+        # (see _cbor_fast). The flag stays so the chunk calls below keep
+        # their shape.
         fast = not (doc.signature or doc.signatures)
         compress = self._compress
         compression = self._compression

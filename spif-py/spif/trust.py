@@ -43,7 +43,10 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
 )
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 
-from .format import MAGIC, CHUNK_REVOCATION, CHUNK_TIMESTAMP, CHUNK_CHECKSUM
+from .format import (
+    MAGIC, CHUNK_REVOCATION, CHUNK_TIMESTAMP, CHUNK_CHECKSUM,
+    cbor_deterministic,
+)
 from .pq_hybrid import (
     HYBRID_ALGORITHM,
     PQ_ONLY_ALGORITHM,
@@ -110,12 +113,20 @@ def _pubkey_b64(key: Ed25519PublicKey) -> str:
 
 
 def _pubkey_from_b64(text: str) -> Ed25519PublicKey | None:
-    """Parse a base64 raw ed25519 public key; None if `text` is not one."""
+    """Parse a base64 raw ed25519 public key; None if `text` is not one.
+
+    Every caller of this helper verifies against the returned key, so
+    weak (small-order) keys resolve to None here: they are never
+    legitimate signers, and cofactored verification can accept
+    forgeries under them (see crypto.is_weak_ed25519_public_key)."""
     try:
         raw = base64.b64decode(text, validate=True)
     except (binascii.Error, ValueError):
         return None
     if len(raw) != 32:
+        return None
+    from .crypto import is_weak_ed25519_public_key
+    if is_weak_ed25519_public_key(raw):
         return None
     return Ed25519PublicKey.from_public_bytes(raw)
 
@@ -125,7 +136,7 @@ def _pubkey_from_b64(text: str) -> Ed25519PublicKey | None:
 # ---------------------------------------------------------------------------
 
 def _statement_signing_bytes(stmt: RevocationStatement) -> bytes:
-    return cbor2.dumps(stmt.unsigned_dict(), canonical=True)
+    return cbor_deterministic(stmt.unsigned_dict())
 
 
 def create_revocation(
@@ -321,7 +332,7 @@ def attach_revocations(data: bytes, statements: list[RevocationStatement]) -> by
     REVOCATION chunk (replacing any existing one)."""
     existing = extract_revocations(data)
     merged = existing + [s for s in statements if s not in existing]
-    payload = cbor2.dumps([s.to_cbor_dict() for s in merged], canonical=True)
+    payload = cbor_deterministic([s.to_cbor_dict() for s in merged])
     return attach_chunk(data, CHUNK_REVOCATION, payload)
 
 
@@ -347,8 +358,8 @@ def extract_revocations(data: bytes) -> list[RevocationStatement]:
 # ---------------------------------------------------------------------------
 
 def _timestamp_token_body(digest: str, time_ms: int) -> bytes:
-    return cbor2.dumps(
-        {"artifact_digest": digest, "time_ms": time_ms}, canonical=True
+    return cbor_deterministic(
+        {"artifact_digest": digest, "time_ms": time_ms}
     )
 
 
@@ -376,7 +387,7 @@ def create_timestamp_anchor(
 def attach_timestamp(data: bytes, anchor: TimestampAnchor) -> bytes:
     """Return a copy of the artifact with `anchor` embedded in its
     TIMESTAMP chunk (replacing any existing one)."""
-    payload = cbor2.dumps(anchor.to_cbor_dict(), canonical=True)
+    payload = cbor_deterministic(anchor.to_cbor_dict())
     return attach_chunk(data, CHUNK_TIMESTAMP, payload)
 
 

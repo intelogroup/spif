@@ -162,7 +162,11 @@ impl SPIFWriter {
         Ok(buf)
     }
 
-    /// Serialize `data` as CBOR and append a framed chunk to `buf`.
+    /// Serialize `data` as deterministic CBOR and append a framed chunk
+    /// to `buf`. The serde output is round-tripped through a ciborium
+    /// `Value` and re-encoded with `canonical_cbor`, so map keys are in
+    /// bytewise order of their encodings (wire 0x03) regardless of
+    /// struct field declaration order.
     /// Uses a scratch Vec for the payload only (required to know its length before writing
     /// the 4-byte length prefix). One alloc per chunk instead of two.
     fn write_chunk<T: serde::Serialize>(
@@ -171,8 +175,10 @@ impl SPIFWriter {
         data: &T,
         compress: bool,
     ) -> Result<()> {
-        let mut payload = Vec::new();
-        into_writer(data, &mut payload)?;
+        let mut raw = Vec::new();
+        into_writer(data, &mut raw)?;
+        let value: Value = ciborium::de::from_reader(&raw[..])?;
+        let mut payload = crate::trust::canonical_cbor(&value);
         if compress {
             let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
             encoder.write_all(&payload)?;

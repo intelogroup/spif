@@ -17,11 +17,15 @@ Readers MUST support all previous versions (v0.1, v0.2) indefinitely.
 # FROZEN: Do not change. Identifies all SPIF files.
 MAGIC = b"\x89SPIF\r\n\x1a\n"
 
-# Wire format version. v0.2 is locked for v1.0 release.
+# Wire format version.
 # History:
 #   0x01: Initial release (v0.1)
 #   0x02: Added signature support, trace method, distribution semantics (v0.2/v1.0)
-FORMAT_VERSION = 0x02
+#   0x03: Canonical CBOR converges to IETF deterministic serialization
+#         (bytewise map-key order; full deterministic form enforced on
+#         signed documents). Ships as the v2.0 format release — see
+#         docs/CBOR-DETERMINISTIC-MIGRATION.md.
+FORMAT_VERSION = 0x03
 
 # Chunk type IDs
 CHUNK_HEADER     = 0x00
@@ -137,3 +141,58 @@ KNOWN_DIST_SEMANTICS = frozenset({
 TRACE_POSTHOC  = "post-hoc"   # model narrates reasoning after output (most LLM CoT)
 TRACE_LIVE     = "live"       # trace generated simultaneously (tool calls, structured gen)
 TRACE_VERIFIED = "verified"   # derived from model internals (mechanistic interpretability)
+
+
+# ---------------------------------------------------------------------------
+# Deterministic CBOR encoding (wire 0x03+)
+# ---------------------------------------------------------------------------
+
+import cbor2 as _cbor2
+
+
+def _det_head(major: int, arg: int) -> bytes:
+    """CBOR head (major type + shortest-form argument)."""
+    if arg < 24:
+        return bytes([(major << 5) | arg])
+    if arg < 1 << 8:
+        return bytes([(major << 5) | 24, arg])
+    if arg < 1 << 16:
+        return bytes([(major << 5) | 25]) + arg.to_bytes(2, "big")
+    if arg < 1 << 32:
+        return bytes([(major << 5) | 26]) + arg.to_bytes(4, "big")
+    return bytes([(major << 5) | 27]) + arg.to_bytes(8, "big")
+
+
+def cbor_deterministic(data: object) -> bytes:
+    """Encode in IETF deterministic CBOR (draft-ietf-cbor-serialization
+    §5, RFC 8949 §4.2.1): definite lengths, shortest-form arguments,
+    map keys sorted by the bytewise lexicographic order of their
+    encodings, shortest-form floats, minimal bignums.
+
+    This is the one canonical encoding for everything the format
+    defines at wire 0x03 — chunk payloads, content IDs, and signed
+    statement payloads. cbor2's canonical mode sorts keys
+    length-then-lexicographic (the legacy §4.2.3 order), so containers
+    are assembled here; scalar leaves are delegated to cbor2, whose
+    canonical form already reduces floats to the shortest exact width,
+    emits the single canonical NaN, and encodes bignums minimally.
+    """
+    if isinstance(data, dict):
+        pairs = sorted(
+            ((cbor_deterministic(k), cbor_deterministic(v))
+             for k, v in data.items()),
+            key=lambda kv: kv[0],
+        )
+        out = bytearray(_det_head(5, len(pairs)))
+        for key_bytes, value_bytes in pairs:
+            out += key_bytes
+            out += value_bytes
+        return bytes(out)
+    if isinstance(data, (list, tuple)):
+        out = bytearray(_det_head(4, len(data)))
+        for item in data:
+            out += cbor_deterministic(item)
+        return bytes(out)
+    if isinstance(data, _cbor2.CBORTag):
+        return _det_head(6, data.tag) + cbor_deterministic(data.value)
+    return _cbor2.dumps(data, canonical=True)

@@ -226,8 +226,12 @@ impl SPIFStreamWriter {
     }
 
     fn cbor_chunk<T: serde::Serialize>(chunk_type: u8, data: &T) -> Result<Vec<u8>> {
-        let mut payload = Vec::new();
-        into_writer(data, &mut payload)?;
+        // Deterministic encoding, as in the writer: round-trip through
+        // a Value so map keys land in bytewise order (wire 0x03).
+        let mut raw = Vec::new();
+        into_writer(data, &mut raw)?;
+        let value: Value = ciborium::de::from_reader(&raw[..])?;
+        let payload = crate::trust::canonical_cbor(&value);
         let mut chunk = Vec::new();
         chunk.push(chunk_type);
         chunk.write_u32::<BigEndian>(payload.len() as u32)?;

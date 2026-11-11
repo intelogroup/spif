@@ -130,9 +130,13 @@ fn entry(key: &SigningKey, body: &[u8]) -> Signature {
 }
 
 fn cbor<T: serde::Serialize>(v: &T) -> Vec<u8> {
+    // The forged chunk must be form-valid at wire 0x03 (deterministic
+    // encoding) so the reader reaches the rule under test — a real
+    // attacker's appended chunk would be well-formed too.
     let mut out = Vec::new();
     ciborium::ser::into_writer(v, &mut out).unwrap();
-    out
+    let value: ciborium::value::Value = ciborium::de::from_reader(&out[..]).unwrap();
+    spif_rust::trust::canonical_cbor(&value)
 }
 
 /// Two-pass single-signature signing, mirroring `spif.crypto.sign_document`.
