@@ -72,14 +72,20 @@ class SPIFRenderer:
         sections.append("  SPIF DOCUMENT  v0.2")
         sections.append("═" * 60)
 
-        # Signature status (most important for audit use case — show first)
-        if doc.signature:
-            sections.append(
-                f"\nSIGNATURE\n"
-                f"  algorithm: {doc.signature.algorithm}\n"
-                f"  signer:    {doc.signature.signer}\n"
-                f"  status:    present (run `spif verify` to cryptographically validate)"
-            )
+        # Signature status (most important for audit use case — show first).
+        # Every attested entry counts: a multisig-only document is signed,
+        # and every signer is named — checking only doc.signature once
+        # rendered genuine multisig envelopes as "unsigned"
+        # (SPIF-CLI-MULTISIG-DIVERGENCE-001).
+        sigs = ([doc.signature] if doc.signature else []) + list(doc.signatures)
+        if sigs:
+            lines = ["\nSIGNATURE"]
+            for sig in sigs:
+                lines.append(f"  algorithm: {sig.algorithm}")
+                lines.append(f"  signer:    {sig.signer}")
+            lines.append(
+                "  status:    present (run `spif verify` to cryptographically validate)")
+            sections.append("\n".join(lines))
         else:
             sections.append("\nSIGNATURE  unsigned")
 

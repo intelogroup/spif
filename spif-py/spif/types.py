@@ -8,6 +8,16 @@ from typing import Any
 from .format import DIST_SEM_EPISTEMIC, TRACE_POSTHOC, KNOWN_DIST_SEMANTICS, NODE_TOOL_RESULT
 
 
+def _require_number(value: object, field_name: str) -> float:
+    """Require a real number. bool is rejected explicitly: it is an int
+    subclass in Python but a distinct type in CBOR, so a bool confidence
+    field is malformed input, not the number 0/1."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise TypeError(
+            f"{field_name} must be a number, got {type(value).__name__}")
+    return value
+
+
 @dataclass
 class Distribution:
     """A probability distribution — first-class uncertain value."""
@@ -19,6 +29,22 @@ class Distribution:
     p95: float | None = None       # 95th percentile
 
     def __post_init__(self):
+        # Type validation first: the range checks below silently accept
+        # bool (an int subclass) and raise bare TypeError/AttributeError
+        # on str/list fields — malformed wire data must fail as a typed
+        # error at this boundary instead.
+        _require_number(self.mean, "Distribution.mean")
+        _require_number(self.var, "Distribution.var")
+        if not isinstance(self.shape, str):
+            raise TypeError(
+                f"Distribution.shape must be str, got {type(self.shape).__name__}")
+        if not isinstance(self.semantics, str):
+            raise TypeError(
+                f"Distribution.semantics must be str, got {type(self.semantics).__name__}")
+        if self.p5 is not None:
+            _require_number(self.p5, "Distribution.p5")
+        if self.p95 is not None:
+            _require_number(self.p95, "Distribution.p95")
         if not 0.0 <= self.mean <= 1.0:
             raise ValueError(f"Distribution.mean must be in [0, 1], got {self.mean}")
         if self.var < 0:

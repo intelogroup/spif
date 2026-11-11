@@ -103,6 +103,9 @@ def inspect(
     if json_output:
         import json as _json
         p = doc.provenance
+        # Signed means ANY attestation: single SIGNATURE or MULTISIG
+        # entries (SPIF-CLI-MULTISIG-DIVERGENCE-001).
+        all_sigs = ([doc.signature] if doc.signature else []) + list(doc.signatures)
         typer.echo(_json.dumps({
             "producer": p.source_model if p else None,
             "model_version": p.model_version if p else None,
@@ -112,8 +115,9 @@ def inspect(
             "model_card": p.model_card if p else None,
             "training_data_hash": p.training_data_hash if p else None,
             "energy_wh": p.energy_wh if p else None,
-            "signed": doc.signature is not None,
-            "signer": doc.signature.signer if doc.signature else None,
+            "signed": bool(all_sigs),
+            "signer": all_sigs[0].signer if all_sigs else None,
+            "signers": [s.signer for s in all_sigs],
         }, indent=2))
         return
 
@@ -147,13 +151,15 @@ def inspect(
     if layer in ("all", "alts") and doc.alternatives:
         typer.echo(f"\nALTERNATIVES  count={len(doc.alternatives)}")
     if layer in ("all", "signature"):
-        if doc.signature:
-            typer.echo(
-                f"\nSIGNATURE\n"
-                f"  algorithm: {doc.signature.algorithm}\n"
-                f"  signer:    {doc.signature.signer}\n"
-                f"  bytes:     {doc.signature.signature.hex()[:32]}..."
-            )
+        all_sigs = ([doc.signature] if doc.signature else []) + list(doc.signatures)
+        if all_sigs:
+            typer.echo("\nSIGNATURE")
+            for sig in all_sigs:
+                typer.echo(
+                    f"  algorithm: {sig.algorithm}\n"
+                    f"  signer:    {sig.signer}\n"
+                    f"  bytes:     {sig.signature.hex()[:32]}..."
+                )
         else:
             typer.echo("\nSIGNATURE  none")
 
@@ -365,9 +371,65 @@ def verify(
         typer.echo(f"ERROR: {e}", err=True)
         raise typer.Exit(1)
 
-    if doc.signature is None:
+    sigs = ([doc.signature] if doc.signature is not None else []) + list(doc.signatures)
+    if not sigs:
         typer.echo("UNSIGNED  no signature chunk present")
         raise typer.Exit(2)
+
+    if doc.signatures:
+        # MULTISIG attestation (with or without a co-present single
+        # entry — decode() rejects that combination, so in practice
+        # this is the multisig-only form). The verdict comes from the
+        # reader's shared verification path wherever possible, so the
+        # CLI can never disagree with the library on the same bytes: a
+        # genuine multisig envelope is VALID, a forged entry INVALID —
+        # never UNSIGNED (SPIF-CLI-MULTISIG-DIVERGENCE-001).
+        pq_present = any(
+            s.algorithm in ("ed25519+ml-dsa-65", "ml-dsa-65") for s in sigs)
+        if pubkey is None and not pq_present:
+            try:
+                SPIFReader().verify_signature(data)
+            except SPIFError as e:
+                typer.echo(
+                    f"INVALID  signature verification failed for {path}: {e}",
+                    err=True)
+                raise typer.Exit(1)
+            typer.echo(f"VALID  {path}  (signer: {sigs[0].signer[:40]})")
+            return
+        # --pubkey override and/or PQ-bearing entries: assess per entry
+        # over the shared signing body.
+        from .pq_hybrid import assess_pq_entry
+        from .trust import signing_body_of
+
+        body = signing_body_of(data)
+        outcomes: list[str] = []
+        for sig in sigs:
+            if sig.algorithm in ("ed25519+ml-dsa-65", "ml-dsa-65"):
+                assessment = assess_pq_entry(
+                    sig.algorithm, sig.signer, sig.signature, body,
+                    known_keys={sig.signer: pubkey} if pubkey else None)
+                outcomes.append(assessment.status)
+                continue
+            if sig.algorithm != "ed25519":
+                outcomes.append("unverifiable")
+                continue
+            try:
+                pub_bytes = base64.b64decode(pubkey or sig.signer)
+                Ed25519PublicKey.from_public_bytes(pub_bytes).verify(
+                    sig.signature, body)
+                outcomes.append("valid")
+            except InvalidSignature:
+                outcomes.append("invalid")
+            except Exception:
+                outcomes.append("unverifiable")
+        if all(o == "valid" for o in outcomes):
+            typer.echo(f"VALID  {path}  (signer: {sigs[0].signer[:40]})")
+            return
+        if any(o == "invalid" for o in outcomes):
+            typer.echo(f"INVALID  signature verification failed for {path}", err=True)
+            raise typer.Exit(1)
+        typer.echo(f"UNVERIFIABLE  signature cannot be verified for {path}", err=True)
+        raise typer.Exit(1)
 
     if doc.signature.algorithm in ("ed25519+ml-dsa-65", "ml-dsa-65"):
         # v1.4 (SPEC §7.9.2): PQ-bearing entries are assessed through

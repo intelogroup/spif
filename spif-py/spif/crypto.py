@@ -28,7 +28,7 @@ from cryptography.hazmat.primitives.serialization import (
 )
 
 from .format import cbor_deterministic
-from .reader import SPIFSignatureError
+from .reader import SPIFError, SPIFSignatureError
 from .types import SPIFDocument, Signature
 
 
@@ -337,13 +337,37 @@ def load_revocation_list(path: str | Path) -> set[str]:
     Expected format: {"revoked": ["signer_url_1", "signer_url_2", ...]}
 
     Returns an empty set if the file does not exist, so callers can always
-    call this unconditionally without checking for the file first.
+    call this unconditionally without checking for the file first. (Callers
+    that REQUIRE the source — e.g. SPIFReader configured with an explicit
+    revocation_list_path — check existence themselves and fail closed.)
+
+    A file that exists but cannot be parsed, or whose "revoked" entry is
+    not a list of signer-id strings, raises SPIFError: corrupt revocation
+    data must fail closed, never silently load as an empty or garbled set
+    (a bare string would otherwise be split into single characters).
     """
     p = Path(path)
     if not p.exists():
         return set()
-    data = json.loads(p.read_text())
-    return set(data.get("revoked", []))
+    try:
+        data = json.loads(p.read_text())
+    except (OSError, ValueError) as e:
+        raise SPIFError(f"Revocation list at {p} is unreadable: {e}") from e
+    if not isinstance(data, dict):
+        raise SPIFError(
+            f"Revocation list at {p} must be a JSON object, "
+            f"got {type(data).__name__}")
+    revoked = data.get("revoked", [])
+    if not isinstance(revoked, list):
+        raise SPIFError(
+            f"Revocation list at {p}: 'revoked' must be a list, "
+            f"got {type(revoked).__name__}")
+    for entry in revoked:
+        if not isinstance(entry, str):
+            raise SPIFError(
+                f"Revocation list at {p}: revoked entries must be strings, "
+                f"got {type(entry).__name__}")
+    return set(revoked)
 
 
 def check_revocation(signer_id: str, revocation_list: set[str]) -> None:

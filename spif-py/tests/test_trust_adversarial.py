@@ -255,18 +255,30 @@ def test_revocations_arg_missing_keys_counted_not_raised():
     assert report.forged_revocations == 2
 
 
-def test_revocations_arg_bad_item_type_still_typeerror():
+def test_revocations_arg_bad_item_type_counted_not_raised():
+    # SPIF-INLINE-REVOCATION-TYPE-001: a non-dict, non-statement entry
+    # is malformed untrusted input from the revocations feed — counted
+    # as a forgery seen, never a bare TypeError out of the trust entry
+    # point. (Was: this test pinned the TypeError; the loop card
+    # reversed that contract.)
     _key, data = _signed()
-    with pytest.raises(TypeError):
-        verify_artifact(data, revocations=["not-a-statement"])
+    report = verify_artifact(data, revocations=["not-a-statement"])
+    assert report.trust_status == TRUST_VALID
+    assert report.forged_revocations == 1
+    assert any("malformed" in e for e in report.errors)
 
 
 def test_revocation_file_invalid_json_is_error_not_crash(tmp_path):
+    # SPIF-TRUST-REVOCATION-FILE-FAILOPEN-001: an explicitly supplied
+    # revocation file that cannot be parsed fails closed — the error
+    # is surfaced AND the structured trust_status is not VALID
+    # (consumers gate on the field, not on prose). (Was: VALID + note;
+    # the loop card reversed that contract.)
     _key, data = _signed()
     path = tmp_path / "bad.json"
     path.write_text("{not json")
     report = verify_artifact(data, revocation_file=path)
-    assert report.trust_status == TRUST_VALID
+    assert report.trust_status == TRUST_UNVERIFIABLE
     assert any("revocation file" in e for e in report.errors)
 
 
@@ -284,12 +296,14 @@ def test_revocation_file_malformed_entries_counted(tmp_path):
 
 
 def test_revocation_file_wrong_shape_is_error_not_crash(tmp_path):
+    # Same fail-closed contract as the invalid-JSON case above
+    # (SPIF-TRUST-REVOCATION-FILE-FAILOPEN-001).
     import json as _json
     _key, data = _signed()
     path = tmp_path / "shape.json"
     path.write_text(_json.dumps(["not", "a", "dict"]))
     report = verify_artifact(data, revocation_file=path)
-    assert report.trust_status == TRUST_VALID
+    assert report.trust_status == TRUST_UNVERIFIABLE
     assert any("revocation file" in e for e in report.errors)
 
 

@@ -454,11 +454,14 @@ class VerificationReport:
 def _coerce_statements(items) -> tuple[list[RevocationStatement], int]:
     """Coerce out-of-band revocation entries to statements.
 
-    Returns (statements, malformed_count). A dict entry that fails
-    conversion (missing fields, wrong types, bad base64) is malformed
-    untrusted input, not a programming error: it is counted, never
-    raised. A non-dict, non-statement item is a caller bug and still
-    raises TypeError.
+    Returns (statements, malformed_count). Every entry that is not a
+    usable statement — a dict that fails conversion (missing fields,
+    wrong types, bad base64) OR a non-dict, non-statement item (str,
+    int, None, ...) — is malformed untrusted input: it is counted,
+    never raised. The revocations feed is attacker-controllable data,
+    so a bare TypeError escaping verify_artifact would hand the feed's
+    supplier a crash primitive at the trust entry point
+    (SPIF-INLINE-REVOCATION-TYPE-001).
     """
     out: list[RevocationStatement] = []
     malformed = 0
@@ -475,9 +478,7 @@ def _coerce_statements(items) -> tuple[list[RevocationStatement], int]:
             except (KeyError, TypeError, ValueError):
                 malformed += 1
         else:
-            raise TypeError(
-                f"revocation entries must be RevocationStatement or dict, got {type(item).__name__}"
-            )
+            malformed += 1
     return out, malformed
 
 
@@ -486,15 +487,16 @@ def _load_revocation_file_tolerant(
 ) -> tuple[list[RevocationStatement], int, str | None]:
     """Load a revocation-list file for verify_artifact(): never raises.
 
-    Returns (statements, malformed_count, error). An absent file is not
-    an error (matches load_revocation_statements' contract). A file
-    that cannot be parsed at all yields an error string and no
-    statements; individually malformed entries are counted so the
-    report can surface them.
+    Returns (statements, malformed_count, error). A file the caller
+    explicitly supplied that is absent, unreadable, or the wrong shape
+    yields an error string and no statements — verify_artifact treats
+    that as a failed revocation source and never reports TRUST_VALID
+    for it (SPIF-TRUST-REVOCATION-FILE-FAILOPEN-001). Individually
+    malformed entries are counted so the report can surface them.
     """
     p = Path(path)
     if not p.exists():
-        return [], 0, None
+        return [], 0, f"revocation file not found: {p}"
     try:
         data = json.loads(p.read_text())
     except (OSError, ValueError) as e:
@@ -667,6 +669,7 @@ def verify_artifact(
     # --- Revocations ---------------------------------------------------------
     supplied, malformed = _coerce_statements(revocations)
     candidates = list(doc.revocations) + supplied
+    revocation_source_error: str | None = None
     if revocation_file is not None:
         file_stmts, file_malformed, file_error = _load_revocation_file_tolerant(
             revocation_file)
@@ -674,6 +677,7 @@ def verify_artifact(
         malformed += file_malformed
         if file_error is not None:
             report.errors.append(file_error)
+            revocation_source_error = file_error
     if malformed:
         # Unparseable purported revocations: they can never apply, but
         # they are surfaced as forgeries seen (SPEC §7.7) plus a note.
@@ -709,6 +713,14 @@ def verify_artifact(
             report.forged_revocations += 1
     if report.revocations_applied and report.trust_status == TRUST_VALID:
         report.trust_status = TRUST_REVOKED
+    if revocation_source_error is not None and report.trust_status == TRUST_VALID:
+        # Fail closed: an explicitly supplied revocation source could
+        # not be loaded, so "no revocation applies" was never actually
+        # established — the artifact is UNVERIFIABLE, not VALID
+        # (SPIF-TRUST-REVOCATION-FILE-FAILOPEN-001). Consumers gate on
+        # this structured field, so an errors-list note alone is not
+        # fail-closed.
+        report.trust_status = TRUST_UNVERIFIABLE
 
     # --- Timestamp (SPEC §7.8) ------------------------------------------------
     report.timestamp_status = _timestamp_status(doc, digest, tsa_keys)

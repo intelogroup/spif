@@ -71,6 +71,87 @@ class SPIFFormatError(SPIFError):
 
 
 # ---------------------------------------------------------------------------
+# Typed field access for chunk dicts
+#
+# One discipline across every chunk decoder (the loop's reader-strictness
+# family): a field that is PRESENT must carry the type its contract
+# declares. Wrong-typed fields fail closed as SPIFFormatError — never a
+# silent default, never a bare TypeError/AttributeError escaping from
+# deep inside a dataclass. Absent fields keep their documented defaults
+# (v0.1/v1.1 compatibility); presence requirements are enforced only
+# where a card or the format demands them (SIGNATURE/MULTISIG entries).
+# bool is rejected for int/number fields: it is an int subclass in
+# Python but a distinct type in CBOR.
+# ---------------------------------------------------------------------------
+
+def _typed_str(d: dict, key: str, ctx: str, default: str) -> str:
+    v = d.get(key, default)
+    if not isinstance(v, str):
+        raise SPIFFormatError(
+            f"{ctx} field '{key}' must be a string, got {type(v).__name__}")
+    return v
+
+
+def _typed_int(d: dict, key: str, ctx: str, default: int) -> int:
+    v = d.get(key, default)
+    if isinstance(v, bool) or not isinstance(v, int):
+        raise SPIFFormatError(
+            f"{ctx} field '{key}' must be an integer, got {type(v).__name__}")
+    return v
+
+
+def _typed_num(d: dict, key: str, ctx: str, default: float) -> float:
+    v = d.get(key, default)
+    if isinstance(v, bool) or not isinstance(v, (int, float)):
+        raise SPIFFormatError(
+            f"{ctx} field '{key}' must be a number, got {type(v).__name__}")
+    return v
+
+
+def _required_str(d: dict, key: str, ctx: str) -> str:
+    if key not in d:
+        raise SPIFFormatError(f"{ctx} entry must carry '{key}'")
+    v = d[key]
+    if not isinstance(v, str):
+        raise SPIFFormatError(
+            f"{ctx} field '{key}' must be a string, got {type(v).__name__}")
+    return v
+
+
+def _required_bytes(d: dict, key: str, ctx: str) -> bytes:
+    if key not in d:
+        raise SPIFFormatError(f"{ctx} entry must carry '{key}'")
+    v = d[key]
+    if isinstance(v, (bytearray, memoryview)):
+        return bytes(v)
+    if not isinstance(v, bytes):
+        raise SPIFFormatError(
+            f"{ctx} field '{key}' must be bytes, got {type(v).__name__}")
+    return v
+
+
+def _decode_signature_entry(s: dict, ctx: str) -> Signature:
+    """Decode one SIGNATURE/MULTISIG entry with full field validation.
+
+    algorithm, signer and signature are required and typed: an omitted
+    algorithm must never default to "ed25519" (that default once let a
+    relabelled or stripped entry verify under the wrong algorithm), and
+    an omitted signer/signature is a malformed attestation, not an
+    empty one. key_id stays optional (a rotation hint) but is typed
+    when present.
+    """
+    if not isinstance(s, dict):
+        raise SPIFFormatError(
+            f"{ctx} entry must be a dict, got {type(s).__name__}")
+    return Signature(
+        algorithm=_required_str(s, "algorithm", ctx),
+        signer=_required_str(s, "signer", ctx),
+        signature=_required_bytes(s, "signature", ctx),
+        key_id=_typed_str(s, "key_id", ctx, ""),
+    )
+
+
+# ---------------------------------------------------------------------------
 # CBOR tag resolution
 # ---------------------------------------------------------------------------
 
@@ -99,12 +180,32 @@ def _decode_node(d: dict) -> Node:
         refs = d.get("refs", [])
         if not isinstance(refs, list):
             raise SPIFFormatError(f"Node refs must be a list, got {type(refs).__name__}")
+        decoded_refs: list[NodeRef] = []
+        for r in refs:
+            if isinstance(r, NodeRef):
+                if not isinstance(r.node_id, str):
+                    raise SPIFFormatError(
+                        f"Node ref id must be a string, got {type(r.node_id).__name__}")
+                decoded_refs.append(r)
+            elif isinstance(r, str):
+                decoded_refs.append(NodeRef(r))
+            else:
+                raise SPIFFormatError(
+                    f"Node ref must be a string id, got {type(r).__name__}")
+        node_id = d["id"]
+        if not isinstance(node_id, str):
+            raise SPIFFormatError(
+                f"Node id must be a string, got {type(node_id).__name__}")
+        node_type = d["type"]
+        if not isinstance(node_type, str):
+            raise SPIFFormatError(
+                f"Node type must be a string, got {type(node_type).__name__}")
         return Node(
-            id=d["id"],
-            type=d["type"],
+            id=node_id,
+            type=node_type,
             value=d["value"],
             confidence=conf,
-            refs=[r if isinstance(r, NodeRef) else NodeRef(r) for r in refs],
+            refs=decoded_refs,
         )
     except SPIFFormatError:
         raise
@@ -126,14 +227,26 @@ def _decode_step(d: dict) -> TraceStep:
         deps = d.get("deps", [])
         if not isinstance(deps, list):
             raise SPIFFormatError(f"TraceStep deps must be a list, got {type(deps).__name__}")
+        for dep in deps:
+            if not isinstance(dep, str):
+                raise SPIFFormatError(
+                    f"TraceStep dep must be a string step id, got {type(dep).__name__}")
         alternatives = d.get("alternatives", [])
         if not isinstance(alternatives, list):
             raise SPIFFormatError(
                 f"TraceStep alternatives must be a list, got {type(alternatives).__name__}"
             )
+        step_id = d["id"]
+        if not isinstance(step_id, str):
+            raise SPIFFormatError(
+                f"TraceStep id must be a string, got {type(step_id).__name__}")
+        step_type = d["type"]
+        if not isinstance(step_type, str):
+            raise SPIFFormatError(
+                f"TraceStep type must be a string, got {type(step_type).__name__}")
         return TraceStep(
-            id=d["id"],
-            type=d["type"],
+            id=step_id,
+            type=step_type,
             content=d["content"],
             confidence=conf,
             deps=deps,
@@ -718,6 +831,13 @@ class SPIFReader:
         self._require_pq = require_pq
         self._revocation_list: set[str] = set()
         if revocation_list_path is not None:
+            # An explicitly configured revocation source fails closed:
+            # a missing file must never silently degrade to "nobody is
+            # revoked" (SPIF-REVOCATION-FAILOPEN-001). The loader itself
+            # raises SPIFError on corrupt or wrong-shaped content.
+            if not Path(revocation_list_path).exists():
+                raise SPIFError(
+                    f"Revocation list file not found: {revocation_list_path}")
             from .crypto import load_revocation_list
             self._revocation_list = load_revocation_list(revocation_list_path)
         self._max_signature_age_seconds = max_signature_age_seconds
@@ -863,10 +983,11 @@ class SPIFReader:
             hdr = _cbor_load(chunks[CHUNK_HEADER][0], "HEADER",
                              canonical_required=canonical_required,
                              deterministic=deterministic)
-            if isinstance(hdr, dict):
-                flags2 = hdr.get("flags2", 0)
-                compressed = bool(flags2 & FLAG_COMPRESSED)
-                zstd_compressed = bool(flags2 & FLAG_ZSTD)
+            if not isinstance(hdr, dict):
+                raise SPIFFormatError("HEADER chunk must decode to a dict")
+            flags2 = _typed_int(hdr, "flags2", "HEADER", 0)
+            compressed = bool(flags2 & FLAG_COMPRESSED)
+            zstd_compressed = bool(flags2 & FLAG_ZSTD)
 
         # 5. PAYLOAD (required) — decompressed if needed
         if CHUNK_PAYLOAD not in chunks:
@@ -895,22 +1016,25 @@ class SPIFReader:
                              deterministic=deterministic)
             if not isinstance(p, dict):
                 raise SPIFFormatError("PROVENANCE chunk must decode to a dict")
-            provenance = Provenance(
-                source_model=p.get("source_model", ""),
-                model_version=p.get("model_version", ""),
-                temperature=p.get("temperature", 0.0),
-                input_hash=p.get("input_hash", ""),
-                context_ref=p.get("context_ref", ""),
-                timestamp_ms=p.get("timestamp_ms", 0),
-                attempt=p.get("attempt", 0),
-                task_id=p.get("task_id", ""),
-                risk_tier=p.get("risk_tier", ""),
-                model_card=p.get("model_card", ""),
-                training_data_hash=p.get("training_data_hash", ""),
-                energy_wh=p.get("energy_wh", 0.0),
-                human_oversight=p.get("human_oversight", ""),
-                nonce=p.get("nonce", ""),
-            )
+            try:
+                provenance = Provenance(
+                    source_model=_typed_str(p, "source_model", "PROVENANCE", ""),
+                    model_version=_typed_str(p, "model_version", "PROVENANCE", ""),
+                    temperature=_typed_num(p, "temperature", "PROVENANCE", 0.0),
+                    input_hash=_typed_str(p, "input_hash", "PROVENANCE", ""),
+                    context_ref=_typed_str(p, "context_ref", "PROVENANCE", ""),
+                    timestamp_ms=_typed_int(p, "timestamp_ms", "PROVENANCE", 0),
+                    attempt=_typed_int(p, "attempt", "PROVENANCE", 0),
+                    task_id=_typed_str(p, "task_id", "PROVENANCE", ""),
+                    risk_tier=_typed_str(p, "risk_tier", "PROVENANCE", ""),
+                    model_card=_typed_str(p, "model_card", "PROVENANCE", ""),
+                    training_data_hash=_typed_str(p, "training_data_hash", "PROVENANCE", ""),
+                    energy_wh=_typed_num(p, "energy_wh", "PROVENANCE", 0.0),
+                    human_oversight=_typed_str(p, "human_oversight", "PROVENANCE", ""),
+                    nonce=_typed_str(p, "nonce", "PROVENANCE", ""),
+                )
+            except (TypeError, ValueError) as e:
+                raise SPIFFormatError(f"Malformed PROVENANCE chunk: {e}") from e
 
         # 7. SEMANTIC — compressed if flag set
         semantic = None
@@ -922,10 +1046,32 @@ class SPIFReader:
             if not isinstance(s, dict):
                 raise SPIFFormatError("SEMANTIC chunk must decode to a dict")
             emb = s.get("embedding", [])
+            if not isinstance(emb, list):
+                raise SPIFFormatError(
+                    f"SEMANTIC embedding must be a list, got {type(emb).__name__}")
+            for x in emb:
+                if isinstance(x, bool) or not isinstance(x, (int, float)):
+                    raise SPIFFormatError(
+                        f"SEMANTIC embedding elements must be numbers, "
+                        f"got {type(x).__name__}")
+            cov = s.get("covariance", [])
+            if not isinstance(cov, list):
+                raise SPIFFormatError(
+                    f"SEMANTIC covariance must be a list, got {type(cov).__name__}")
+            for row in cov:
+                if not isinstance(row, list):
+                    raise SPIFFormatError(
+                        f"SEMANTIC covariance rows must be lists, "
+                        f"got {type(row).__name__}")
+                for x in row:
+                    if isinstance(x, bool) or not isinstance(x, (int, float)):
+                        raise SPIFFormatError(
+                            f"SEMANTIC covariance elements must be numbers, "
+                            f"got {type(x).__name__}")
             semantic = SemanticLayer(
                 embedding=emb,
-                embedding_model=s.get("embedding_model", ""),  # v0.1 compat: default ""
-                covariance=s.get("covariance", []),
+                embedding_model=_typed_str(s, "embedding_model", "SEMANTIC", ""),  # v0.1 compat: default ""
+                covariance=cov,
             )
 
         # 8. TRACE (v0.2: wrapped dict; v0.1: bare list) — compressed if flag set
@@ -968,21 +1114,35 @@ class SPIFReader:
                              compressed=compressed, zstd_compressed=zstd_compressed,
                              canonical_required=canonical_required,
                              deterministic=deterministic)
+            def _decode_alternative(a, *, normalized: bool = True) -> Alternative:
+                if not isinstance(a, dict):
+                    raise SPIFFormatError(
+                        f"Alternative entry must be a dict, got {type(a).__name__}"
+                    )
+                if "weight" not in a or "nodes" not in a:
+                    raise SPIFFormatError(
+                        "Alternative entry must carry 'weight' and 'nodes'"
+                    )
+                weight = a["weight"]
+                if isinstance(weight, bool) or not isinstance(weight, (int, float)):
+                    raise SPIFFormatError(
+                        f"Alternative weight must be a number, "
+                        f"got {type(weight).__name__}")
+                nodes = a["nodes"]
+                if not isinstance(nodes, list):
+                    raise SPIFFormatError(
+                        f"Alternative nodes must be a list, "
+                        f"got {type(nodes).__name__}")
+                return Alternative(
+                    weight=weight,
+                    nodes=[_decode_node(n) for n in nodes],
+                    normalized=normalized,
+                )
+
             if isinstance(raw, list):
                 # v0.1 format
                 for a in raw:
-                    if not isinstance(a, dict):
-                        raise SPIFFormatError(
-                            f"Alternative entry must be a dict, got {type(a).__name__}"
-                        )
-                    if "weight" not in a or "nodes" not in a:
-                        raise SPIFFormatError(
-                            "Alternative entry must carry 'weight' and 'nodes'"
-                        )
-                    alternatives.append(Alternative(
-                        weight=a["weight"],
-                        nodes=[_decode_node(n) for n in a["nodes"]],
-                    ))
+                    alternatives.append(_decode_alternative(a))
             else:
                 if not isinstance(raw, dict):
                     raise SPIFFormatError("ALTS chunk must decode to a list or dict")
@@ -994,19 +1154,8 @@ class SPIFReader:
                 if not isinstance(alts, list):
                     raise SPIFFormatError("ALTS alts must be a list")
                 for a in alts:
-                    if not isinstance(a, dict):
-                        raise SPIFFormatError(
-                            f"Alternative entry must be a dict, got {type(a).__name__}"
-                        )
-                    if "weight" not in a or "nodes" not in a:
-                        raise SPIFFormatError(
-                            "Alternative entry must carry 'weight' and 'nodes'"
-                        )
-                    alternatives.append(Alternative(
-                        weight=a["weight"],
-                        nodes=[_decode_node(n) for n in a["nodes"]],
-                        normalized=normalized,
-                    ))
+                    alternatives.append(
+                        _decode_alternative(a, normalized=normalized))
                 # Validate weights if normalized
                 if normalized and alternatives:
                     total = sum(a.weight for a in alternatives)
@@ -1030,7 +1179,14 @@ class SPIFReader:
                 raise SPIFFormatError("DELTA chunk must decode to a dict")
             if "base_hash" not in d:
                 raise SPIFFormatError("DELTA chunk must carry 'base_hash'")
-            delta = Delta(base_hash=d["base_hash"], changes=d.get("changes", []))
+            changes = d.get("changes", [])
+            if not isinstance(changes, list):
+                raise SPIFFormatError(
+                    f"DELTA changes must be a list, got {type(changes).__name__}")
+            delta = Delta(
+                base_hash=_required_str(d, "base_hash", "DELTA"),
+                changes=changes,
+            )
 
         # 11. SIGNATURE (v0.2)
         signature = None
@@ -1040,15 +1196,7 @@ class SPIFReader:
                              deterministic=deterministic)
             if not isinstance(s, dict):
                 raise SPIFFormatError("SIGNATURE chunk must decode to a dict")
-            sig_bytes = s.get("signature", b"")
-            if isinstance(sig_bytes, memoryview):
-                sig_bytes = bytes(sig_bytes)
-            signature = Signature(
-                algorithm=s.get("algorithm", "ed25519"),
-                signer=s.get("signer", ""),
-                signature=sig_bytes,
-                key_id=s.get("key_id", ""),
-            )
+            signature = _decode_signature_entry(s, "SIGNATURE")
 
         # 12. MULTISIG (v0.2+)
         signatures: list[Signature] = []
@@ -1063,31 +1211,21 @@ class SPIFReader:
                 # Entries are validated, never trusted by shape: a
                 # wrong-typed entry must fail as a format error, not
                 # escape as a bare AttributeError from .get on a
-                # non-mapping (SPIF-MULTISIG-ENTRYTYPE-001).
-                if not isinstance(s, dict):
-                    raise SPIFFormatError(
-                        f"MULTISIG entry must be a dict, got {type(s).__name__}"
-                    )
-                signer = s.get("signer", "")
+                # non-mapping (SPIF-MULTISIG-ENTRYTYPE-001), and no
+                # field silently defaults (SPIF-MULTISIG-TYPE-001,
+                # SPIF-SIGALG-DEFAULT-001).
+                entry = _decode_signature_entry(s, "MULTISIG")
                 # The signer set is a set: one signer attests once. A
                 # duplicated entry would report the same signer twice,
                 # inflating any downstream count of attestations
                 # (SPIF-DUPMULTISIG-ENTRY-001).
-                if signer in seen_signers:
+                if entry.signer in seen_signers:
                     raise SPIFFormatError(
-                        f"Duplicate MULTISIG entry for signer {signer!r}: "
+                        f"Duplicate MULTISIG entry for signer {entry.signer!r}: "
                         "each signer may appear at most once per MULTISIG chunk"
                     )
-                seen_signers.add(signer)
-                sig_bytes = s.get("signature", b"")
-                if isinstance(sig_bytes, memoryview):
-                    sig_bytes = bytes(sig_bytes)
-                signatures.append(Signature(
-                    algorithm=s.get("algorithm", "ed25519"),
-                    signer=signer,
-                    signature=sig_bytes,
-                    key_id=s.get("key_id", ""),
-                ))
+                seen_signers.add(entry.signer)
+                signatures.append(entry)
 
         # 13. TASK chunk (v1.1+) — never compressed
         task_info = None
@@ -1098,12 +1236,12 @@ class SPIFReader:
             if not isinstance(t, dict):
                 raise SPIFFormatError("TASK chunk must decode to a dict")
             task_info = TaskInfo(
-                task_id=t.get("task_id", ""),
-                attempt=t.get("attempt", 0),
-                status=t.get("status", "ok"),
-                total_ms=t.get("total_ms", 0),
-                tool_count=t.get("tool_count", 0),
-                error_count=t.get("error_count", 0),
+                task_id=_typed_str(t, "task_id", "TASK", ""),
+                attempt=_typed_int(t, "attempt", "TASK", 0),
+                status=_typed_str(t, "status", "TASK", "ok"),
+                total_ms=_typed_int(t, "total_ms", "TASK", 0),
+                tool_count=_typed_int(t, "tool_count", "TASK", 0),
+                error_count=_typed_int(t, "error_count", "TASK", 0),
             )
 
         # 14. ROLES chunk (v1.1+) — signer_id -> claimed role, never compressed
@@ -1358,6 +1496,11 @@ class SPIFReader:
 
         revocation_list: set[str] = set()
         if revocation_list_path is not None:
+            # Fail closed on an explicitly supplied revocation source
+            # (SPIF-REVOCATION-FAILOPEN-001) — same rule as __init__.
+            if not Path(revocation_list_path).exists():
+                raise SPIFError(
+                    f"Revocation list file not found: {revocation_list_path}")
             from .crypto import load_revocation_list
             revocation_list = load_revocation_list(revocation_list_path)
 

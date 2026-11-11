@@ -27,12 +27,21 @@ class ReplayGuard:
         """Raise SPIFReplayError if this document's signer+nonce was already seen."""
         if doc.provenance is None or not doc.provenance.nonce:
             raise SPIFReplayError("Document has no provenance.nonce — cannot check for replay")
+        # The replay identity is the FULL attested signer set (single
+        # signature and/or multisig entries), encoded injectively:
+        # each signer id escapes the separator by doubling it, then the
+        # sorted ids join on the single separator. The old plain
+        # "+".join was ambiguous — one signer named "a+b" collided with
+        # the two-signer set ["a", "b"], and signer ids are base64
+        # public keys where "+" is a real alphabet character
+        # (SPIF-REPLAY-SIGNER-COLLISION-001). Escaping keeps a lone
+        # separator-free signer id as its own key, as before.
+        signers: list[str] = []
         if doc.signature:
-            signer = doc.signature.signer
-        elif doc.signatures:
-            signer = "+".join(sorted(s.signer for s in doc.signatures))
-        else:
-            signer = ""
+            signers.append(doc.signature.signer)
+        signers.extend(s.signer for s in doc.signatures)
+        signer = "+".join(
+            s.replace("+", "++") for s in sorted(signers))
         key = (signer, doc.provenance.nonce)
         if key in self._seen:
             raise SPIFReplayError(
