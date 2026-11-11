@@ -429,13 +429,17 @@ class TestSemanticLayerEdgeCases:
 
     def test_embedding_with_covariance(self):
         emb = [0.1, 0.2, 0.3]
-        cov = [0.01, 0.0, 0.0, 0.0, 0.02, 0.0, 0.0, 0.0, 0.03]
+        # types.py declares covariance: list[list[float]] — nested rows.
+        # (Was: a flat 9-element list; SPIF-SEMANTIC-TYPE-001 defines a
+        # flat covariance — rows as scalars — as malformed wire data,
+        # and the reader now rejects it.)
+        cov = [[0.01, 0.0, 0.0], [0.0, 0.02, 0.0], [0.0, 0.0, 0.03]]
         doc = SPIFDocument(
             payload=[_node()],
             semantic=SemanticLayer(embedding=emb, covariance=cov),
         )
         r = _rtrip(doc)
-        assert len(r.semantic.covariance) == 9
+        assert r.semantic.covariance == cov
 
     def test_single_dim_embedding(self):
         doc = SPIFDocument(

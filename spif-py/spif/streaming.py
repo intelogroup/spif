@@ -443,7 +443,25 @@ class SPIFStreamReader:
         if chunk_type == CHUNK_PARTIAL_TEXT:
             try:
                 d = cbor2.loads(payload)
+                if not isinstance(d, dict):
+                    raise ValueError(
+                        f"PARTIAL_TEXT payload must be a dict, got {type(d).__name__}")
                 node_id = d.get("node_id", "main")
+                if not isinstance(node_id, str):
+                    events.append(StreamEvent(
+                        type="error",
+                        error=f"PARTIAL_TEXT node_id must be a str, got {node_id!r}",
+                    ))
+                    self._state = "done"
+                    return
+                text = d.get("text", "")
+                if not isinstance(text, str):
+                    events.append(StreamEvent(
+                        type="error",
+                        error=f"PARTIAL_TEXT text must be a str, got {type(text).__name__}",
+                    ))
+                    self._state = "done"
+                    return
                 seq = d.get("seq", 0)
                 if not isinstance(seq, int) or isinstance(seq, bool):
                     events.append(StreamEvent(
@@ -465,7 +483,7 @@ class SPIFStreamReader:
                 events.append(StreamEvent(
                     type="partial_text",
                     node_id=node_id,
-                    text=d.get("text", ""),
+                    text=text,
                     seq=seq,
                 ))
             except Exception as exc:
@@ -476,8 +494,39 @@ class SPIFStreamReader:
         elif chunk_type == CHUNK_STREAM_RESUME:
             try:
                 d = cbor2.loads(payload)
+                if not isinstance(d, dict):
+                    raise ValueError(
+                        f"STREAM_RESUME payload must be a dict, got {type(d).__name__}")
                 seq = d.get("seq", 0)
-                body_hash = bytes(d.get("body_hash", b""))
+                # Strict field contract (SPIF-RESUME-TYPE-001): seq is
+                # an int (never bool), body_hash is exactly 32 bytes.
+                # No coercion — bytes(32) would silently turn the int
+                # 32 into a valid-looking all-zero hash.
+                if not isinstance(seq, int) or isinstance(seq, bool):
+                    events.append(StreamEvent(
+                        type="error",
+                        error=f"STREAM_RESUME seq must be an int, got {seq!r}",
+                    ))
+                    self._state = "done"
+                    return
+                raw_hash = d.get("body_hash", b"")
+                if not isinstance(raw_hash, (bytes, bytearray, memoryview)):
+                    events.append(StreamEvent(
+                        type="error",
+                        error=f"STREAM_RESUME body_hash must be bytes, "
+                              f"got {type(raw_hash).__name__}",
+                    ))
+                    self._state = "done"
+                    return
+                body_hash = bytes(raw_hash)
+                if len(body_hash) != 32:
+                    events.append(StreamEvent(
+                        type="error",
+                        error=f"STREAM_RESUME body_hash must be 32 bytes, "
+                              f"got {len(body_hash)}",
+                    ))
+                    self._state = "done"
+                    return
                 token = _make_resume_token(seq, body_hash)
                 events.append(StreamEvent(
                     type="resumed",
