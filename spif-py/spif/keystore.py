@@ -456,6 +456,11 @@ class SPIFKeyStore:
                     f"Unsupported signature algorithm '{sig.algorithm}'; only ed25519 is supported"
                 )
             # Cryptographic verification
+            from .crypto import is_weak_ed25519_public_key
+            if is_weak_ed25519_public_key(raw_key):
+                raise SPIFSignatureError(
+                    f"Signer '{signer}' uses a weak (small-order) public key"
+                )
             pub = Ed25519PublicKey.from_public_bytes(raw_key)
             try:
                 pub.verify(sig.signature, body_to_sign)

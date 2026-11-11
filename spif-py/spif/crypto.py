@@ -27,8 +27,81 @@ from cryptography.hazmat.primitives.serialization import (
     load_pem_private_key as _load_pem_private_key,
 )
 
+from .format import cbor_deterministic
 from .reader import SPIFError, SPIFSignatureError
 from .types import SPIFDocument, Signature
+
+
+# ---------------------------------------------------------------------------
+# Weak (small-order) ed25519 keys
+# ---------------------------------------------------------------------------
+#
+# A public key whose point has small order (order dividing the cofactor,
+# 8) is never a legitimate signer, and cofactored verification — both
+# OpenSSL's, behind the `cryptography` bindings, and ed25519-dalek's
+# `verify` — can accept a forged signature under one for a fraction of
+# messages (an all-zero key with an all-zero signature verifies against
+# roughly one body in four). Every verify path in this package rejects
+# weak keys before the cryptographic check; ed25519-dalek's `is_weak`
+# is the Rust-side mirror. The check is the dalek definition: decode
+# the point and test [8]P == identity, in pure Python (RFC 8032 math),
+# memoized per key.
+
+_ED_Q = 2**255 - 19
+_ED_D = (-121665 * pow(121666, -1, _ED_Q)) % _ED_Q
+_ED_I = pow(2, (_ED_Q - 1) // 4, _ED_Q)
+
+
+def _ed_xrecover(y: int) -> int:
+    xx = (y * y - 1) * pow(_ED_D * y * y + 1, -1, _ED_Q) % _ED_Q
+    x = pow(xx, (_ED_Q + 3) // 8, _ED_Q)
+    if (x * x - xx) % _ED_Q != 0:
+        x = (x * _ED_I) % _ED_Q
+    if (x * x - xx) % _ED_Q != 0:
+        raise ValueError("point is not on the curve")
+    return x
+
+
+def _ed_add(p: tuple, q: tuple) -> tuple:
+    (x1, y1), (x2, y2) = p, q
+    t = _ED_D * x1 * x2 * y1 * y2 % _ED_Q
+    return (
+        (x1 * y2 + x2 * y1) * pow(1 + t, -1, _ED_Q) % _ED_Q,
+        (y1 * y2 + x1 * x2) * pow(1 - t, -1, _ED_Q) % _ED_Q,
+    )
+
+
+def _ed_scalarmult(p: tuple, e: int) -> tuple:
+    out = (0, 1)
+    while e > 0:
+        if e & 1:
+            out = _ed_add(out, p)
+        p = _ed_add(p, p)
+        e >>= 1
+    return out
+
+
+from functools import lru_cache as _lru_cache
+
+
+@_lru_cache(maxsize=512)
+def is_weak_ed25519_public_key(raw: bytes) -> bool:
+    """True iff `raw` (32-byte compressed ed25519 public key) names a
+    small-order point — or cannot be decoded as a point at all, in
+    which case it is not a legitimate signer key either. Verify paths
+    must reject weak keys; key *parsing* elsewhere is unaffected."""
+    try:
+        if len(raw) != 32:
+            return False
+        y = int.from_bytes(raw, "little") & ((1 << 255) - 1)
+        if y >= _ED_Q:
+            return True  # non-canonical encoding: never a generated key
+        x = _ed_xrecover(y)
+        if (x & 1) != (raw[31] >> 7):
+            x = (-x) % _ED_Q
+        return _ed_scalarmult((x, y), 8) == (0, 1)
+    except Exception:
+        return True
 
 
 def derive_key_from_mnemonic(mnemonic: str, passphrase: str = "") -> Ed25519PrivateKey:
@@ -141,9 +214,8 @@ def export_pem_public_key(key: Ed25519PrivateKey, path: str | Path) -> None:
 
 
 def _rotation_payload(old_signer_id: str, new_signer_id: str, ts: int) -> bytes:
-    return cbor2.dumps(
-        {"old_signer": old_signer_id, "superseded_by": new_signer_id, "ts": ts},
-        canonical=True,
+    return cbor_deterministic(
+        {"old_signer": old_signer_id, "superseded_by": new_signer_id, "ts": ts}
     )
 
 
@@ -194,6 +266,10 @@ def verify_rotation(
     import binascii
 
     try:
+        for pub in (old_pubkey, new_pubkey):
+            raw = pub.public_bytes(Encoding.Raw, PublicFormat.Raw)
+            if is_weak_ed25519_public_key(raw):
+                return False
         payload = _rotation_payload(
             record["old_signer"], record["superseded_by"], record["timestamp_ms"]
         )

@@ -211,7 +211,16 @@ def test_key_id_spoofing_mismatch(tmp_path):
 # ---------------------------------------------------------------------------
 
 def test_canonical_cbor_strictness_enforcement():
-    """Verify that non-canonical CBOR causes signature verification mismatch on roundtrip."""
+    """Verify that non-canonical CBOR causes signature verification mismatch on roundtrip.
+
+    This fixture is stamped wire 0x02 on purpose: it pins the LEGACY
+    contract — under the legacy rule set a signed document's chunks are
+    not key-order-checked, so a signature over disordered bytes verifies
+    as transmitted, and only re-serialization (which canonicalizes)
+    breaks it. At wire 0x03 the same construction is rejected up front
+    as non-deterministic; see test_deterministic_cbor_enforcement_v3.
+    """
+    LEGACY_VERSION = 0x02
     key, pub_b64 = _make_key()
 
     # We manually build a list of nodes where the dictionary representing the node has non-canonical key order.
@@ -230,7 +239,7 @@ def test_canonical_cbor_strictness_enforcement():
     # Form a document body manually with non-canonical chunk data
     flags = 0
     header_chunk_data = cbor2.dumps({
-        "version": FORMAT_VERSION,
+        "version": LEGACY_VERSION,
         "flags": flags,
         "flags2": 0,
         "created_ms": 1779379200000,
@@ -239,7 +248,7 @@ def test_canonical_cbor_strictness_enforcement():
     header_chunk = struct.pack(">BI", CHUNK_HEADER, len(header_chunk_data)) + header_chunk_data
     payload_chunk = struct.pack(">BI", CHUNK_PAYLOAD, len(non_canonical_payload_cbor)) + non_canonical_payload_cbor
 
-    body = MAGIC + bytes([FORMAT_VERSION, flags]) + header_chunk + payload_chunk
+    body = MAGIC + bytes([LEGACY_VERSION, flags]) + header_chunk + payload_chunk
 
     # Sign the body (which contains non-canonical bytes)
     sig_val = key.sign(body)
@@ -273,6 +282,50 @@ def test_canonical_cbor_strictness_enforcement():
     # because the canonicalized bytes of the payload chunk are different from the non-canonical ones.
     with pytest.raises(SPIFSignatureError, match="[Ss]ignature verification failed"):
         reader.verify_signature(re_serialized_bytes)
+
+
+def test_deterministic_cbor_enforcement_v3():
+    """At wire 0x03 a signed document's chunks must be in IETF
+    deterministic form: the disordered-payload construction that
+    verifies as transmitted at 0x02 is rejected up front at 0x03,
+    before signature verification."""
+    key, pub_b64 = _make_key()
+
+    node_dict = {}
+    node_dict["value"] = "Non-canonical Node"
+    node_dict["type"] = "fact"
+    node_dict["confidence"] = cbor2.CBORTag(TAG_DISTRIBUTION, {"mean": 0.95, "var": 0.0, "shape": "point", "semantics": "factual_accuracy"})
+    node_dict["refs"] = []
+    node_dict["id"] = "n1"
+    disordered_payload = cbor2.dumps([node_dict], canonical=False)
+
+    flags = 0
+    header_chunk_data = cbor2.dumps({
+        "version": FORMAT_VERSION,
+        "flags": flags,
+        "flags2": 0,
+        "created_ms": 1779379200000,
+    }, canonical=True)
+    header_chunk = struct.pack(">BI", CHUNK_HEADER, len(header_chunk_data)) + header_chunk_data
+    payload_chunk = struct.pack(">BI", CHUNK_PAYLOAD, len(disordered_payload)) + disordered_payload
+    body = MAGIC + bytes([FORMAT_VERSION, flags]) + header_chunk + payload_chunk
+
+    sig_val = key.sign(body)
+    sig_payload = cbor2.dumps({
+        "algorithm": "ed25519",
+        "signer": pub_b64,
+        "signature": sig_val,
+        "key_id": "key-01"
+    }, canonical=True)
+    sig_chunk = struct.pack(">BI", CHUNK_SIGNATURE, len(sig_payload)) + sig_payload
+
+    checksum_body = body + sig_chunk
+    checksum_val = hashlib.sha256(checksum_body).digest()
+    checksum_chunk = struct.pack(">BI", CHUNK_CHECKSUM, len(checksum_val)) + checksum_val
+
+    reader = SPIFReader()
+    with pytest.raises(SPIFFormatError, match="deterministic"):
+        reader.verify_signature(checksum_body + checksum_chunk)
 
 
 # ---------------------------------------------------------------------------

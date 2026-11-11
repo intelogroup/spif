@@ -28,7 +28,7 @@ from .types import (
     RevocationStatement, TimestampAnchor,
 )
 
-SUPPORTED_VERSIONS = {0x01, 0x02}
+SUPPORTED_VERSIONS = {0x01, 0x02, 0x03}
 MAX_DECOMPRESSED_SIZE = 10 * 1024 * 1024  # 10MB safety limit
 MAX_PAYLOAD_NODES = 20_000  # ponytail: flat cap, raise if legit docs hit it
 MAX_REVOCATION_STATEMENTS = 4_096  # ponytail: flat cap on embedded REVOCATION entries
@@ -398,7 +398,8 @@ def _key_identity(span: bytes) -> bytes:
         return span
 
 
-def _scan_cbor(data: bytes, chunk_name: str, *, canonical: bool) -> None:
+def _scan_cbor(data: bytes, chunk_name: str, *, canonical: bool,
+               deterministic: bool = False) -> None:
     """
     Walk one chunk's CBOR item, enforcing the SPEC §4.1 form rules.
 
@@ -417,6 +418,15 @@ def _scan_cbor(data: bytes, chunk_name: str, *, canonical: bool) -> None:
     the writers do not promise). Unsigned documents keep §4.1/§12.1's
     accept-both leniency for encoding *variability*: indefinite-length
     items and non-minimal forms decode normally.
+
+    Additionally enforced when ``deterministic`` is true (wire 0x03
+    signed documents): the full IETF deterministic form
+    (draft-ietf-cbor-serialization §5) — map keys in bytewise
+    lexicographic order of their encodings, shortest-form floats with
+    the single canonical NaN, and minimal bignums (no leading zeros;
+    a value that fits major type 0/1 must not use tag 2/3). This is
+    serialization checking in the draft's Appendix G sense. Legacy
+    versions keep the subset above: their writers promised no more.
 
     The scan is iterative so deeply nested inputs cannot hit the
     recursion limit here; cbor2 still performs the actual decode
@@ -438,13 +448,15 @@ def _scan_cbor(data: bytes, chunk_name: str, *, canonical: bool) -> None:
     n = len(data)
     pos = 0
     # Container stack. Frame: [items_remaining, is_map, next_is_key,
-    # seen_key_identities, frame_start]. items_remaining is None for an
-    # indefinite-length container (closed by a break marker instead of
-    # counting down); a map frame's count covers keys and values, so it
-    # starts at 2 * pair_count.
+    # seen_key_identities, frame_start, last_key_span]. items_remaining
+    # is None for an indefinite-length container (closed by a break
+    # marker instead of counting down); a map frame's count covers keys
+    # and values, so it starts at 2 * pair_count. last_key_span is the
+    # previous key's encoded span, for the deterministic order check.
     stack: list = []
     item_start: int | None = None  # start offset of the item being scanned
     root_done = False
+    pending_bignum = False  # a tag 2/3 head was just scanned (0x03 check)
 
     def complete_item(start: int, end: int) -> None:
         """Account one finished item (span data[start:end]) to its parent,
@@ -460,6 +472,11 @@ def _scan_cbor(data: bytes, chunk_name: str, *, canonical: bool) -> None:
                 if identity in frame[3]:
                     fail_duplicate_key()
                 frame[3].add(identity)
+                if deterministic:
+                    span = data[start:end]
+                    if frame[5] is not None and span <= frame[5]:
+                        fail("map keys out of deterministic (bytewise) order")
+                    frame[5] = span
                 frame[2] = False
             elif frame[1]:  # map frame expecting a value
                 frame[2] = True
@@ -497,6 +514,25 @@ def _scan_cbor(data: bytes, chunk_name: str, *, canonical: bool) -> None:
         if canonical and arg < (1 << (8 * (width // 2))):
             fail("non-minimal argument encoding")
         return arg
+
+    def check_float(ai: int, payload: bytes) -> None:
+        """Deterministic float form (0x03): shortest exact width, and
+        the only NaN is the half-precision 0xf97e00."""
+        if ai == 25:
+            (v,) = struct.unpack(">e", payload)
+            if math.isnan(v) and payload != b"\x7e\x00":
+                fail("non-canonical NaN encoding")
+            return
+        (v,) = struct.unpack(">f" if ai == 26 else ">d", payload)
+        if math.isnan(v) or math.isinf(v):
+            fail("non-minimal floating-point encoding")
+        for fmt in (">e", ">f") if ai == 27 else (">e",):
+            try:
+                (w,) = struct.unpack(fmt, struct.pack(fmt, v))
+            except (OverflowError, struct.error):
+                continue
+            if w == v:
+                fail("non-minimal floating-point encoding")
 
     while not root_done:
         if pos >= n:
@@ -552,11 +588,11 @@ def _scan_cbor(data: bytes, chunk_name: str, *, canonical: bool) -> None:
                 item_start = None
                 continue
             if major == 4:
-                stack.append([None, False, False, None, item_start])
+                stack.append([None, False, False, None, item_start, None])
                 item_start = None
                 continue
             if major == 5:
-                stack.append([None, True, True, set(), item_start])
+                stack.append([None, True, True, set(), item_start, None])
                 item_start = None
                 continue
             fail("indefinite-length form is only valid for strings, "
@@ -569,6 +605,8 @@ def _scan_cbor(data: bytes, chunk_name: str, *, canonical: bool) -> None:
                 width = {25: 2, 26: 4, 27: 8}[ai]
                 if pos + width > n:
                     fail("unexpected end of data")
+                if deterministic:
+                    check_float(ai, data[pos:pos + width])
                 pos += width
                 complete_item(item_start, pos)
                 item_start = None
@@ -577,9 +615,24 @@ def _scan_cbor(data: bytes, chunk_name: str, *, canonical: bool) -> None:
         else:  # 28..30 are reserved in every major type
             fail("reserved additional information")
 
+        if pending_bignum:
+            # The item after a tag 2/3 head: deterministic bignums are
+            # minimal — non-empty, no leading zero, and too large for
+            # major type 0/1 (draft Appendix G.2).
+            pending_bignum = False
+            if major == 2 and pos + arg <= n:
+                if arg == 0:
+                    fail("empty bignum encoding is not deterministic")
+                if data[pos] == 0:
+                    fail("bignum with a leading zero is not deterministic")
+                if arg <= 8:
+                    fail("bignum value fits in major type 0/1")
+
         if major == 6:
             # A tag prefixes the following item: the span keeps the tag
             # bytes and the parent slot is consumed by the tagged item.
+            if deterministic and arg in (2, 3):
+                pending_bignum = True
             continue
         if major in (0, 1, 7):
             complete_item(item_start, pos)
@@ -594,19 +647,22 @@ def _scan_cbor(data: bytes, chunk_name: str, *, canonical: bool) -> None:
             complete_item(item_start, pos)
             item_start = None
         elif major == 4:
-            stack.append([arg, False, False, None, item_start])
+            stack.append([arg, False, False, None, item_start, None])
             item_start = None
         else:  # major == 5
-            stack.append([2 * arg, True, True, set(), item_start])
+            stack.append([2 * arg, True, True, set(), item_start, None])
             item_start = None
 
     if pos != n:
         fail("trailing bytes after the CBOR item")
 
 
-def _assert_canonical_cbor(data: bytes, chunk_name: str) -> None:
-    """Reject non-canonical CBOR (full §4.1 canonical rule set)."""
-    _scan_cbor(data, chunk_name, canonical=True)
+def _assert_canonical_cbor(data: bytes, chunk_name: str, *,
+                           deterministic: bool = False) -> None:
+    """Reject non-canonical CBOR (full §4.1 canonical rule set). With
+    ``deterministic`` (wire 0x03), reject anything short of the full
+    IETF deterministic form as well."""
+    _scan_cbor(data, chunk_name, canonical=True, deterministic=deterministic)
 
 
 def _assert_unambiguous_cbor(data: bytes, chunk_name: str) -> None:
@@ -617,7 +673,7 @@ def _assert_unambiguous_cbor(data: bytes, chunk_name: str) -> None:
 
 def _cbor_load(data: bytes, chunk_name: str, *,
                compressed: bool = False, zstd_compressed: bool = False,
-               canonical_required: bool = False):
+               canonical_required: bool = False, deterministic: bool = False):
     """
     Deserialize CBOR bytes, raising SPIFFormatError on any failure.
 
@@ -635,7 +691,9 @@ def _cbor_load(data: bytes, chunk_name: str, *,
     (ambiguity is malformed in any document). If ``canonical_required``,
     the full canonical rule set is enforced as well — the reader passes
     it for every chunk when the document carries a signature. Unsigned
-    documents may use non-canonical encodings (§4.1 / §12.1).
+    documents may use non-canonical encodings (§4.1 / §12.1). If
+    ``deterministic`` (a signed wire-0x03 document), the full IETF
+    deterministic form is enforced on top.
     """
     if zstd_compressed:
         try:
@@ -661,7 +719,7 @@ def _cbor_load(data: bytes, chunk_name: str, *,
         except zlib.error as e:
             raise SPIFFormatError(f"zlib decompression failed in {chunk_name} chunk: {e}") from e
     if canonical_required:
-        _assert_canonical_cbor(data, chunk_name)
+        _assert_canonical_cbor(data, chunk_name, deterministic=deterministic)
     else:
         _assert_unambiguous_cbor(data, chunk_name)
     try:
@@ -727,7 +785,12 @@ def _find_first_auth_chunk_offset(data: bytes) -> int | None:
 def _get_pub_key(signer_b64: str):
     import base64
     from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+    from .crypto import is_weak_ed25519_public_key
     pub_bytes = base64.b64decode(signer_b64)
+    if is_weak_ed25519_public_key(pub_bytes):
+        # Small-order keys are never legitimate signers, and cofactored
+        # verification can accept forgeries under them (see crypto.py).
+        raise ValueError("signer public key is a weak (small-order) key")
     return Ed25519PublicKey.from_public_bytes(pub_bytes)
 
 
@@ -907,12 +970,19 @@ class SPIFReader:
         canonical_required = (CHUNK_SIGNATURE in chunks
                               or CHUNK_MULTISIG in chunks)
 
+        # Wire 0x03 (SPEC §4.1): a signed document is additionally held
+        # to the full IETF deterministic form. Legacy versions keep the
+        # subset their writers promised — their documents are not
+        # re-judged under rules that did not exist when they were made.
+        deterministic = canonical_required and version == 0x03
+
         # 4a. Detect compression from HEADER chunk (flags2 field)
         compressed = False
         zstd_compressed = False
         if CHUNK_HEADER in chunks:
             hdr = _cbor_load(chunks[CHUNK_HEADER][0], "HEADER",
-                             canonical_required=canonical_required)
+                             canonical_required=canonical_required,
+                             deterministic=deterministic)
             if not isinstance(hdr, dict):
                 raise SPIFFormatError("HEADER chunk must decode to a dict")
             flags2 = _typed_int(hdr, "flags2", "HEADER", 0)
@@ -925,7 +995,8 @@ class SPIFReader:
 
         raw_payload = _cbor_load(chunks[CHUNK_PAYLOAD][0], "PAYLOAD",
                                  compressed=compressed, zstd_compressed=zstd_compressed,
-                                 canonical_required=canonical_required)
+                                 canonical_required=canonical_required,
+                             deterministic=deterministic)
         if not isinstance(raw_payload, list):
             raise SPIFFormatError("PAYLOAD chunk must decode to a list")
         if len(raw_payload) > MAX_PAYLOAD_NODES:
@@ -941,7 +1012,8 @@ class SPIFReader:
         provenance = None
         if CHUNK_PROVENANCE in chunks:
             p = _cbor_load(chunks[CHUNK_PROVENANCE][0], "PROVENANCE",
-                           canonical_required=canonical_required)
+                           canonical_required=canonical_required,
+                             deterministic=deterministic)
             if not isinstance(p, dict):
                 raise SPIFFormatError("PROVENANCE chunk must decode to a dict")
             try:
@@ -969,7 +1041,8 @@ class SPIFReader:
         if CHUNK_SEMANTIC in chunks:
             s = _cbor_load(chunks[CHUNK_SEMANTIC][0], "SEMANTIC",
                            compressed=compressed, zstd_compressed=zstd_compressed,
-                           canonical_required=canonical_required)
+                           canonical_required=canonical_required,
+                             deterministic=deterministic)
             if not isinstance(s, dict):
                 raise SPIFFormatError("SEMANTIC chunk must decode to a dict")
             emb = s.get("embedding", [])
@@ -1007,7 +1080,8 @@ class SPIFReader:
         if CHUNK_TRACE in chunks:
             raw = _cbor_load(chunks[CHUNK_TRACE][0], "TRACE",
                              compressed=compressed, zstd_compressed=zstd_compressed,
-                             canonical_required=canonical_required)
+                             canonical_required=canonical_required,
+                             deterministic=deterministic)
             if isinstance(raw, list):
                 # v0.1 format: bare list of steps
                 trace = [_decode_step(st) for st in raw]
@@ -1038,7 +1112,8 @@ class SPIFReader:
         if CHUNK_ALTS in chunks:
             raw = _cbor_load(chunks[CHUNK_ALTS][0], "ALTS",
                              compressed=compressed, zstd_compressed=zstd_compressed,
-                             canonical_required=canonical_required)
+                             canonical_required=canonical_required,
+                             deterministic=deterministic)
             def _decode_alternative(a, *, normalized: bool = True) -> Alternative:
                 if not isinstance(a, dict):
                     raise SPIFFormatError(
@@ -1098,7 +1173,8 @@ class SPIFReader:
         if CHUNK_DELTA in chunks:
             d = _cbor_load(chunks[CHUNK_DELTA][0], "DELTA",
                            compressed=compressed, zstd_compressed=zstd_compressed,
-                           canonical_required=canonical_required)
+                           canonical_required=canonical_required,
+                             deterministic=deterministic)
             if not isinstance(d, dict):
                 raise SPIFFormatError("DELTA chunk must decode to a dict")
             if "base_hash" not in d:
@@ -1116,7 +1192,8 @@ class SPIFReader:
         signature = None
         if CHUNK_SIGNATURE in chunks:
             s = _cbor_load(chunks[CHUNK_SIGNATURE][0], "SIGNATURE",
-                           canonical_required=canonical_required)
+                           canonical_required=canonical_required,
+                             deterministic=deterministic)
             if not isinstance(s, dict):
                 raise SPIFFormatError("SIGNATURE chunk must decode to a dict")
             signature = _decode_signature_entry(s, "SIGNATURE")
@@ -1125,7 +1202,8 @@ class SPIFReader:
         signatures: list[Signature] = []
         if CHUNK_MULTISIG in chunks:
             raw = _cbor_load(chunks[CHUNK_MULTISIG][0], "MULTISIG",
-                             canonical_required=canonical_required)
+                             canonical_required=canonical_required,
+                             deterministic=deterministic)
             if not isinstance(raw, list):
                 raise SPIFFormatError("MULTISIG chunk must decode to a list")
             seen_signers: set[str] = set()
@@ -1153,7 +1231,8 @@ class SPIFReader:
         task_info = None
         if CHUNK_TASK in chunks:
             t = _cbor_load(chunks[CHUNK_TASK][0], "TASK",
-                           canonical_required=canonical_required)
+                           canonical_required=canonical_required,
+                             deterministic=deterministic)
             if not isinstance(t, dict):
                 raise SPIFFormatError("TASK chunk must decode to a dict")
             task_info = TaskInfo(
@@ -1169,7 +1248,8 @@ class SPIFReader:
         signer_roles: dict[str, str] = {}
         if CHUNK_ROLES in chunks:
             r = _cbor_load(chunks[CHUNK_ROLES][0], "ROLES",
-                           canonical_required=canonical_required)
+                           canonical_required=canonical_required,
+                             deterministic=deterministic)
             if not isinstance(r, dict):
                 raise SPIFFormatError("ROLES chunk must decode to a dict")
             if not all(isinstance(k, str) and isinstance(v, str) for k, v in r.items()):
@@ -1182,7 +1262,8 @@ class SPIFReader:
         revocations: list[RevocationStatement] = []
         if CHUNK_REVOCATION in chunks:
             raw = _cbor_load(chunks[CHUNK_REVOCATION][0], "REVOCATION",
-                             canonical_required=canonical_required)
+                             canonical_required=canonical_required,
+                             deterministic=deterministic)
             if not isinstance(raw, list):
                 raise SPIFFormatError("REVOCATION chunk must decode to a list")
             if len(raw) > MAX_REVOCATION_STATEMENTS:
@@ -1206,7 +1287,8 @@ class SPIFReader:
         timestamp_anchor = None
         if CHUNK_TIMESTAMP in chunks:
             raw = _cbor_load(chunks[CHUNK_TIMESTAMP][0], "TIMESTAMP",
-                             canonical_required=canonical_required)
+                             canonical_required=canonical_required,
+                             deterministic=deterministic)
             if not isinstance(raw, dict):
                 raise SPIFFormatError("TIMESTAMP chunk must decode to a dict")
             try:

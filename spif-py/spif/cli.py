@@ -478,6 +478,9 @@ def verify(
 
     try:
         pub_bytes = base64.b64decode(key_b64)
+        from .crypto import is_weak_ed25519_public_key
+        if is_weak_ed25519_public_key(pub_bytes):
+            raise InvalidSignature("weak (small-order) public key")
         pub_key = Ed25519PublicKey.from_public_bytes(pub_bytes)
         pub_key.verify(doc.signature.signature, body_to_sign)
         typer.echo(f"VALID  {path}  (signer: {doc.signature.signer[:40]})")

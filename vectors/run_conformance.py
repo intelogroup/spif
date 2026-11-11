@@ -128,8 +128,13 @@ def rust_conformance_binary() -> Path | None:
 # with no extra flags). 18/19 are the non-canonical SIGNATURE cases of
 # SPIF-RUST-NONCANONICAL-ACCEPT-001; 24 carries the kit's MULTISIG
 # chunk; 01/06/17/20/21 are the agreement controls (valid, revoked,
-# duplicate-key x2, trailing bytes).
-RUST_AGREEMENT_IDS = {"01", "06", "17", "18", "19", "20", "21", "24"}
+# duplicate-key x2, trailing bytes). 26-34 are the wire-0x03
+# per-version canonical cases: both implementations must return the
+# same verdict on each side of the version line (key order, float
+# width, bignum minimality, and the legacy-vs-bytewise integer-key
+# order pair).
+RUST_AGREEMENT_IDS = {"01", "06", "17", "18", "19", "20", "21", "24",
+                      "26", "27", "28", "29", "30", "31", "32", "33", "34"}
 
 
 def run_rust_agreement_check(case: dict) -> tuple[str, str | None]:
