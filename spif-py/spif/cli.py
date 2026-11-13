@@ -56,7 +56,11 @@ def export(
         result = to_lossless_json(doc, indent=indent)
 
         if output:
-            output.write_text(result, encoding="utf-8")
+            try:
+                output.write_text(result, encoding="utf-8")
+            except OSError as e:
+                typer.echo(f"ERROR: cannot write {output}: {e}", err=True)
+                raise typer.Exit(1)
             typer.echo(f"Exported {path} -> {output}")
         else:
             typer.echo(result)
@@ -65,7 +69,11 @@ def export(
         result = to_msgpack(doc)
 
         if output:
-            output.write_bytes(result)
+            try:
+                output.write_bytes(result)
+            except OSError as e:
+                typer.echo(f"ERROR: cannot write {output}: {e}", err=True)
+                raise typer.Exit(1)
             typer.echo(f"Exported {path} -> {output}")
         else:
             import sys
@@ -167,7 +175,16 @@ def inspect(
 @app.command()
 def hexdump(path: Path = typer.Argument(..., help="Path to a .spif file")):
     """Show the raw chunk structure of a SPIF file."""
-    data = path.read_bytes()
+    try:
+        data = path.read_bytes()
+    except OSError as e:
+        typer.echo(f"ERROR: cannot read {path}: {e}", err=True)
+        raise typer.Exit(1)
+    if len(data) < 11:
+        typer.echo(
+            f"ERROR: {path}: too short to be a SPIF file ({len(data)} bytes)",
+            err=True)
+        raise typer.Exit(1)
     typer.echo(f"magic:   {data[:9].hex()}")
     typer.echo(f"version: {data[9]:02x}")
     typer.echo(f"flags:   {data[10]:08b}")
@@ -195,7 +212,11 @@ def sign(
     from .writer import SPIFWriter
 
     # Load private key
-    key_bytes = key.read_bytes()
+    try:
+        key_bytes = key.read_bytes()
+    except OSError as e:
+        typer.echo(f"ERROR loading key: cannot read {key}: {e}", err=True)
+        raise typer.Exit(1)
     try:
         if key_bytes.startswith(b"-----"):
             private_key = load_pem_private_key(key_bytes, password=None)
@@ -217,7 +238,11 @@ def sign(
     signed_bytes = sign_document(doc, private_key, signer_id=final_signer)
 
     out_path = output or path
-    out_path.write_bytes(signed_bytes)
+    try:
+        out_path.write_bytes(signed_bytes)
+    except OSError as e:
+        typer.echo(f"ERROR: cannot write {out_path}: {e}", err=True)
+        raise typer.Exit(1)
     typer.echo(f"Signed  {out_path}  (signer: {doc.signature.signer[:32]}{'...' if len(doc.signature.signer) > 32 else ''})")
 
 
@@ -244,6 +269,37 @@ def _parse_kv_options(items, flag: str) -> dict[str, str]:
     return out
 
 
+def _load_revocation_statements_strict(rfile: Path):
+    """Strict per-file loader for CLI ``--revocations``.
+
+    The library loader (``trust.load_revocation_statements``) is lenient
+    by design — an absent file loads as zero statements — but on the CLI
+    trust path an explicitly supplied file must fail closed instead
+    (SPIF-CLI-REVOCATION-MISSING-001 / SPIF-CLI-REVOCATION-WRONGSHAPE-001):
+    the path must be an existing regular file, parse as a JSON object,
+    and carry a ``revocations`` list. Any violation raises ValueError;
+    the caller turns it into ERROR + exit 1. Strictness is per file, so
+    in a multi-file invocation one bad file fails the whole verification
+    even when a sibling loads fine.
+    """
+    import json as _json
+
+    from .trust import load_revocation_statements
+
+    p = Path(rfile)
+    if not p.is_file():
+        raise ValueError("file does not exist or is not a regular file")
+    try:
+        data = _json.loads(p.read_text())
+    except (OSError, ValueError) as e:
+        raise ValueError(f"cannot parse file as JSON: {e}") from e
+    if not isinstance(data, dict):
+        raise ValueError("file must contain a JSON object")
+    if not isinstance(data.get("revocations"), list):
+        raise ValueError('file must contain a "revocations" list')
+    return load_revocation_statements(p)
+
+
 def _run_trust_verify(
     path: Path,
     data: bytes,
@@ -259,7 +315,7 @@ def _run_trust_verify(
 
     ``require_pq`` selects the SPEC §7.9.2 require_pq gate mode for
     PQ-bearing (hybrid / PQ-only) signature entries."""
-    from .trust import verify_artifact, load_revocation_statements
+    from .trust import verify_artifact
 
     tsa_keys = _parse_kv_options(tsa_key_items, "--tsa-key")
     known_keys = _parse_kv_options(known_key_items, "--known-key")
@@ -279,7 +335,7 @@ def _run_trust_verify(
     statements = []
     for rfile in revocation_files or []:
         try:
-            statements.extend(load_revocation_statements(rfile))
+            statements.extend(_load_revocation_statements_strict(rfile))
         except Exception as e:
             typer.echo(f"ERROR: cannot load revocation file {rfile}: {e}", err=True)
             raise typer.Exit(1)
@@ -355,7 +411,11 @@ def verify(
     from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
     from cryptography.exceptions import InvalidSignature
 
-    data = path.read_bytes()
+    try:
+        data = path.read_bytes()
+    except OSError as e:
+        typer.echo(f"ERROR: cannot read {path}: {e}", err=True)
+        raise typer.Exit(1)
 
     if trust or revocation_files or tsa_key_items or bundle_paths or known_key_items or require_pq:
         _run_trust_verify(

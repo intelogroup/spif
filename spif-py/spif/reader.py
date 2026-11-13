@@ -1351,7 +1351,11 @@ class SPIFReader:
         return doc
 
     def read(self, path: str | Path) -> SPIFDocument:
-        return self.decode(Path(path).read_bytes())
+        try:
+            data = Path(path).read_bytes()
+        except OSError as e:
+            raise SPIFError(f"cannot read {path}: {e}") from e
+        return self.decode(data)
 
     @staticmethod
     def _verify_sig_inner(
