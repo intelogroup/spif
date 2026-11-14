@@ -394,8 +394,12 @@ def test_partial_text_field_types_fail_closed():
 
 
 def test_stream_resume_field_types_fail_closed():
-    from spif.streaming import _parse_resume_token
-    good = SPIFStreamReader().feed(_stream(
+    from spif.streaming import _make_resume_token, _parse_resume_token
+    # Token binding (2026-11-14): the well-typed control chunk is read by
+    # a reader holding the matching stored token — the field contract
+    # under test is unchanged, as are the assertions below.
+    good = SPIFStreamReader(
+        resume_token=_make_resume_token(3, b"\x01" * 32)).feed(_stream(
         CHUNK_STREAM_RESUME, {"seq": 3, "body_hash": b"\x01" * 32}))
     resumed = [e for e in good if e.type == "resumed"]
     assert len(resumed) == 1

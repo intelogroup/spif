@@ -59,13 +59,34 @@ The resume token is a base64url string encoding:
     seq      (4 bytes, big-endian uint32) — last confirmed PARTIAL_TEXT seq
     sha256   (32 bytes) — SHA-256 of all stream bytes confirmed received
 
-Both sides verify the hash matches before trusting the seq.
+The hash is trusted only when a side actually checks it:
+
+  - The reader must be constructed with the consumer's stored token
+    (``SPIFStreamReader(resume_token=token)``).  A STREAM_RESUME chunk
+    whose (seq, body_hash) does not exactly match that token is an
+    error, as is any STREAM_RESUME chunk when the reader holds no
+    token — unless the caller explicitly opts into legacy behaviour
+    with ``allow_unbound_resume=True``.
+  - A producer that still holds the original stream's prefix bytes can
+    pass them as ``resume_prefix_bytes`` to ``SPIFStreamWriter``; the
+    writer refuses construction unless SHA-256 of the prefix equals
+    the token's hash.  ``verify_resume_token(token, prefix_bytes)``
+    exposes the same check to any party holding the prefix.
+
+A STREAM_RESUME chunk is honoured at most once per reader, only before
+any partial_text has been emitted, and partials with seq below the
+resume seq are rejected.  Before the reader emits "verified", the
+partial text it emitted live must reconcile with the verified payload:
+for each node, the concatenation of its partials must equal the
+payload value (or, on a resumed stream, be a suffix of it — the prefix
+was delivered by the earlier stream).
 """
 
 from __future__ import annotations
 
 import base64
 import hashlib
+import hmac
 import struct
 import time
 from dataclasses import dataclass
@@ -81,6 +102,7 @@ from .format import (
     FLAG_PROVENANCE, FLAG_TRACE, FLAG_ALTS, FLAG_DELTA,
     FLAG_SIGNATURE, FLAG_MULTISIG, FLAG_STREAMING,
 )
+from .reader import _cbor_load
 from .types import SPIFDocument, Provenance
 from .writer import _chunk, _raw_chunk, _encode_node, _encode_step, _encode_distribution
 
@@ -136,9 +158,17 @@ class SPIFStreamWriter:
         are silently dropped by ``partial_text()`` — the caller is
         responsible for only feeding tokens that need to be (re-)sent, or
         can feed all tokens and let the writer skip already-confirmed ones.
+    resume_prefix_bytes :
+        The original stream's prefix bytes (everything the first writer
+        emitted up to the point the resume token was taken), when the
+        producer still holds them.  When provided, the constructor
+        verifies SHA-256 of the prefix against the token's body hash
+        and raises ``ValueError`` on mismatch — a token is never trusted
+        past the bytes it claims to continue.
     """
 
-    def __init__(self, *, resume_from: str | None = None) -> None:
+    def __init__(self, *, resume_from: str | None = None,
+                 resume_prefix_bytes: bytes | None = None) -> None:
         self._body = bytearray()   # accumulates all emitted bytes for checksum
         self._seq = 0
         self._opened = False
@@ -149,8 +179,19 @@ class SPIFStreamWriter:
         self._resume_hash: bytes | None = None
         if resume_from is not None:
             seq, body_hash = _parse_resume_token(resume_from)
+            if resume_prefix_bytes is not None and not hmac.compare_digest(
+                    hashlib.sha256(resume_prefix_bytes).digest(), body_hash):
+                raise ValueError(
+                    "resume_prefix_bytes do not hash to the resume token's "
+                    "body_hash — refusing to resume from an unverified prefix"
+                )
             self._resume_seq = seq
             self._resume_hash = body_hash
+        elif resume_prefix_bytes is not None:
+            raise ValueError(
+                "resume_prefix_bytes requires resume_from (a resume token to "
+                "verify the prefix against)"
+            )
 
     # ------------------------------------------------------------------
     # Public API
@@ -365,6 +406,15 @@ class SPIFStreamReader:
     no PARTIAL_TEXT chunks will be emitted, but "verified" is still fired
     when the CHECKSUM is parsed.
 
+    Resume discipline: a STREAM_RESUME chunk is honoured only when this
+    reader was constructed with the consumer's stored ``resume_token``
+    and the chunk's (seq, body_hash) matches it exactly — or when the
+    caller explicitly passes ``allow_unbound_resume=True`` (legacy
+    behaviour).  A resume is accepted at most once and only before any
+    partial_text; partials below the resume seq are rejected.  Before
+    "verified" is emitted, the live-emitted partial text must reconcile
+    with the verified payload (equality, or a suffix on resumed streams).
+
     Typical usage (sync generator):
 
         reader = SPIFStreamReader()
@@ -374,12 +424,25 @@ class SPIFStreamReader:
                     handle(event)
     """
 
-    def __init__(self, *, require_signature: bool = False) -> None:
+    def __init__(self, *, require_signature: bool = False,
+                 resume_token: str | None = None,
+                 allow_unbound_resume: bool = False) -> None:
         self._buf = bytearray()
         self._pos = 0               # parse cursor into self._buf
         self._state = "header"      # "header" | "chunks" | "done"
         self._require_signature = require_signature
         self._last_seq: dict[str, int] = {}  # node_id -> highest seq seen
+        # Resume state machine + token binding
+        self._expected_resume: tuple[int, bytes] | None = None
+        if resume_token is not None:
+            # ValueError on a malformed token — fail fast at construction.
+            self._expected_resume = _parse_resume_token(resume_token)
+        self._allow_unbound_resume = allow_unbound_resume
+        self._resumed = False
+        self._emitted_partial = False
+        self._seq_floor = 0
+        # Live-emitted partial text per node, for payload binding at verify
+        self._partial_text: dict[str, list[str]] = {}
 
     def feed(self, data: bytes | bytearray) -> list[StreamEvent]:
         """
@@ -442,7 +505,9 @@ class SPIFStreamReader:
     ) -> None:
         if chunk_type == CHUNK_PARTIAL_TEXT:
             try:
-                d = cbor2.loads(payload)
+                # Strict decode (same entry point as the document reader):
+                # duplicate map keys and trailing bytes are malformed.
+                d = _cbor_load(payload, "PARTIAL_TEXT")
                 if not isinstance(d, dict):
                     raise ValueError(
                         f"PARTIAL_TEXT payload must be a dict, got {type(d).__name__}")
@@ -470,6 +535,15 @@ class SPIFStreamReader:
                     ))
                     self._state = "done"
                     return
+                if seq < self._seq_floor:
+                    events.append(StreamEvent(
+                        type="error",
+                        error=f"PARTIAL_TEXT seq {seq} for node '{node_id}' is below "
+                              f"the resume seq {self._seq_floor} (already delivered "
+                              f"before the resume — replay)",
+                    ))
+                    self._state = "done"
+                    return
                 last = self._last_seq.get(node_id, -1)
                 if seq <= last:
                     events.append(StreamEvent(
@@ -480,6 +554,8 @@ class SPIFStreamReader:
                     self._state = "done"
                     return
                 self._last_seq[node_id] = seq
+                self._emitted_partial = True
+                self._partial_text.setdefault(node_id, []).append(text)
                 events.append(StreamEvent(
                     type="partial_text",
                     node_id=node_id,
@@ -493,7 +569,9 @@ class SPIFStreamReader:
 
         elif chunk_type == CHUNK_STREAM_RESUME:
             try:
-                d = cbor2.loads(payload)
+                # Strict decode (same entry point as the document reader):
+                # duplicate map keys and trailing bytes are malformed.
+                d = _cbor_load(payload, "STREAM_RESUME")
                 if not isinstance(d, dict):
                     raise ValueError(
                         f"STREAM_RESUME payload must be a dict, got {type(d).__name__}")
@@ -527,6 +605,48 @@ class SPIFStreamReader:
                     ))
                     self._state = "done"
                     return
+                # Placement: the writer contract emits STREAM_RESUME only
+                # from open(), before any PARTIAL_TEXT, at most once.
+                if self._resumed:
+                    events.append(StreamEvent(
+                        type="error",
+                        error="STREAM_RESUME received after this stream "
+                              "already resumed",
+                    ))
+                    self._state = "done"
+                    return
+                if self._emitted_partial:
+                    events.append(StreamEvent(
+                        type="error",
+                        error="STREAM_RESUME received after partial_text "
+                              "was already emitted",
+                    ))
+                    self._state = "done"
+                    return
+                # Token binding: the chunk must claim exactly the position
+                # the consumer's stored token claims — nothing else is a
+                # continuation this reader may trust.
+                if self._expected_resume is not None:
+                    exp_seq, exp_hash = self._expected_resume
+                    if seq != exp_seq or not hmac.compare_digest(body_hash, exp_hash):
+                        events.append(StreamEvent(
+                            type="error",
+                            error="STREAM_RESUME (seq, body_hash) does not "
+                                  "match the resume token held by this reader",
+                        ))
+                        self._state = "done"
+                        return
+                elif not self._allow_unbound_resume:
+                    events.append(StreamEvent(
+                        type="error",
+                        error="STREAM_RESUME received but this reader holds "
+                              "no resume token (construct with "
+                              "resume_token=... or allow_unbound_resume=True)",
+                    ))
+                    self._state = "done"
+                    return
+                self._resumed = True
+                self._seq_floor = seq
                 token = _make_resume_token(seq, body_hash)
                 events.append(StreamEvent(
                     type="resumed",
@@ -545,7 +665,11 @@ class SPIFStreamReader:
             try:
                 from .reader import SPIFReader
                 doc = SPIFReader(require_signature=self._require_signature).decode(full_bytes)
-                events.append(StreamEvent(type="verified", document=doc))
+                binding_error = self._partial_binding_error(doc)
+                if binding_error is not None:
+                    events.append(StreamEvent(type="error", error=binding_error))
+                else:
+                    events.append(StreamEvent(type="verified", document=doc))
             except Exception as exc:
                 events.append(StreamEvent(type="error", error=str(exc)))
             self._state = "done"
@@ -554,10 +678,64 @@ class SPIFStreamReader:
         # silently buffered so that SPIFReader.decode() can process them in
         # one pass when the CHECKSUM arrives.
 
+    def _partial_binding_error(self, doc: SPIFDocument) -> str | None:
+        """
+        Reconcile the partial text emitted live with the verified payload.
+
+        Returns an error string when the live layer and the verified
+        document diverge, else None.  Streams that emitted no partials
+        are unaffected.  On a resumed stream only the post-resume
+        partials are visible to this reader, so their concatenation
+        must be a suffix of the payload value.
+        """
+        if not self._partial_text:
+            return None
+        payload_by_id = {node.id: node for node in doc.payload}
+        for node_id, fragments in self._partial_text.items():
+            node = payload_by_id.get(node_id)
+            if node is None:
+                return (
+                    f"partial_text was emitted for node '{node_id}', which is "
+                    f"absent from the verified payload"
+                )
+            if not isinstance(node.value, str):
+                return (
+                    f"partial_text was emitted for node '{node_id}', whose "
+                    f"verified payload value is not a string"
+                )
+            streamed = "".join(fragments)
+            if self._resumed:
+                if not node.value.endswith(streamed):
+                    return (
+                        f"resumed partial_text for node '{node_id}' is not a "
+                        f"suffix of the verified payload value"
+                    )
+            elif streamed != node.value:
+                return (
+                    f"partial_text for node '{node_id}' does not match the "
+                    f"verified payload value"
+                )
+        return None
+
 
 # ---------------------------------------------------------------------------
 # Resume token helpers
 # ---------------------------------------------------------------------------
+
+def verify_resume_token(token: str, prefix_bytes: bytes) -> bool:
+    """
+    Check a resume token against the stream prefix it claims to continue.
+
+    Returns True only when SHA-256 of ``prefix_bytes`` equals the body
+    hash carried by ``token`` (constant-time compare).  A malformed
+    token returns False — this is a verification predicate, not a parser.
+    """
+    try:
+        _, body_hash = _parse_resume_token(token)
+    except ValueError:
+        return False
+    return hmac.compare_digest(hashlib.sha256(prefix_bytes).digest(), body_hash)
+
 
 def _make_resume_token(seq: int, body_hash: bytes) -> str:
     """Encode seq + body_hash as a base64url resume token."""
@@ -588,12 +766,21 @@ def _parse_resume_token(token: str) -> tuple[int, bytes]:
 # Convenience: iterate a complete bytes object as events
 # ---------------------------------------------------------------------------
 
-def iter_events(data: bytes, chunk_size: int = 4096) -> Iterator[StreamEvent]:
+def iter_events(data: bytes, chunk_size: int = 4096, *,
+                resume_token: str | None = None,
+                allow_unbound_resume: bool = False) -> Iterator[StreamEvent]:
     """
     Yield StreamEvents from a complete (possibly streaming) SPIF byte sequence.
     Useful for replaying a stored stream or testing without real I/O.
+
+    ``resume_token`` / ``allow_unbound_resume`` are forwarded to
+    ``SPIFStreamReader`` — a resumed stream needs the consumer's stored
+    token (or the explicit legacy opt-in) to be honoured.
     """
-    reader = SPIFStreamReader()
+    reader = SPIFStreamReader(
+        resume_token=resume_token,
+        allow_unbound_resume=allow_unbound_resume,
+    )
     offset = 0
     while offset < len(data):
         piece = data[offset: offset + chunk_size]
