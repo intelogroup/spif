@@ -441,12 +441,14 @@ class TestConcurrentStreamResume:
             w = SPIFStreamWriter()
             parts = [w.open()]
             for t in tokens:
-                parts.append(w.partial_text(t))
+                # Partials name the payload node and reconstruct its
+                # value (partial/payload binding, 2026-11-14).
+                parts.append(w.partial_text(t, node_id=doc.payload[0].id))
             parts.append(w.commit(doc))
             return b"".join(parts)
 
-        data1 = make_stream(doc1, ["hello", " world"])
-        data2 = make_stream(doc2, ["foo", " bar"])
+        data1 = make_stream(doc1, ["doc", "-one"])
+        data2 = make_stream(doc2, ["doc", "-two"])
 
         results = {}
         lock = threading.Lock()

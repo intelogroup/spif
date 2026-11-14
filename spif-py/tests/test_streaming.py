@@ -55,7 +55,10 @@ def _stream_doc(doc: SPIFDocument, tokens: list[str] | None = None,
     writer = SPIFStreamWriter()
     parts = [writer.open(prov)]
     for tok in (tokens or ["hello", " world"]):
-        parts.append(writer.partial_text(tok, node_id="n1"))
+        # Name the payload node the partials belong to (was hardcoded
+        # "n1", which diverged from the "main"-node doc in
+        # test_partial_text_reconstruction_matches_payload).
+        parts.append(writer.partial_text(tok, node_id=doc.payload[0].id))
     parts.append(writer.commit(doc))
     return b"".join(parts)
 
@@ -187,7 +190,9 @@ class TestSPIFStreamReader:
         assert seqs == list(range(len(tokens)))
 
     def test_verified_event_fires_at_end(self):
-        data = _stream_doc(_minimal_doc(), tokens=["hi"])
+        # Partials must reconstruct the payload value (partial/payload
+        # binding, 2026-11-14) — the token is the full payload text.
+        data = _stream_doc(_minimal_doc(), tokens=["The sky is blue."])
         events = list(iter_events(data))
         verified = [e for e in events if e.type == "verified"]
         assert len(verified) == 1
@@ -201,7 +206,8 @@ class TestSPIFStreamReader:
         assert verified.document.payload[0].id == "n1"
 
     def test_no_events_after_verified(self):
-        data = _stream_doc(_minimal_doc(), tokens=["hi"])
+        # Honest partials (see test_verified_event_fires_at_end).
+        data = _stream_doc(_minimal_doc(), tokens=["The sky is blue."])
         reader = SPIFStreamReader()
         all_events = reader.feed(data)
         # reader is done; further feed calls return nothing
@@ -300,7 +306,8 @@ class TestStreamDocumentFidelity:
 
     def test_require_signature_false_accepts_unsigned(self):
         """SPIFStreamReader(require_signature=False) (default) must accept unsigned documents."""
-        data = _stream_doc(_minimal_doc(), tokens=["hello"])
+        # Honest partials (see test_verified_event_fires_at_end).
+        data = _stream_doc(_minimal_doc(), tokens=["The sky is blue."])
         reader = SPIFStreamReader(require_signature=False)
         events = reader.feed(data)
         verified = [e for e in events if e.type == "verified"]
@@ -522,7 +529,9 @@ class TestStreamResume:
         parts.append(writer.commit(doc))
         data = b"".join(parts)
 
-        events = list(iter_events(data))
+        # Token binding (2026-11-14): the reader must hold the consumer's
+        # stored token — here, the same token the writer resumed from.
+        events = list(iter_events(data, resume_token=token))
         resumed_events = [e for e in events if e.type == "resumed"]
         assert len(resumed_events) == 1
         assert resumed_events[0].seq == 3
@@ -534,7 +543,8 @@ class TestStreamResume:
         parts = [writer.open(), writer.commit(_minimal_doc())]
         data = b"".join(parts)
 
-        events = list(iter_events(data))
+        # Token binding (2026-11-14): see test_stream_reader_fires_resumed_event.
+        events = list(iter_events(data, resume_token=token))
         resumed = next(e for e in events if e.type == "resumed")
         assert resumed.resume_token != ""
         seq, _ = _parse_resume_token(resumed.resume_token)

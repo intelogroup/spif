@@ -445,7 +445,9 @@ class TestStreamingEdgeCases:
         writer = SPIFStreamWriter()
         parts = [writer.open()]
         for tok in tokens:
-            parts.append(writer.partial_text(tok))
+            # Partials must name the payload node (partial/payload
+            # binding, 2026-11-14).
+            parts.append(writer.partial_text(tok, node_id="n0"))
         parts.append(writer.commit(doc))
         data = b"".join(parts)
 
@@ -484,20 +486,21 @@ class TestStreamingEdgeCases:
         w1 = SPIFStreamWriter()
         w1.open()
         for tok in tokens[:50]:
-            w1.partial_text(tok)
+            w1.partial_text(tok, node_id="n0")
         resume_token = w1.resume_token()
 
         # Resumed stream: replay all 100 tokens, writer skips 0-49
         w2 = SPIFStreamWriter(resume_from=resume_token)
         parts = [w2.open()]
         for tok in tokens:
-            chunk = w2.partial_text(tok)
+            chunk = w2.partial_text(tok, node_id="n0")
             if chunk:
                 parts.append(chunk)
         parts.append(w2.commit(doc))
         resumed_data = b"".join(parts)
 
-        events = list(iter_events(resumed_data))
+        # Token binding (2026-11-14): the reader holds the stored token.
+        events = list(iter_events(resumed_data, resume_token=resume_token))
         verified = next(e for e in events if e.type == "verified")
         resumed_evts = [e for e in events if e.type == "resumed"]
         partials = [e for e in events if e.type == "partial_text"]

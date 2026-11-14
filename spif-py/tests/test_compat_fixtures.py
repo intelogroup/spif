@@ -59,7 +59,11 @@ def test_fixture_manifest_matches_fixture_bytes(tmp_path):
             assert reader.verify_signature(data) is False
 
         if features.get("streaming"):
-            events = list(iter_events(data))
+            # Legacy cross-language fixtures predate resume-token binding
+            # (the Rust reader has no binding at all); the fixture's
+            # subject is byte-level compatibility, so the stream reader
+            # uses the explicit legacy opt-in.
+            events = list(iter_events(data, allow_unbound_resume=True))
             assert any(event.type == "verified" for event in events)
             if features.get("resumed"):
                 resumed = [event for event in events if event.type == "resumed"]
