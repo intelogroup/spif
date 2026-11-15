@@ -2,6 +2,45 @@
 
 All notable changes to SPIF are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.4.1] - 2026-11-15
+
+A hardening release. No wire-format or spec change — the spec remains
+v1.4, and artifacts written by 1.4.0 verify identically. Every change
+comes from the adversarial-loop fix rounds merged since 1.4.0
+(PRs #108–#113).
+
+### Fixed
+- **CLI fails closed on bad inputs and outputs** (#108, #109):
+  revocation files that are missing or wrong-shaped are rejected
+  instead of failing open, and unreadable input files or unwritable
+  output paths produce clean errors instead of crashes.
+  `SPIFReader.read()` now raises `SPIFError` for unreadable paths.
+- **Stream discipline** (#110): the Python stream reader decodes
+  chunks at the document reader's strict CBOR bar, runs a sequence
+  state machine that refuses replayed or misplaced chunks, and binds
+  emitted partial text to the final payload before emitting
+  `verified`.
+- **Trust extractors decode strictly** (#111):
+  `extract_revocations` and `extract_timestamp` decode through the
+  strict path — ambiguous CBOR (duplicate keys, trailing bytes) and
+  duplicate chunks yield no extracted values instead of silently
+  resolved ones.
+- **Rust stream-reader parity** (#112): the Rust stream reader gained
+  strict typed partial parsing, per-node strictly increasing sequence
+  numbers, and partial/payload binding at CHECKSUM — `Verified` fires
+  only when the emitted partials reconcile with the decoded payload,
+  matching the Python reader.
+
+### Changed
+- **ReplayGuard consumes nonces per signer** (#112): replay identity
+  is every attested signer's `(signer, nonce)` pair, so a stripped
+  subset of a seen multisig envelope is rejected as a replay in both
+  presentation orders. This is a semantic decision, recorded as such:
+  a nonce is spent per signer, in any set composition — re-presenting
+  a signer's spent nonce inside a different signer set is a replay,
+  not a fresh presentation. The signerset semantics are pinned by a
+  permanent test (#113).
+
 ## [1.4.0] - 2026-10-29
 
 The post-quantum release. Spec v1.4 (docs/SPEC.md §7.9) adds hybrid
