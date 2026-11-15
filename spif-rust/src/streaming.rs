@@ -40,6 +40,7 @@ use anyhow::{anyhow, Result};
 use byteorder::{BigEndian, WriteBytesExt};
 use ciborium::ser::into_writer;
 use sha2::{Digest, Sha256};
+use std::collections::HashMap;
 
 pub const CHUNK_PARTIAL_TEXT: u8 = 0x10;
 pub const CHUNK_STREAM_META: u8 = 0x11;
@@ -304,6 +305,12 @@ pub struct SPIFStreamReader {
     require_signature: bool,
     dag: IncrementalDagChecker,
     step_count: usize,
+    /// Highest PARTIAL_TEXT seq accepted per node (stream discipline:
+    /// seq must strictly increase per node — replay/reorder fails closed).
+    last_seq: HashMap<String, u32>,
+    /// Live-emitted partial text per node, reconciled against the
+    /// verified payload before `Verified` is emitted.
+    partial_text: HashMap<String, String>,
 }
 
 #[derive(PartialEq)]
@@ -322,6 +329,8 @@ impl Default for SPIFStreamReader {
             require_signature: false,
             dag: IncrementalDagChecker::new(),
             step_count: 0,
+            last_seq: HashMap::new(),
+            partial_text: HashMap::new(),
         }
     }
 }
@@ -395,6 +404,106 @@ impl SPIFStreamReader {
         }
     }
 
+    /// Strictly decode a PARTIAL_TEXT payload, mirroring the Python
+    /// reader's field contract: `node_id`/`text` (if present) must be
+    /// text and `seq` (if present) must be an integer in `u32` range.
+    /// Anything else is rejected rather than silently defaulted or
+    /// coerced (a negative seq used to become 0 via `unwrap_or(0)`),
+    /// since this is untrusted input crossing a trust boundary.
+    /// Absent fields keep the protocol defaults: node "main", text "",
+    /// seq 0.
+    fn parse_partial_text(
+        &self,
+        payload: &[u8],
+    ) -> std::result::Result<(String, String, u32), String> {
+        let value: ciborium::value::Value = ciborium::de::from_reader(payload)
+            .map_err(|e| format!("Malformed PARTIAL_TEXT chunk: {e}"))?;
+        let ciborium::value::Value::Map(fields) = value else {
+            return Err("PARTIAL_TEXT chunk is not a CBOR map".to_string());
+        };
+
+        let mut node_id: Option<String> = None;
+        let mut text: Option<String> = None;
+        let mut seq: Option<u32> = None;
+        for (k, v) in &fields {
+            let ciborium::value::Value::Text(key) = k else {
+                continue;
+            };
+            match key.as_str() {
+                "node_id" => match v {
+                    ciborium::value::Value::Text(s) => node_id = Some(s.clone()),
+                    _ => {
+                        return Err(format!(
+                            "PARTIAL_TEXT node_id must be a str, got {v:?}"
+                        ))
+                    }
+                },
+                "text" => match v {
+                    ciborium::value::Value::Text(s) => text = Some(s.clone()),
+                    _ => {
+                        return Err(format!(
+                            "PARTIAL_TEXT text must be a str, got {v:?}"
+                        ))
+                    }
+                },
+                "seq" => match v {
+                    ciborium::value::Value::Integer(n) => {
+                        let n_i128: i128 = (*n).into();
+                        seq = Some(u32::try_from(*n).map_err(|_| {
+                            format!("PARTIAL_TEXT seq must be an int, got {n_i128}")
+                        })?);
+                    }
+                    _ => {
+                        return Err(format!(
+                            "PARTIAL_TEXT seq must be an int, got {v:?}"
+                        ))
+                    }
+                },
+                _ => {}
+            }
+        }
+
+        Ok((
+            node_id.unwrap_or_else(|| "main".to_string()),
+            text.unwrap_or_default(),
+            seq.unwrap_or(0),
+        ))
+    }
+
+    /// Reconcile the partial text emitted live with the verified payload,
+    /// mirroring the Python reader: for each node, the concatenation of
+    /// its emitted partials must equal the node's payload value. Returns
+    /// an error string when the live layer and the verified document
+    /// diverge, else None. Streams that emitted no partials are
+    /// unaffected. (The Rust reader has no resume protocol, so the
+    /// Python resumed-stream suffix rule does not apply here.)
+    fn partial_binding_error(&self, doc: &SPIFDocument) -> Option<String> {
+        if self.partial_text.is_empty() {
+            return None;
+        }
+        for (node_id, streamed) in &self.partial_text {
+            let Some(node) = doc.payload.iter().find(|n| &n.id == node_id) else {
+                return Some(format!(
+                    "partial_text was emitted for node '{node_id}', which is \
+                     absent from the verified payload"
+                ));
+            };
+            let Value::Text(value) = &node.value else {
+                return Some(format!(
+                    "partial_text was emitted for node '{node_id}', whose \
+                     verified payload value is not a string"
+                ));
+            };
+            if streamed != value {
+                return Some(format!(
+                    "partial_text for node '{node_id}' does not match the \
+                     verified payload value"
+                ));
+            }
+        }
+        None
+    }
+
     /// Strictly decode a PARTIAL_STEP payload: `id` must be present text,
     /// `deps` (if present) must be an array of text entries. Anything else
     /// is rejected rather than silently defaulted, since this is untrusted
@@ -449,45 +558,31 @@ impl SPIFStreamReader {
     ) {
         match chunk_type {
             CHUNK_PARTIAL_TEXT => {
-                match ciborium::de::from_reader::<ciborium::value::Value, _>(payload) {
-                    Ok(ciborium::value::Value::Map(fields)) => {
-                        let mut node_id = "main".to_string();
-                        let mut text = String::new();
-                        let mut seq = 0u32;
-                        for (k, v) in &fields {
-                            if let ciborium::value::Value::Text(key) = k {
-                                match key.as_str() {
-                                    "node_id" => {
-                                        if let ciborium::value::Value::Text(s) = v {
-                                            node_id = s.clone();
-                                        }
-                                    }
-                                    "text" => {
-                                        if let ciborium::value::Value::Text(s) = v {
-                                            text = s.clone();
-                                        }
-                                    }
-                                    "seq" => {
-                                        if let ciborium::value::Value::Integer(n) = v {
-                                            seq = u32::try_from(*n).unwrap_or(0);
-                                        }
-                                    }
-                                    _ => {}
-                                }
+                match self.parse_partial_text(payload) {
+                    Ok((node_id, text, seq)) => {
+                        // Sequence discipline (parity with the Python
+                        // reader): seq must strictly increase per node —
+                        // a replayed or reordered seq fails closed
+                        // instead of being emitted as fresh text.
+                        if let Some(&last) = self.last_seq.get(&node_id) {
+                            if seq <= last {
+                                events.push(StreamEvent::Error(format!(
+                                    "PARTIAL_TEXT seq {seq} for node '{node_id}' is not \
+                                     greater than last seen seq {last} (out-of-order or duplicate)"
+                                )));
+                                self.state = ReaderState::Done;
+                                return;
                             }
                         }
+                        self.last_seq.insert(node_id.clone(), seq);
+                        self.partial_text
+                            .entry(node_id.clone())
+                            .or_default()
+                            .push_str(&text);
                         events.push(StreamEvent::PartialText { node_id, text, seq });
                     }
-                    Err(e) => {
-                        events.push(StreamEvent::Error(format!(
-                            "Malformed PARTIAL_TEXT chunk: {e}"
-                        )));
-                        self.state = ReaderState::Done;
-                    }
-                    _ => {
-                        events.push(StreamEvent::Error(
-                            "PARTIAL_TEXT chunk is not a CBOR map".to_string(),
-                        ));
+                    Err(msg) => {
+                        events.push(StreamEvent::Error(msg));
                         self.state = ReaderState::Done;
                     }
                 }
@@ -535,9 +630,18 @@ impl SPIFStreamReader {
                     require_signature: self.require_signature,
                 };
                 match reader.read(full) {
-                    Ok(doc) => events.push(StreamEvent::Verified {
-                        document: Box::new(doc),
-                    }),
+                    Ok(doc) => {
+                        // Partial/payload binding: `Verified` is only
+                        // emitted when the partial text shown live
+                        // reconciles with the verified payload — a
+                        // contradiction fails closed with an Error.
+                        match self.partial_binding_error(&doc) {
+                            Some(msg) => events.push(StreamEvent::Error(msg)),
+                            None => events.push(StreamEvent::Verified {
+                                document: Box::new(doc),
+                            }),
+                        }
+                    }
                     Err(e) => events.push(StreamEvent::Error(e.to_string())),
                 }
                 self.state = ReaderState::Done;

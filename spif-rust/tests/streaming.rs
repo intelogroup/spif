@@ -220,7 +220,7 @@ fn test_partial_text_seq_is_monotonic() {
 
 #[test]
 fn test_verified_event_fires_at_end() {
-    let data = stream_doc(&minimal_doc(), &["hi"]);
+    let data = stream_doc(&minimal_doc(), &["The sky ", "is blue."]);
     let events = collect_events(&data);
     assert!(events
         .iter()
@@ -229,7 +229,7 @@ fn test_verified_event_fires_at_end() {
 
 #[test]
 fn test_verified_event_contains_document() {
-    let data = stream_doc(&minimal_doc(), &["hi"]);
+    let data = stream_doc(&minimal_doc(), &["The sky ", "is blue."]);
     let events = collect_events(&data);
     let verified = events
         .iter()
@@ -330,7 +330,7 @@ fn test_strict_stream_reader_rejects_unsigned() {
 
 #[test]
 fn test_default_stream_reader_accepts_unsigned() {
-    let data = stream_doc(&minimal_doc(), &["hello", " world"]);
+    let data = stream_doc(&minimal_doc(), &["The sky ", "is blue."]);
     let events = collect_events(&data);
     let verified: Vec<_> = events
         .iter()
