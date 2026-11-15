@@ -35,7 +35,6 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-import cbor2
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import (
     Ed25519PrivateKey,
@@ -56,7 +55,7 @@ from .pq_hybrid import (
 )
 from .reader import (
     SPIFReader, SPIFError, SPIFChecksumError,
-    _find_first_auth_chunk_offset, _iter_chunks,
+    _cbor_load, _find_first_auth_chunk_offset, _iter_chunks,
 )
 from .types import RevocationStatement, TimestampAnchor, SPIFDocument
 
@@ -338,14 +337,26 @@ def attach_revocations(data: bytes, statements: list[RevocationStatement]) -> by
 
 def extract_revocations(data: bytes) -> list[RevocationStatement]:
     """Statements embedded in the artifact's REVOCATION chunk (raw scan —
-    does not require the document to decode cleanly)."""
+    does not require the document to decode cleanly).
+
+    The chunk payload decodes through the reader's strict discipline
+    (_cbor_load): duplicate map keys and trailing bytes are ambiguity,
+    and ambiguous bytes yield no statements here just as the document
+    reader rejects them (SPIF-TRUST-CBOR-AMBIGUITY-001). A second
+    REVOCATION chunk likewise makes the embedded set ambiguous — the
+    reader rejects duplicate chunks outright — so extraction fails
+    closed instead of merging both chunks."""
     out: list[RevocationStatement] = []
+    seen = False
     try:
         for chunk_type, chunk_data in _iter_chunks(data, len(MAGIC) + 2):
             if chunk_type == CHUNK_CHECKSUM:
                 break
             if chunk_type == CHUNK_REVOCATION:
-                raw = cbor2.loads(chunk_data)
+                if seen:
+                    return []
+                seen = True
+                raw = _cbor_load(chunk_data, "REVOCATION")
                 if isinstance(raw, list):
                     out.extend(RevocationStatement.from_cbor_dict(d) for d in raw)
     except Exception:
@@ -392,18 +403,29 @@ def attach_timestamp(data: bytes, anchor: TimestampAnchor) -> bytes:
 
 
 def extract_timestamp(data: bytes) -> TimestampAnchor | None:
-    """The artifact's embedded TIMESTAMP anchor, or None (raw scan)."""
+    """The artifact's embedded TIMESTAMP anchor, or None (raw scan).
+
+    Same strict discipline as extract_revocations: the payload decodes
+    via _cbor_load (duplicate keys / trailing bytes yield no anchor),
+    and a second TIMESTAMP chunk fails closed instead of first-win —
+    the document reader rejects duplicate chunks outright
+    (SPIF-TRUST-CBOR-AMBIGUITY-001)."""
+    anchor: TimestampAnchor | None = None
+    seen = False
     try:
         for chunk_type, chunk_data in _iter_chunks(data, len(MAGIC) + 2):
             if chunk_type == CHUNK_CHECKSUM:
                 break
             if chunk_type == CHUNK_TIMESTAMP:
-                raw = cbor2.loads(chunk_data)
+                if seen:
+                    return None
+                seen = True
+                raw = _cbor_load(chunk_data, "TIMESTAMP")
                 if isinstance(raw, dict):
-                    return TimestampAnchor.from_cbor_dict(raw)
+                    anchor = TimestampAnchor.from_cbor_dict(raw)
     except Exception:
         return None
-    return None
+    return anchor
 
 
 # ---------------------------------------------------------------------------
