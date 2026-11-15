@@ -27,26 +27,33 @@ class ReplayGuard:
         """Raise SPIFReplayError if this document's signer+nonce was already seen."""
         if doc.provenance is None or not doc.provenance.nonce:
             raise SPIFReplayError("Document has no provenance.nonce — cannot check for replay")
-        # The replay identity is the FULL attested signer set (single
-        # signature and/or multisig entries), encoded injectively:
-        # each signer id escapes the separator by doubling it, then the
-        # sorted ids join on the single separator. The old plain
-        # "+".join was ambiguous — one signer named "a+b" collided with
-        # the two-signer set ["a", "b"], and signer ids are base64
-        # public keys where "+" is a real alphabet character
-        # (SPIF-REPLAY-SIGNER-COLLISION-001). Escaping keeps a lone
-        # separator-free signer id as its own key, as before.
+        # The replay identity is PER SIGNER: every attested signer
+        # (single signature and/or multisig entries) consumes the nonce
+        # individually, and a presentation is a replay if ANY member
+        # signer's (signer, nonce) pair was already seen. Keying by the
+        # full signer SET instead let a genuine multisig envelope be
+        # replayed by shedding a co-signer — the stripped variant keyed
+        # differently even though the remaining signer had already
+        # consumed the nonce (SPIF-REPLAY-SUBSET-001). Tuple keys are
+        # injective by construction, so the old joined-string escaping
+        # (SPIF-REPLAY-SIGNER-COLLISION-001) is unnecessary: a signer
+        # named "a+b" is its own key and never collides with the pair
+        # ("a", ...), ("b", ...). Disjoint signer sets sharing a nonce
+        # still both pass — their member pairs differ. A document with
+        # no attested signer keeps the legacy ("", nonce) key, so its
+        # replay behavior is unchanged.
         signers: list[str] = []
         if doc.signature:
             signers.append(doc.signature.signer)
         signers.extend(s.signer for s in doc.signatures)
-        signer = "+".join(
-            s.replace("+", "++") for s in sorted(signers))
-        key = (signer, doc.provenance.nonce)
-        if key in self._seen:
-            raise SPIFReplayError(
-                f"Replay detected: nonce {doc.provenance.nonce!r} from signer {signer!r} already used"
-            )
-        self._seen[key] = None
-        if len(self._seen) > self._max_entries:
+        members = sorted(set(signers)) or [""]
+        nonce = doc.provenance.nonce
+        for signer in members:
+            if (signer, nonce) in self._seen:
+                raise SPIFReplayError(
+                    f"Replay detected: nonce {nonce!r} from signer {signer!r} already used"
+                )
+        for signer in members:
+            self._seen[(signer, nonce)] = None
+        while len(self._seen) > self._max_entries:
             self._seen.popitem(last=False)
