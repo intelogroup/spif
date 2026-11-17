@@ -60,6 +60,42 @@ class SPIFRevokedSignerError(SPIFSignatureError):
     """A cryptographically valid signature belongs to a revoked signer."""
 
 
+def _require_str_id(value: object, what: str) -> str:
+    """Return value if it is a string id, else raise ValueError.
+
+    Every keystore entry point takes string key_ids / roles / signer
+    ids.  Before SPIF-KEYSTORE-ID-TYPE-001 nothing validated that: the
+    slugger's urllib.parse.quote accepts bytes, so add_key(b"alice")
+    silently registered the string identity 'alice'; revoke(123)
+    silently revoked signer '123' through JSON key coercion; and
+    int/None/list/dict ids escaped as bare TypeErrors from quote.
+    One check, applied at every entry point, refuses non-string ids
+    cleanly instead of coercing or crashing.
+    """
+    if not isinstance(value, str):
+        raise ValueError(f"{what} must be a string, got {type(value).__name__}")
+    return value
+
+
+def _raw_key_bytes(material: object, what: str) -> bytes:
+    """Return raw bytes for key material handed to an add path.
+
+    Accepts an Ed25519PublicKey object or a bytes-like object.
+    Anything else (an int most dangerously: bytes(32) silently coerces
+    to a 32-byte all-zero key) is refused with ValueError instead of
+    being coerced into a stored entry (SPIF-KEYSTORE-ENTRY-SHAPE-001).
+    """
+    if isinstance(material, Ed25519PublicKey):
+        from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
+        return material.public_bytes(Encoding.Raw, PublicFormat.Raw)
+    if isinstance(material, (bytes, bytearray, memoryview)):
+        return bytes(material)
+    raise ValueError(
+        f"{what} must be raw bytes or an Ed25519PublicKey, "
+        f"got {type(material).__name__}"
+    )
+
+
 @dataclass
 class HybridKeyMaterial:
     """The private half of a hybrid signer identity (SPEC §7.9.3),
@@ -127,11 +163,8 @@ class SPIFKeyStore:
             Raw 32-byte ed25519 public key bytes, or an ``Ed25519PublicKey``
             object from the ``cryptography`` library.
         """
-        if isinstance(public_key, Ed25519PublicKey):
-            from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
-            raw = public_key.public_bytes(Encoding.Raw, PublicFormat.Raw)
-        else:
-            raw = bytes(public_key)
+        _require_str_id(key_id, "key_id")
+        raw = _raw_key_bytes(public_key, "public_key")
         if len(raw) != 32:
             raise ValueError(f"ed25519 public key must be 32 bytes, got {len(raw)}")
         path = self._entry_path(key_id, ".pub")
@@ -152,17 +185,30 @@ class SPIFKeyStore:
         ~2.6 KB of base64 — far beyond any filename limit — and can
         never be a registered entry, so lookups must not touch the
         filesystem with it)."""
+        _require_str_id(key_id, "key_id")
         slug = _key_slug(key_id)
         if len(slug) + len(suffix) > 240:
             return None
         return self._root / f"{slug}{suffix}"
 
     def get_key(self, key_id: str) -> bytes | None:
-        """Return the raw 32-byte public key for key_id, or None if not found."""
+        """Return the raw 32-byte public key for key_id, or None if not found.
+
+        Raises SPIFSignatureError if the stored entry exists but is not
+        exactly 32 bytes: a truncated/planted .pub file is a malformed
+        entry, not a key (SPIF-KEYSTORE-ENTRY-SHAPE-001 — the same
+        length discipline get_hybrid_key already applies)."""
         path = self._entry_path(key_id, ".pub")
         if path is None or not path.exists():
             return None
-        return path.read_bytes()
+        raw = path.read_bytes()
+        if len(raw) != 32:
+            raise SPIFSignatureError(
+                f"Key entry for '{key_id}' in keystore at {self._root} is "
+                f"malformed: expected a 32-byte ed25519 public key, "
+                f"found {len(raw)} bytes"
+            )
+        return raw
 
     def has_key(self, key_id: str) -> bool:
         """Return True if a public key for key_id is registered."""
@@ -215,16 +261,15 @@ class SPIFKeyStore:
         """
         from .pq_hybrid import ML_DSA_65_PUBLIC_KEY_LEN
 
-        if isinstance(ed_public_key, Ed25519PublicKey):
-            from cryptography.hazmat.primitives.serialization import (
-                Encoding,
-                PublicFormat,
-            )
-            ed_raw = ed_public_key.public_bytes(Encoding.Raw, PublicFormat.Raw)
-        else:
-            ed_raw = bytes(ed_public_key)
+        _require_str_id(key_id, "key_id")
+        ed_raw = _raw_key_bytes(ed_public_key, "ed_public_key")
         if len(ed_raw) != 32:
             raise ValueError(f"ed25519 public key must be 32 bytes, got {len(ed_raw)}")
+        if not isinstance(ml_public_key, (bytes, bytearray, memoryview)):
+            raise ValueError(
+                f"ml_public_key must be raw bytes, "
+                f"got {type(ml_public_key).__name__}"
+            )
         ml_raw = bytes(ml_public_key)
         if len(ml_raw) != ML_DSA_65_PUBLIC_KEY_LEN:
             raise ValueError(
@@ -296,6 +341,7 @@ class SPIFKeyStore:
         revoked_at_ms :
             Optional explicit revocation timestamp.  Defaults to current time.
         """
+        _require_str_id(key_id, "key_id")
         if revoked_at_ms is None:
             revoked_at_ms = int(time.time() * 1000)
         revoked = self._load_revoked()
@@ -304,6 +350,7 @@ class SPIFKeyStore:
 
     def unrevoke(self, key_id: str) -> bool:
         """Remove a key from the revocation list.  Returns True if it was revoked."""
+        _require_str_id(key_id, "key_id")
         revoked = self._load_revoked()
         if key_id in revoked:
             del revoked[key_id]
@@ -313,6 +360,7 @@ class SPIFKeyStore:
 
     def is_revoked(self, key_id: str) -> bool:
         """Return True if key_id appears in the revocation list."""
+        _require_str_id(key_id, "key_id")
         return key_id in self._load_revoked()
 
     def revoked_keys(self) -> dict[str, int]:
@@ -333,6 +381,8 @@ class SPIFKeyStore:
 
     def authorize_role(self, role: str, signer_id: str) -> None:
         """Grant signer_id permission to sign documents claiming the given role."""
+        _require_str_id(role, "role")
+        _require_str_id(signer_id, "signer_id")
         roles = self._load_roles()
         signers = roles.setdefault(role, [])
         if signer_id not in signers:
@@ -341,6 +391,8 @@ class SPIFKeyStore:
 
     def deauthorize_role(self, role: str, signer_id: str) -> bool:
         """Revoke signer_id's permission for role. Returns True if it was granted."""
+        _require_str_id(role, "role")
+        _require_str_id(signer_id, "signer_id")
         roles = self._load_roles()
         signers = roles.get(role, [])
         if signer_id not in signers:
@@ -351,6 +403,8 @@ class SPIFKeyStore:
 
     def is_authorized_for_role(self, role: str, signer_id: str) -> bool:
         """Return True if signer_id may sign as role, or role has no registered list."""
+        _require_str_id(role, "role")
+        _require_str_id(signer_id, "signer_id")
         signers = self._load_roles().get(role)
         return signers is None or signer_id in signers
 
@@ -361,6 +415,7 @@ class SPIFKeyStore:
         an unconfigured role from one whose configured list denies a signer,
         while preserving this keystore's default opt-in role semantics.
         """
+        _require_str_id(role, "role")
         return role in self._load_roles()
 
     def check_roles(self, doc: SPIFDocument) -> None:
