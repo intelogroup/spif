@@ -134,8 +134,17 @@ class SPIFKeyStore:
             raw = bytes(public_key)
         if len(raw) != 32:
             raise ValueError(f"ed25519 public key must be 32 bytes, got {len(raw)}")
-        slug = _key_slug(key_id)
-        (self._root / f"{slug}.pub").write_bytes(raw)
+        path = self._entry_path(key_id, ".pub")
+        if path is None:
+            # Same length guard the lookups use: without it a long
+            # key_id crashed registration with a bare OSError
+            # (SPIF-KEYSTORE-LONGID-001).
+            raise ValueError(
+                f"key_id is too long to store: its slugged filename "
+                f"would exceed the keystore length limit (key_id length "
+                f"{len(key_id)})"
+            )
+        path.write_bytes(raw)
 
     def _entry_path(self, key_id: str, suffix: str) -> Path | None:
         """Filesystem path for a key entry, or None when the slugged id
@@ -222,8 +231,15 @@ class SPIFKeyStore:
                 f"ML-DSA-65 public key must be {ML_DSA_65_PUBLIC_KEY_LEN} "
                 f"bytes, got {len(ml_raw)}"
             )
-        slug = _key_slug(key_id)
-        (self._root / f"{slug}.hyb").write_bytes(ed_raw + ml_raw)
+        path = self._entry_path(key_id, ".hyb")
+        if path is None:
+            # Same length guard the lookups use (SPIF-KEYSTORE-LONGID-001).
+            raise ValueError(
+                f"key_id is too long to store: its slugged filename "
+                f"would exceed the keystore length limit (key_id length "
+                f"{len(key_id)})"
+            )
+        path.write_bytes(ed_raw + ml_raw)
 
     def get_hybrid_key(self, key_id: str) -> tuple[bytes, bytes] | None:
         """Return (ed25519_pk, ml_dsa_pk) raw bytes for key_id, or None."""
@@ -524,8 +540,22 @@ class SPIFKeyStore:
             return {}
         try:
             data = json.loads(self._revocation_path.read_text())
-            return dict(data.get("revoked", {}))
-        except (json.JSONDecodeError, KeyError, AttributeError) as exc:
+            revoked = data.get("revoked", {})
+            # Shape-validate like _load_roles: a bare dict() coercion
+            # let string/int/list shapes escape as bare ValueError /
+            # TypeError instead of the SPIFSignatureError every other
+            # malformed-file path raises (SPIF-KEYSTORE-REVOKED-SHAPE-001).
+            if not isinstance(revoked, dict):
+                raise ValueError("'revoked' must be an object")
+            for key_id, revoked_at in revoked.items():
+                if not isinstance(key_id, str):
+                    raise ValueError(f"revoked key {key_id!r} must be a string")
+                if not isinstance(revoked_at, int) or isinstance(revoked_at, bool):
+                    raise ValueError(
+                        f"revocation time for {key_id!r} must be an integer (ms)"
+                    )
+            return revoked
+        except (json.JSONDecodeError, KeyError, AttributeError, ValueError, TypeError) as exc:
             raise SPIFSignatureError(
                 f"Revocation file {self._revocation_path} is malformed: {exc}"
             ) from exc
