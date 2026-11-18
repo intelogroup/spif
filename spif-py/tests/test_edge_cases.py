@@ -356,7 +356,7 @@ class TestAlternativesEdgeCases:
             Alternative(weight=math.nan, nodes=[Node(id="a1", type="fact", value="B")]),
         ]
         doc = SPIFDocument(payload=[_node()], alternatives=alts)
-        with pytest.raises(ValueError, match="nan"):
+        with pytest.raises(ValueError, match="finite"):
             SPIFWriter().encode(doc)
 
     def test_many_alternatives(self):

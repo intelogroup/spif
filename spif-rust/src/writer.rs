@@ -1,5 +1,5 @@
 use crate::types::*;
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use byteorder::{BigEndian, WriteBytesExt};
 use ciborium::ser::into_writer;
 use flate2::{write::ZlibEncoder, Compression};
@@ -122,6 +122,9 @@ impl SPIFWriter {
 
         // ALTS chunk
         if !doc.alternatives.is_empty() {
+            if doc.alternatives.iter().any(|a| !a.weight.is_finite()) {
+                return Err(anyhow!("Alternative weights must be finite"));
+            }
             #[derive(serde::Serialize)]
             struct AltsWrapper<'a> {
                 normalized: bool,

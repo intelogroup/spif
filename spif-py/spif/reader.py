@@ -1165,8 +1165,8 @@ class SPIFReader:
                             f"expected 1.0 ± 0.01"
                         )
 
-            if alternatives and any(math.isnan(a.weight) for a in alternatives):
-                raise SPIFFormatError("ALTS weight must not be nan")
+            if alternatives and any(not math.isfinite(a.weight) for a in alternatives):
+                raise SPIFFormatError("ALTS weight must be finite")
 
         # 10. DELTA — compressed if flag set
         delta = None
