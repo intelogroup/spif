@@ -235,6 +235,9 @@ impl SPIFReader {
                     let raw = cbor_payload(payload, compressed)?;
                     assert_cbor_form(&raw, "ALTS", canonical_required, deterministic)?;
                     let aw: AltsWrapper = from_reader(&*raw)?;
+                    if aw.alts.iter().any(|a| !a.weight.is_finite()) {
+                        return Err(anyhow!("ALTS weight must be finite"));
+                    }
                     let outer_normalized = aw.normalized;
                     document_data.alternatives = aw
                         .alts
