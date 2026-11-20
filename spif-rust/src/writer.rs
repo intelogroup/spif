@@ -125,6 +125,18 @@ impl SPIFWriter {
             if doc.alternatives.iter().any(|a| !a.weight.is_finite()) {
                 return Err(anyhow!("Alternative weights must be finite"));
             }
+            // SPIF-ALTS-NEGATIVE-WEIGHT-001: normalized weights are
+            // probabilities — each must lie in [0, 1].
+            if doc.alternatives[0].normalized
+                && doc
+                    .alternatives
+                    .iter()
+                    .any(|a| !(0.0..=1.0).contains(&a.weight))
+            {
+                return Err(anyhow!(
+                    "Normalized alternative weights must each lie in [0, 1]"
+                ));
+            }
             #[derive(serde::Serialize)]
             struct AltsWrapper<'a> {
                 normalized: bool,

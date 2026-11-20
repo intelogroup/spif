@@ -75,6 +75,21 @@ impl Distribution {
     /// Validates distribution field constraints.
     /// Returns an error if `mean` is outside [0.0, 1.0] or `var` is negative.
     pub fn validate(&self) -> Result<(), String> {
+        // SPIF-NONFINITE-NUMERIC-001: every numeric field must be
+        // finite — NaN var passed the `var < 0.0` check below because
+        // NaN comparisons are always false.
+        for (name, v) in [
+            ("mean", Some(self.mean)),
+            ("var", Some(self.var)),
+            ("p5", self.p5),
+            ("p95", self.p95),
+        ] {
+            if let Some(v) = v {
+                if !v.is_finite() {
+                    return Err(format!("Distribution.{name} must be finite, got {v}"));
+                }
+            }
+        }
         if !(0.0..=1.0).contains(&self.mean) {
             return Err(format!(
                 "Distribution.mean must be in [0.0, 1.0], got {}",
