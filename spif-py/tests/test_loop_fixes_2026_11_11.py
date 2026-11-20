@@ -214,7 +214,7 @@ def test_semantic_types_rejected():
     from spif.types import SemanticLayer
     doc = SPIFDocument(payload=[Node(id="n1", type="fact", value="x")])
     doc.semantic = SemanticLayer(
-        embedding=[0.1, 0.2], embedding_model="m", covariance=[[0.1, 0.0]])
+        embedding=[0.1, 0.2], embedding_model="m", covariance=[[0.1, 0.0], [0.0, 0.1]])
     data = SPIFWriter().encode(doc)
     cases = [
         lambda p: p.__setitem__("embedding", "vec"),

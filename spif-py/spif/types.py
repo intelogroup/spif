@@ -1,6 +1,7 @@
 """Core dataclasses for SPIF — Semantic Provenance Inference Format."""
 
 from __future__ import annotations
+import math
 import warnings
 from dataclasses import dataclass, field
 from typing import Any
@@ -45,6 +46,15 @@ class Distribution:
             _require_number(self.p5, "Distribution.p5")
         if self.p95 is not None:
             _require_number(self.p95, "Distribution.p95")
+        # Finiteness (SPIF-NONFINITE-NUMERIC-001): the range checks
+        # below reject NaN/Inf for mean/p5/p95 only as a side effect of
+        # comparison semantics, and NaN/Inf var passes them outright
+        # (NaN < 0 is False, Inf < 0 is False). Check every field
+        # explicitly so no non-finite spelling decodes.
+        for _name, _v in (("mean", self.mean), ("var", self.var),
+                          ("p5", self.p5), ("p95", self.p95)):
+            if _v is not None and not math.isfinite(_v):
+                raise ValueError(f"Distribution.{_name} must be finite, got {_v}")
         if not 0.0 <= self.mean <= 1.0:
             raise ValueError(f"Distribution.mean must be in [0, 1], got {self.mean}")
         if self.var < 0:
@@ -151,6 +161,21 @@ class Provenance:
     def __post_init__(self):
         if self.timestamp_ms < 0:
             raise ValueError(f"Provenance.timestamp_ms must be >= 0, got {self.timestamp_ms}")
+        # SPIF-NEGATIVE-INT-001 / SPIF-NONFINITE-NUMERIC-001: attempt is
+        # a count, temperature a sampling parameter and energy_wh an
+        # amount consumed — all >= 0 and finite by meaning.
+        if isinstance(self.attempt, bool) or not isinstance(self.attempt, int):
+            raise TypeError(
+                f"Provenance.attempt must be int, got {type(self.attempt).__name__}")
+        if self.attempt < 0:
+            raise ValueError(f"Provenance.attempt must be >= 0, got {self.attempt}")
+        for _name in ("temperature", "energy_wh"):
+            _v = getattr(self, _name)
+            _require_number(_v, f"Provenance.{_name}")
+            if not math.isfinite(_v):
+                raise ValueError(f"Provenance.{_name} must be finite, got {_v}")
+            if _v < 0:
+                raise ValueError(f"Provenance.{_name} must be >= 0, got {_v}")
 
 
 @dataclass
@@ -163,6 +188,17 @@ class TaskInfo:
     tool_count: int = 0
     error_count: int = 0
 
+    def __post_init__(self):
+        # SPIF-NEGATIVE-INT-001: attempt, durations and counts are
+        # >= 0 by meaning (SPEC declares them unsigned).
+        for _name in ("attempt", "total_ms", "tool_count", "error_count"):
+            _v = getattr(self, _name)
+            if isinstance(_v, bool) or not isinstance(_v, int):
+                raise TypeError(
+                    f"TaskInfo.{_name} must be int, got {type(_v).__name__}")
+            if _v < 0:
+                raise ValueError(f"TaskInfo.{_name} must be >= 0, got {_v}")
+
 
 @dataclass
 class SemanticLayer:
@@ -170,6 +206,36 @@ class SemanticLayer:
     embedding: list[float]
     embedding_model: str = ""              # v0.2: coordinate system ID (e.g. "text-embedding-3-small")
     covariance: list[list[float]] = field(default_factory=list)
+
+    def __post_init__(self):
+        # SPIF-NONFINITE-NUMERIC-001: embedding/covariance elements
+        # must be finite numbers.
+        for _v in self.embedding:
+            _require_number(_v, "SemanticLayer.embedding element")
+            if not math.isfinite(_v):
+                raise ValueError(
+                    f"SemanticLayer.embedding elements must be finite, got {_v}")
+        for _row in self.covariance:
+            if not isinstance(_row, list):
+                raise TypeError(
+                    f"SemanticLayer.covariance rows must be lists, "
+                    f"got {type(_row).__name__}")
+            for _v in _row:
+                _require_number(_v, "SemanticLayer.covariance element")
+                if not math.isfinite(_v):
+                    raise ValueError(
+                        f"SemanticLayer.covariance elements must be finite, got {_v}")
+        # SPIF-SEMANTIC-COVARIANCE-SHAPE-001: SPEC 5.6 — covariance
+        # is a dim x dim matrix, dim == len(embedding). An empty
+        # covariance (none declared) stays valid at any dim.
+        if self.covariance:
+            dim = len(self.embedding)
+            if len(self.covariance) != dim or any(
+                    len(_row) != dim for _row in self.covariance):
+                raise ValueError(
+                    f"SemanticLayer.covariance must be {dim} x {dim} "
+                    f"(dim = len(embedding)), got {len(self.covariance)} row(s) "
+                    f"with lengths {[len(r) for r in self.covariance]}")
 
     @property
     def dim(self) -> int:
@@ -189,6 +255,17 @@ class Delta:
     """Express this document as a diff from a base state."""
     base_hash: str
     changes: list[dict]
+
+    def __post_init__(self):
+        # SPIF-DELTA-CHANGES-SHAPE-001: SPEC 6.7 — changes is
+        # [dict...]; every entry must be a dict record.
+        if not isinstance(self.changes, list):
+            raise TypeError(
+                f"Delta.changes must be a list, got {type(self.changes).__name__}")
+        for _c in self.changes:
+            if not isinstance(_c, dict):
+                raise TypeError(
+                    f"Delta.changes entries must be dicts, got {type(_c).__name__}")
 
 
 @dataclass
@@ -234,6 +311,12 @@ class RevocationStatement:
     issued_ms: int         # Unix epoch ms when the revocation was issued
     reason: str            # "compromised" | "retracted" | "superseded" | "other"
     signature: bytes       # ed25519 signature over unsigned_dict() in canonical CBOR
+
+    def __post_init__(self):
+        # SPIF-NEGATIVE-INT-001: SPEC 6.12 — issued_ms is uint64.
+        if self.issued_ms < 0:
+            raise ValueError(
+                f"RevocationStatement.issued_ms must be >= 0, got {self.issued_ms}")
 
     def unsigned_dict(self) -> dict:
         """The statement fields covered by the signature (canonical-CBOR encoded by callers)."""
@@ -290,6 +373,12 @@ class TimestampAnchor:
     authority: str   # TSA identifier; base64 raw ed25519 pubkey when self-describing
     time_ms: int     # Unix epoch ms asserted by the TSA
     token: bytes     # ed25519 countersignature
+
+    def __post_init__(self):
+        # SPIF-NEGATIVE-INT-001: SPEC 6.13 — time_ms is uint64.
+        if self.time_ms < 0:
+            raise ValueError(
+                f"TimestampAnchor.time_ms must be >= 0, got {self.time_ms}")
 
     def to_cbor_dict(self) -> dict:
         return {
