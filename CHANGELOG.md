@@ -2,6 +2,40 @@
 
 All notable changes to SPIF are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.4.2] - 2026-11-20
+
+A hardening release. No wire-format or spec change — the spec remains
+v1.4, and artifacts written by 1.4.1 verify identically. Every change
+comes from the adversarial-loop fix rounds merged since 1.4.1
+(PRs #115–#117).
+
+### Fixed
+- **Round-3 validation, 6 cards** (#117): non-finite numbers are
+  rejected in Distribution, SEMANTIC and PROVENANCE fields
+  (SPIF-NONFINITE-NUMERIC-001); negative values are rejected for the
+  SPEC uint64 fields across TASK, PROVENANCE, REVOCATION and
+  TIMESTAMP chunks (SPIF-NEGATIVE-INT-001); normalized ALTS weights
+  must lie in [0,1] per weight in both readers and writers
+  (SPIF-ALTS-NEGATIVE-WEIGHT-001); SEMANTIC covariance must be
+  dim x dim for dim = len(embedding), including dim 0
+  (SPIF-SEMANTIC-COVARIANCE-SHAPE-001); DELTA changes entries must be
+  dicts (SPIF-DELTA-CHANGES-SHAPE-001); and a payload reference is
+  cross-document only when its id is not a local node id, so cycles
+  through local `spif:`-prefixed nodes are rejected by the payload
+  DAG validator (SPIF-PAYLOAD-CROSSDOC-CYCLE-001). The Python fixes
+  carry 102 new permanent regression tests; the Rust mirror passed
+  CI (`cargo test --release`) on the PR.
+- **Fix-all round** (#115): ReplayGuard and keystore input discipline
+  — keystore-wide id-type and entry-shape validation.
+- **ALTS non-finite weights** (#116): ALTS weights must be finite in
+  both readers and writers (SPIF-ALTS-NONFINITE-WEIGHT-001), with
+  permanent regressions in both legs.
+
+### Open
+- SPIF-REPLAY-EVICTION-001 remains open, pending a semantics ruling
+  (fail-closed vs bounded growth vs observable counter). It is
+  deliberately untouched by this release.
+
 ## [1.4.1] - 2026-11-15
 
 A hardening release. No wire-format or spec change — the spec remains
