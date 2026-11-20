@@ -186,6 +186,33 @@ class SPIFWriter:
         self._compression_level = compression_level
 
     def encode(self, doc: SPIFDocument) -> bytes:
+        # Encode-side validation (round-3 cards): a dataclass mutated
+        # after construction must not bypass the decode-side rules.
+        # __post_init__ re-checks provenance (finite, >= 0), task
+        # counts (>= 0), semantic (finite, dim x dim covariance) and
+        # delta (dict change entries); confidence finiteness is
+        # checked field-wise here (SPIF-NONFINITE-NUMERIC-001).
+        if doc.provenance is not None:
+            doc.provenance.__post_init__()
+        if doc.task_info is not None:
+            doc.task_info.__post_init__()
+        if doc.semantic is not None:
+            doc.semantic.__post_init__()
+        if doc.delta is not None:
+            doc.delta.__post_init__()
+        for _holder in list(doc.payload) + list(doc.trace):
+            for _v in (_holder.confidence.mean, _holder.confidence.var,
+                       _holder.confidence.p5, _holder.confidence.p95):
+                if _v is not None and not math.isfinite(_v):
+                    raise ValueError(
+                        f"Confidence values must be finite, got {_v}")
+        for _alt in doc.alternatives:
+            for _node in _alt.nodes:
+                for _v in (_node.confidence.mean, _node.confidence.var,
+                           _node.confidence.p5, _node.confidence.p95):
+                    if _v is not None and not math.isfinite(_v):
+                        raise ValueError(
+                            f"Confidence values must be finite, got {_v}")
         flags = 0
         if doc.provenance:
             flags |= FLAG_PROVENANCE
@@ -290,6 +317,12 @@ class SPIFWriter:
         if doc.alternatives:
             if any(not math.isfinite(a.weight) for a in doc.alternatives):
                 raise ValueError("Alternative weights must be finite")
+            # SPIF-ALTS-NEGATIVE-WEIGHT-001: normalized weights are
+            # probabilities — each must lie in [0, 1].
+            if doc.alternatives and doc.alternatives[0].normalized and any(
+                    not 0.0 <= a.weight <= 1.0 for a in doc.alternatives):
+                raise ValueError(
+                    "Normalized alternative weights must each lie in [0, 1]")
             if doc.alternatives and doc.alternatives[0].normalized:
                 total = sum(a.weight for a in doc.alternatives)
                 if abs(total - 1.0) > 0.01:

@@ -188,12 +188,52 @@ impl SPIFReader {
                 CHUNK_PROVENANCE => {
                     // PROVENANCE is never compressed — read raw.
                     assert_cbor_form(payload, "PROVENANCE", canonical_required, deterministic)?;
-                    document_data.provenance = Some(from_reader(payload)?);
+                    let prov: Provenance = from_reader(payload)?;
+                    // SPIF-NONFINITE-NUMERIC-001 / SPIF-NEGATIVE-INT-001:
+                    // temperature is a sampling parameter — finite and
+                    // >= 0. (attempt/timestamp_ms are unsigned types
+                    // here, so negative spellings already fail
+                    // deserialization; the Python leg checks the same
+                    // fields explicitly.) This Rust Provenance has no
+                    // energy_wh field.
+                    if !prov.temperature.is_finite() || prov.temperature < 0.0 {
+                        return Err(anyhow!(
+                            "PROVENANCE temperature must be finite and >= 0, got {}",
+                            prov.temperature
+                        ));
+                    }
+                    document_data.provenance = Some(prov);
                 }
                 CHUNK_SEMANTIC => {
                     let raw = cbor_payload(payload, compressed)?;
                     assert_cbor_form(&raw, "SEMANTIC", canonical_required, deterministic)?;
-                    document_data.semantic = Some(from_reader(&*raw)?);
+                    let sem: SemanticLayer = from_reader(&*raw)?;
+                    // SPIF-NONFINITE-NUMERIC-001: elements must be finite.
+                    if sem.embedding.iter().any(|v| !v.is_finite())
+                        || sem
+                            .covariance
+                            .iter()
+                            .flatten()
+                            .any(|v| !v.is_finite())
+                    {
+                        return Err(anyhow!(
+                            "SEMANTIC embedding/covariance elements must be finite"
+                        ));
+                    }
+                    // SPIF-SEMANTIC-COVARIANCE-SHAPE-001: SPEC 5.6 —
+                    // covariance is dim x dim, dim = len(embedding);
+                    // an empty covariance stays valid at any dim.
+                    if !sem.covariance.is_empty() {
+                        let dim = sem.embedding.len();
+                        if sem.covariance.len() != dim
+                            || sem.covariance.iter().any(|row| row.len() != dim)
+                        {
+                            return Err(anyhow!(
+                                "SEMANTIC covariance must be {dim} x {dim}"
+                            ));
+                        }
+                    }
+                    document_data.semantic = Some(sem);
                 }
                 CHUNK_TRACE => {
                     #[derive(serde::Deserialize)]
@@ -238,6 +278,16 @@ impl SPIFReader {
                     if aw.alts.iter().any(|a| !a.weight.is_finite()) {
                         return Err(anyhow!("ALTS weight must be finite"));
                     }
+                    // SPIF-ALTS-NEGATIVE-WEIGHT-001: normalized weights
+                    // are probabilities — each must lie in [0, 1] (the
+                    // sum check alone admits [-0.5, 1.5]).
+                    if aw.normalized
+                        && aw.alts.iter().any(|a| !(0.0..=1.0).contains(&a.weight))
+                    {
+                        return Err(anyhow!(
+                            "ALTS normalized weights must each lie in [0, 1]"
+                        ));
+                    }
                     let outer_normalized = aw.normalized;
                     document_data.alternatives = aw
                         .alts
@@ -252,7 +302,17 @@ impl SPIFReader {
                 CHUNK_DELTA => {
                     let raw = cbor_payload(payload, compressed)?;
                     assert_cbor_form(&raw, "DELTA", canonical_required, deterministic)?;
-                    document_data.delta = Some(from_reader(&*raw)?);
+                    let delta: Delta = from_reader(&*raw)?;
+                    // SPIF-DELTA-CHANGES-SHAPE-001: SPEC 6.7 —
+                    // changes is [dict...]; every entry must be a map.
+                    if delta
+                        .changes
+                        .iter()
+                        .any(|c| !matches!(c, Value::Map(_)))
+                    {
+                        return Err(anyhow!("DELTA changes entries must be dicts"));
+                    }
+                    document_data.delta = Some(delta);
                 }
                 CHUNK_SIGNATURE => {
                     signature_chunk_seen = true;
@@ -1048,8 +1108,10 @@ fn validate_trace_dag(steps: &[TraceStep]) -> Result<()> {
 
 /// True for cross-document NodeRefs (SPEC §8.1), which are external to the
 /// containing document's DAG.
-fn is_cross_doc_ref(ref_id: &str) -> bool {
-    ref_id.starts_with("spif:")
+/// SPIF-PAYLOAD-CROSSDOC-CYCLE-001: local ids win — a ref is
+/// cross-document ONLY when its id is not among the local node ids.
+fn is_cross_doc_ref(ref_id: &str, ids: &HashSet<&str>) -> bool {
+    ref_id.starts_with("spif:") && !ids.contains(ref_id)
 }
 
 /// Validates the payload DAG references using Kahn's topological sort algorithm.
@@ -1076,7 +1138,7 @@ fn validate_payload_dag(nodes: &[Node]) -> Result<()> {
     let ids: HashSet<&str> = nodes.iter().map(|n| n.id.as_str()).collect();
     for n in nodes {
         for ref_id in &n.refs {
-            if is_cross_doc_ref(ref_id) {
+            if is_cross_doc_ref(ref_id, &ids) {
                 continue;
             }
             if !ids.contains(ref_id.as_str()) {
@@ -1097,7 +1159,7 @@ fn validate_payload_dag(nodes: &[Node]) -> Result<()> {
 
     for n in nodes {
         for ref_id in &n.refs {
-            if is_cross_doc_ref(ref_id) {
+            if is_cross_doc_ref(ref_id, &ids) {
                 continue;
             }
             *in_degree.get_mut(n.id.as_str()).unwrap() += 1;

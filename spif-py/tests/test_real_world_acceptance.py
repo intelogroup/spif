@@ -244,7 +244,8 @@ def _agent_doc(base_doc: SPIFDocument) -> SPIFDocument:
         semantic=SemanticLayer(
             embedding=[0.12, -0.31, 0.44, 0.08, -0.27, 0.65, 0.11, -0.04],
             embedding_model="text-embedding-3-small",
-            covariance=[[0.02, 0.0], [0.0, 0.03]],
+            covariance=[[0.02 if i == j == 0 else 0.03 if i == j == 1 else 0.01 if i == j else 0.0
+                         for j in range(8)] for i in range(8)],
         ),
         trace=[
             TraceStep(

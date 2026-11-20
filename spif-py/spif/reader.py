@@ -342,8 +342,12 @@ def _validate_payload_dag(nodes: list[Node]) -> None:
     # the local dangling-reference check and the local cycle graph. Whether
     # they resolve is a verification-time question (spif.trust), never a
     # parse error.
+    # SPIF-PAYLOAD-CROSSDOC-CYCLE-001: local ids win — a ref is
+    # cross-document ONLY when its id is not among this document's
+    # node ids. A local node whose id starts with "spif:" is a local
+    # node; edges to it are checked for dangling/cycles normally.
     def _is_cross_doc(ref_id: str) -> bool:
-        return ref_id.startswith("spif:")
+        return ref_id.startswith("spif:") and ref_id not in ids
 
     # Dangling reference check
     for n in nodes:
@@ -1068,11 +1072,16 @@ class SPIFReader:
                         raise SPIFFormatError(
                             f"SEMANTIC covariance elements must be numbers, "
                             f"got {type(x).__name__}")
-            semantic = SemanticLayer(
-                embedding=emb,
-                embedding_model=_typed_str(s, "embedding_model", "SEMANTIC", ""),  # v0.1 compat: default ""
-                covariance=cov,
-            )
+            try:
+                semantic = SemanticLayer(
+                    embedding=emb,
+                    embedding_model=_typed_str(s, "embedding_model", "SEMANTIC", ""),  # v0.1 compat: default ""
+                    covariance=cov,
+                )
+            except SPIFFormatError:
+                raise
+            except (TypeError, ValueError) as e:
+                raise SPIFFormatError(f"Malformed SEMANTIC chunk: {e}") from e
 
         # 8. TRACE (v0.2: wrapped dict; v0.1: bare list) — compressed if flag set
         trace: list[TraceStep] = []
@@ -1139,6 +1148,7 @@ class SPIFReader:
                     normalized=normalized,
                 )
 
+            alts_normalized = True  # v0.1 bare-list spelling is normalized
             if isinstance(raw, list):
                 # v0.1 format
                 for a in raw:
@@ -1150,6 +1160,7 @@ class SPIFReader:
                 normalized = raw.get("normalized", True)
                 if not isinstance(normalized, bool):
                     raise SPIFFormatError("ALTS normalized must be a bool")
+                alts_normalized = normalized
                 alts = raw.get("alts", [])
                 if not isinstance(alts, list):
                     raise SPIFFormatError("ALTS alts must be a list")
@@ -1168,6 +1179,14 @@ class SPIFReader:
             if alternatives and any(not math.isfinite(a.weight) for a in alternatives):
                 raise SPIFFormatError("ALTS weight must be finite")
 
+            # SPIF-ALTS-NEGATIVE-WEIGHT-001: normalized weights are
+            # probabilities — each must lie in [0, 1]. The sum check
+            # alone admits [-0.5, 1.5]; check every weight's range.
+            if alts_normalized and alternatives and any(
+                    not 0.0 <= a.weight <= 1.0 for a in alternatives):
+                raise SPIFFormatError(
+                    "ALTS normalized weights must each lie in [0, 1]")
+
         # 10. DELTA — compressed if flag set
         delta = None
         if CHUNK_DELTA in chunks:
@@ -1183,6 +1202,14 @@ class SPIFReader:
             if not isinstance(changes, list):
                 raise SPIFFormatError(
                     f"DELTA changes must be a list, got {type(changes).__name__}")
+            # SPIF-DELTA-CHANGES-SHAPE-001: SPEC 6.7 — changes is
+            # [dict...]; the outer list check alone admits [123],
+            # ["replace"], [[...]], [None], [True] and mixed lists.
+            for _c in changes:
+                if not isinstance(_c, dict):
+                    raise SPIFFormatError(
+                        f"DELTA changes entries must be dicts, "
+                        f"got {type(_c).__name__}")
             delta = Delta(
                 base_hash=_required_str(d, "base_hash", "DELTA"),
                 changes=changes,
@@ -1235,14 +1262,19 @@ class SPIFReader:
                              deterministic=deterministic)
             if not isinstance(t, dict):
                 raise SPIFFormatError("TASK chunk must decode to a dict")
-            task_info = TaskInfo(
-                task_id=_typed_str(t, "task_id", "TASK", ""),
-                attempt=_typed_int(t, "attempt", "TASK", 0),
-                status=_typed_str(t, "status", "TASK", "ok"),
-                total_ms=_typed_int(t, "total_ms", "TASK", 0),
-                tool_count=_typed_int(t, "tool_count", "TASK", 0),
-                error_count=_typed_int(t, "error_count", "TASK", 0),
-            )
+            try:
+                task_info = TaskInfo(
+                    task_id=_typed_str(t, "task_id", "TASK", ""),
+                    attempt=_typed_int(t, "attempt", "TASK", 0),
+                    status=_typed_str(t, "status", "TASK", "ok"),
+                    total_ms=_typed_int(t, "total_ms", "TASK", 0),
+                    tool_count=_typed_int(t, "tool_count", "TASK", 0),
+                    error_count=_typed_int(t, "error_count", "TASK", 0),
+                )
+            except SPIFFormatError:
+                raise
+            except (TypeError, ValueError) as e:
+                raise SPIFFormatError(f"Malformed TASK chunk: {e}") from e
 
         # 14. ROLES chunk (v1.1+) — signer_id -> claimed role, never compressed
         signer_roles: dict[str, str] = {}

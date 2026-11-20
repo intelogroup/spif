@@ -29,8 +29,9 @@ doc = SPIFDocument(
     semantic=SemanticLayer(
         embedding=[0.312, -0.087, 0.541, 0.209, -0.433, 0.178, 0.801, -0.312],
         covariance=[
-            [0.04, 0.01],
-            [0.01, 0.03],
+            [0.04 if i == j == 0 else 0.03 if i == j else 0.0
+             for j in range(8)]
+            for i in range(8)
         ],
     ),
     alternatives=[

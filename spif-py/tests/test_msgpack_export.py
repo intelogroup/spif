@@ -58,7 +58,7 @@ def _doc_full() -> SPIFDocument:
         semantic=SemanticLayer(
             embedding=[0.2, -0.1, 0.6],
             embedding_model="text-embedding-3-small",
-            covariance=[[0.01, 0.0], [0.0, 0.02]],
+            covariance=[[0.01, 0.0, 0.0], [0.0, 0.02, 0.0], [0.0, 0.0, 0.03]],
         ),
         trace=[
             TraceStep(
