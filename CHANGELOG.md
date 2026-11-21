@@ -2,6 +2,29 @@
 
 All notable changes to SPIF are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.4.3] - 2026-11-21
+
+A hardening release. No wire-format or spec change — the spec remains
+v1.4, and artifacts written by 1.4.2 verify identically. This release
+closes the last open adversarial-loop card, SPIF-REPLAY-EVICTION-001,
+left open by 1.4.2 pending a semantics ruling.
+
+### Fixed
+- **ReplayGuard eviction is now observable** (#119,
+  SPIF-REPLAY-EVICTION-001): the guard's FIFO cap silently weakened
+  replay protection — once the seen set turned over, an evicted
+  (signer, nonce) pair read as fresh and a replayed document was
+  accepted with no signal to the consumer. Ruling (Jim, 2026-11-21):
+  keep the FIFO eviction and add an observable counter. Eviction
+  behavior is unchanged; every eviction now increments the public
+  read-only `ReplayGuard.evictions` counter, and the module documents
+  that replay protection is best-effort past the cap so consumers can
+  alert on the counter. The pinned FIFO eviction test now asserts the
+  counter as well, and a new permanent suite
+  (tests/test_replay_eviction.py) covers the counter contract. The
+  guard is Python-only — the Rust crate has no ReplayGuard — so there
+  is no Rust change in this release beyond the version bump.
+
 ## [1.4.2] - 2026-11-20
 
 A hardening release. No wire-format or spec change — the spec remains
