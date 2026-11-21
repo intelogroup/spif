@@ -3,6 +3,12 @@
 SPIF signing itself is stateless (same input -> same signature), so replay
 rejection is a verifier-side concern: track (signer, nonce) pairs already
 seen and reject repeats. This is the same pattern as JWT `jti` blacklisting.
+
+The seen set is FIFO-capped (ReplayGuard.max_entries), so protection is
+best-effort past the cap: once the cap turns over, an evicted (signer,
+nonce) pair reads as fresh and a replay of that document is accepted.
+Every eviction is counted on ReplayGuard.evictions so consumers can
+alert when the guard starts forgetting (SPIF-REPLAY-EVICTION-001).
 """
 from __future__ import annotations
 
@@ -19,6 +25,9 @@ class ReplayGuard:
     # ponytail: in-memory, per-process only, FIFO-capped at max_entries.
     # Swap for a shared store (Redis/DB) with a real TTL if verification
     # happens across multiple processes/replicas or needs time-based expiry.
+    # Past the cap, evicted pairs read as fresh — replay protection is
+    # best-effort from that point; `evictions` counts every eviction so
+    # the weakening is observable (SPIF-REPLAY-EVICTION-001).
     def __init__(self, max_entries: int = 100_000):
         # Capacity typically comes from deployer config (env/JSON), where
         # a stray 0, "3" or null must not silently disable replay
@@ -34,6 +43,18 @@ class ReplayGuard:
             )
         self._max_entries = max_entries
         self._seen: OrderedDict[tuple[str | None, str], None] = OrderedDict()
+        self._evictions = 0
+
+    @property
+    def evictions(self) -> int:
+        """Total (signer, nonce) pairs evicted from the seen set so far.
+
+        Zero while the guard has never filled past max_entries. Once this
+        is non-zero, replay protection is best-effort: an evicted pair
+        reads as fresh, so a replay of that document would be accepted.
+        Alert on it if your deployment needs a hard replay guarantee.
+        """
+        return self._evictions
 
     def check(self, doc: SPIFDocument) -> None:
         """Raise SPIFReplayError if this document's signer+nonce was already seen."""
@@ -89,3 +110,4 @@ class ReplayGuard:
             self._seen[(signer, nonce)] = None
         while len(self._seen) > self._max_entries:
             self._seen.popitem(last=False)
+            self._evictions += 1

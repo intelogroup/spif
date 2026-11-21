@@ -86,5 +86,9 @@ class TestReplayGuardBoundedGrowth:
         for i in range(1000):
             guard.check(_doc(nonce=f"n{i}", signer="alice"))
         assert len(guard._seen) == 10
+        # eviction is observable: 1000 inserts through a cap of 10 evict 990
+        # pairs (SPIF-REPLAY-EVICTION-001 — Jim's ruling 2026-11-21: keep
+        # FIFO eviction, add the counter).
+        assert guard.evictions == 990
         # oldest entries evicted -> re-using an old nonce is no longer flagged as replay
         guard.check(_doc(nonce="n0", signer="alice"))
